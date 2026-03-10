@@ -6,7 +6,7 @@
     "dev": "next dev -p 3500",
     "build": "next build",
     "start": "next start -p 3500",
-    "seed": "npx tsx src/lib/seed.ts"
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@ledge/sdk": "workspace:*",
