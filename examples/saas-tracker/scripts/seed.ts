@@ -27,6 +27,8 @@ async function seed() {
     name: "Acme SaaS",
     currency: "USD",
     ownerId: "seed-user",
+    fiscalYearStart: 1,
+    accountingBasis: "accrual",
   });
   console.log(`  Ledger: ${ledger.id}`);
 

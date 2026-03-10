@@ -11,6 +11,8 @@ async function seed() {
     name: "Expense Tracker",
     currency: "USD",
     ownerId: "expense-demo",
+    fiscalYearStart: 1,
+    accountingBasis: "accrual",
   });
   console.log("Ledger:", ledger.id);
 

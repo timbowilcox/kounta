@@ -4,16 +4,58 @@ import { ImportCSV } from "@/components/import-csv";
 import { RecentTransactions } from "@/components/recent-transactions";
 import { StatementTable } from "@/components/statement-table";
 import { MatchReviewWrapper } from "@/components/match-review-wrapper";
+import type { StatementResponse } from "@ledge/sdk";
 
 export const dynamic = "force-dynamic";
 
+async function fetchData(): Promise<{
+  accounts: Awaited<ReturnType<typeof ledge.accounts.list>> | null;
+  txnResult: Awaited<ReturnType<typeof ledge.transactions.list>> | null;
+  pnl: StatementResponse | null;
+  balanceSheet: StatementResponse | null;
+  error: string | null;
+}> {
+  if (!ledgerId) {
+    return { accounts: null, txnResult: null, pnl: null, balanceSheet: null, error: "LEDGE_LEDGER_ID not set" };
+  }
+
+  try {
+    const [accounts, txnResult, pnl, balanceSheet] = await Promise.all([
+      ledge.accounts.list(ledgerId),
+      ledge.transactions.list(ledgerId, { limit: 20 }),
+      ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-12-31"),
+      ledge.reports.balanceSheet(ledgerId, "2026-12-31"),
+    ]);
+
+    return { accounts, txnResult, pnl, balanceSheet, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to connect to Ledge API";
+    return { accounts: null, txnResult: null, pnl: null, balanceSheet: null, error: message };
+  }
+}
+
 export default async function Home() {
-  const [accounts, txnResult, pnl, balanceSheet] = await Promise.all([
-    ledge.accounts.list(ledgerId),
-    ledge.transactions.list(ledgerId, { limit: 20 }),
-    ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-12-31"),
-    ledge.reports.balanceSheet(ledgerId, "2026-12-31"),
-  ]);
+  const { accounts, txnResult, pnl, balanceSheet, error } = await fetchData();
+
+  if (error || !accounts || !txnResult || !pnl || !balanceSheet) {
+    return (
+      <div className="card text-center py-16">
+        <h2 className="text-xl font-bold text-slate-50 mb-3">Setup Required</h2>
+        <p className="text-sm mb-6" style={{ color: "#94a3b8" }}>
+          {error ?? "Could not load data"}. Follow the README to configure your Ledge connection.
+        </p>
+        <div
+          className="inline-block rounded-xl p-5 text-left font-mono text-sm"
+          style={{ background: "#0a0f1a", color: "#5eead4" }}
+        >
+          <p>1. Start Ledge API: <span style={{ color: "#94a3b8" }}>pnpm dev</span> (from repo root)</p>
+          <p>2. Copy <span style={{ color: "#94a3b8" }}>.env.example</span> to <span style={{ color: "#94a3b8" }}>.env.local</span></p>
+          <p>3. Run seed: <span style={{ color: "#94a3b8" }}>pnpm seed</span></p>
+          <p>4. Paste the output values into <span style={{ color: "#94a3b8" }}>.env.local</span></p>
+        </div>
+      </div>
+    );
+  }
 
   const expenseAccounts = accounts.filter((a) => a.type === "expense");
   const totalExpenses = expenseAccounts.reduce((sum, a) => sum + a.balance, 0);
@@ -56,8 +98,8 @@ export default async function Home() {
 
       {/* Statements */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <StatementTable statement={pnl} title="Income Statement" />
-        <StatementTable statement={balanceSheet} title="Balance Sheet" />
+        <StatementTable statement={pnl} title="Income Statement" subtitle="2026-01-01 — 2026-12-31" />
+        <StatementTable statement={balanceSheet} title="Balance Sheet" subtitle="As of 2026-12-31" />
       </div>
 
       {/* Recent transactions */}

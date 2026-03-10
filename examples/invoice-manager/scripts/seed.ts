@@ -11,6 +11,8 @@ async function seed() {
     name: "Freelance Consulting",
     currency: "USD",
     ownerId: "freelancer-demo",
+    fiscalYearStart: 1,
+    accountingBasis: "accrual",
   });
   console.log("Ledger:", ledger.id);
 
