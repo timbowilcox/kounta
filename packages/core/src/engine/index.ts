@@ -96,7 +96,7 @@ interface AccountRow {
   name: string;
   type: string;
   normal_balance: string;
-  is_system: number;
+  is_system: number | boolean;
   metadata: string | null;
   status: string;
   created_at: string;
@@ -217,7 +217,7 @@ const toAccount = (row: AccountRow): Account => ({
   name: row.name,
   type: row.type as Account["type"],
   normalBalance: row.normal_balance as Account["normalBalance"],
-  isSystem: row.is_system === 1,
+  isSystem: !!row.is_system,
   metadata: row.metadata ? JSON.parse(row.metadata) as Record<string, unknown> : null,
   status: row.status as Account["status"],
   createdAt: row.created_at,
@@ -443,8 +443,8 @@ export class LedgerEngine {
 
     await this.db.run(
       `INSERT INTO accounts (id, ledger_id, parent_id, code, name, type, normal_balance, is_system, metadata, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?, ?)`,
-      [id, params.ledgerId, parentId, params.code, params.name, params.type, normalBalance, metadata, now, now]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      [id, params.ledgerId, parentId, params.code, params.name, params.type, normalBalance, false, metadata, now, now]
     );
 
     const row = await this.db.get<AccountRow>("SELECT * FROM accounts WHERE id = ?", [id]);
@@ -1056,7 +1056,7 @@ export class LedgerEngine {
         await this.db.run(
           `INSERT INTO accounts (id, ledger_id, parent_id, code, name, type, normal_balance, is_system, metadata, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-          [id, ledgerId, parentId, ta.code, ta.name, ta.type, ta.normalBalance, ta.isSystem ? 1 : 0, metadata, now, now],
+          [id, ledgerId, parentId, ta.code, ta.name, ta.type, ta.normalBalance, ta.isSystem ? true : false, metadata, now, now],
         );
 
         const row = await this.db.get<AccountRow>("SELECT * FROM accounts WHERE id = ?", [id]);
