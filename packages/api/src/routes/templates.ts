@@ -78,7 +78,14 @@ templateRoutes.post("/apply", adminAuth, async (c) => {
     );
   }
 
-  const result = await engine.applyTemplate(body.ledgerId, body.templateSlug);
+  let result;
+  try {
+    result = await engine.applyTemplate(body.ledgerId, body.templateSlug);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? (e.stack || "").split("\n").slice(0, 5).join(" | ") : "";
+    return c.json({ error: { code: "TEMPLATE_APPLY_ERROR", message: msg, stack, requestId: c.get("requestId") } }, 500);
+  }
   if (!result.ok) {
     return errorResponse(c, result.error);
   }
