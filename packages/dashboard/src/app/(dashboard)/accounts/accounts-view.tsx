@@ -117,7 +117,7 @@ function GroupRows({
               <path d="M5 3l4 4-4 4" />
             </svg>
             <span className="text-sm font-semibold">
-              {typeLabels[type] ?? type}s
+              {(typeLabels[type] ?? type).replace(/y$/,"ie")+"s"}
             </span>
             <span className="text-xs" style={{ color: "rgba(0,0,0,0.28)" }}>
               ({accounts.length})
