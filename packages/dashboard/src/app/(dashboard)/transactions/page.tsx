@@ -1,11 +1,10 @@
-import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/ledge";
 import { TransactionsView } from "./transactions-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function TransactionsPage() {
-  const client = getLedgeClient();
-  const ledgerId = getLedgerId();
+  const { client, ledgerId } = await getSessionClient();
 
   const [txResult, accounts] = await Promise.all([
     client.transactions.list(ledgerId, { limit: 50 }),
