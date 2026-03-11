@@ -14,7 +14,7 @@ import type { Ledger } from "@ledge/core";
 export const provisionRoutes = new Hono<Env>();
 
 /** POST /v1/admin/provision — Provision a user with a ledger and API key */
-provisionRoutes.post("/", adminAuth, async (c) => {
+provisionRoutes.post("/provision", adminAuth, async (c) => {
   const engine = c.get("engine");
   const body = await c.req.json();
 
