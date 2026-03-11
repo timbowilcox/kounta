@@ -187,7 +187,7 @@ interface ImportRowRow {
 }
 
 interface BalanceRow {
-  balance: number;
+  balance: number | string;
 }
 
 
@@ -620,7 +620,7 @@ export class LedgerEngine {
         [txnId]
       );
 
-      if (!balanceCheck || balanceCheck.debit_total !== balanceCheck.credit_total || balanceCheck.line_count < 2) {
+      if (!balanceCheck || Number(balanceCheck.debit_total) !== Number(balanceCheck.credit_total) || Number(balanceCheck.line_count) < 2) {
         throw new Error(
           `Balance constraint violation: debits (${balanceCheck?.debit_total}) != credits (${balanceCheck?.credit_total})`
         );
@@ -842,7 +842,7 @@ export class LedgerEngine {
     }
 
     const row = await this.db.get<BalanceRow>(sql, params);
-    const rawBalance = row?.balance ?? 0;
+    const rawBalance = Number(row?.balance ?? 0);
 
     // For credit-normal accounts, invert the sign
     // Debit-normal: balance = debits - credits (positive = debit balance)
@@ -864,7 +864,7 @@ export class LedgerEngine {
                  WHERE li.account_id = ? AND t.date >= ? AND t.date <= ?`;
 
     const row = await this.db.get<BalanceRow>(sql, [accountId, startDate, endDate]);
-    const rawBalance = row?.balance ?? 0;
+    const rawBalance = Number(row?.balance ?? 0);
     return normalBalance === "credit" ? -rawBalance : rawBalance;
   }
 
