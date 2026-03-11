@@ -77,7 +77,6 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Data directory for persistent SQLite storage
 RUN mkdir -p /data && chown ledge:ledge /data
-VOLUME /data
 
 USER ledge
 
