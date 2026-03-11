@@ -82,7 +82,16 @@ provisionRoutes.post("/provision", adminAuth, async (c) => {
 
   if (!ledger) return errorResponse(c, { code: "INTERNAL_ERROR", message: "Failed to resolve ledger" } as never);
 
-  // 3. Issue a new API key
+  // 3. Revoke old dashboard keys, then issue a fresh one
+  const existingKeys = await engine.listApiKeys(ledger.id);
+  if (existingKeys.ok) {
+    for (const key of existingKeys.value) {
+      if (key.name.startsWith("dashboard-") && key.status === "active") {
+        await engine.revokeApiKey(key.id);
+      }
+    }
+  }
+
   const keyResult = await engine.createApiKey({
     userId: user.id,
     ledgerId: ledger.id,
