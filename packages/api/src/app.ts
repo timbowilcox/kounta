@@ -40,7 +40,7 @@ export const createApp = (engine: LedgerEngine): Hono<Env> => {
       {
         error: {
           code: "INTERNAL_ERROR",
-          message: "An unexpected error occurred",
+          message: error instanceof Error ? error.message : "An unexpected error occurred",
           details: [
             {
               field: "request",
