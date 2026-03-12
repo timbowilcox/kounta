@@ -239,6 +239,17 @@ a {
   background: rgba(0,0,0,0.02);
 }
 
+/* Quick actions */
+
+.quick-action {
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.quick-action:hover {
+  border-color: rgba(59,130,246,0.3);
+  background-color: rgba(59,130,246,0.04);
+}
+
 /* Skeleton */
 
 .skeleton {

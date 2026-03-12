@@ -182,7 +182,7 @@ function QuickAction({ icon, label, href }: { icon: React.ReactNode; label: stri
   return (
     <Link
       href={href}
-      className="flex items-center gap-3"
+      className="flex items-center gap-3 quick-action"
       style={{
         padding: "12px 20px",
         borderRadius: 12,
@@ -191,10 +191,7 @@ function QuickAction({ icon, label, href }: { icon: React.ReactNode; label: stri
         fontSize: 13,
         fontWeight: 500,
         color: "#0A0A0A",
-        transition: "all 200ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
-      onMouseEnter={(e: any) => { e.currentTarget.style.borderColor = "rgba(59,130,246,0.3)"; e.currentTarget.style.backgroundColor = "rgba(59,130,246,0.04)"; }}
-      onMouseLeave={(e: any) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.10)"; e.currentTarget.style.backgroundColor = "#F7F7F6"; }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, backgroundColor: "rgba(59,130,246,0.08)" }}>
         {icon}
