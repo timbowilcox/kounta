@@ -35,133 +35,8 @@ const getStripe = async () => {
 export const billingRoutes = new Hono<Env>();
 
 // ---------------------------------------------------------------------------
-// Auth-protected billing routes
-// ---------------------------------------------------------------------------
-
-const protectedBilling = new Hono<Env>();
-protectedBilling.use("/*", apiKeyAuth);
-
-/** POST /v1/billing/checkout — Create a Stripe Checkout session */
-protectedBilling.post("/checkout", async (c) => {
-  const stripe = await getStripe();
-  if (!stripe) {
-    return c.json(
-      { error: { code: "SERVICE_UNAVAILABLE", message: "Billing is not configured", details: [{ field: "stripe", suggestion: "Set STRIPE_SECRET_KEY environment variable to enable billing." }] } },
-      503
-    );
-  }
-
-  const engine = c.get("engine");
-  const apiKeyInfo = c.get("apiKeyInfo")!;
-  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
-  if (!userResult.ok || !userResult.value) {
-    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
-  }
-  const user = userResult.value;
-
-  // Accept price_id from the request body
-  const body = await c.req.json().catch(() => ({}));
-  const priceId = body.price_id;
-
-  if (!priceId || typeof priceId !== "string") {
-    return c.json(
-      { error: { code: "VALIDATION_ERROR", message: "price_id is required", details: [{ field: "price_id", suggestion: "Provide a valid Stripe Price ID in the request body." }] } },
-      400
-    );
-  }
-
-  // Create or reuse Stripe customer
-  let customerId = user.stripeCustomerId;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      name: user.name,
-      metadata: { ledge_user_id: user.id },
-    });
-    customerId = customer.id;
-    await engine.updateUserPlan(user.id, user.plan, customerId);
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: DASHBOARD_URL + "/billing?success=true",
-    cancel_url: DASHBOARD_URL + "/billing?canceled=true",
-    metadata: { ledge_user_id: user.id },
-  });
-
-  return success(c, { url: session.url });
-});
-
-/** POST /v1/billing/portal — Create a Stripe Customer Portal session */
-protectedBilling.post("/portal", async (c) => {
-  const stripe = await getStripe();
-  if (!stripe) {
-    return c.json(
-      { error: { code: "SERVICE_UNAVAILABLE", message: "Billing is not configured", details: [{ field: "stripe", suggestion: "Set STRIPE_SECRET_KEY environment variable to enable billing." }] } },
-      503
-    );
-  }
-
-  const engine = c.get("engine");
-  const apiKeyInfo = c.get("apiKeyInfo")!;
-  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
-  if (!userResult.ok || !userResult.value) {
-    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
-  }
-  const user = userResult.value;
-
-  if (!user.stripeCustomerId) {
-    return c.json(
-      { error: { code: "VALIDATION_ERROR", message: "No billing account found. Please upgrade first.", details: [] } },
-      400
-    );
-  }
-
-  const session = await stripe.billingPortal.sessions.create({
-    customer: user.stripeCustomerId,
-    return_url: DASHBOARD_URL + "/billing",
-  });
-
-  return success(c, { url: session.url });
-});
-
-/** GET /v1/billing/status — Get current billing status and usage */
-protectedBilling.get("/status", async (c) => {
-  const engine = c.get("engine");
-  const apiKeyInfo = c.get("apiKeyInfo")!;
-
-  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
-  if (!userResult.ok || !userResult.value) {
-    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
-  }
-  const user = userResult.value;
-
-  const usageResult = await engine.getUsage(apiKeyInfo.ledgerId);
-  const usage = usageResult.ok ? usageResult.value : { count: 0, limit: 500, periodStart: "", periodEnd: "" };
-
-  // Calculate next reset date
-  const endDate = new Date(usage.periodEnd || new Date());
-  endDate.setDate(endDate.getDate() + 1);
-  const nextResetDate = endDate.toISOString().split("T")[0];
-
-  return success(c, {
-    plan: user.plan,
-    usage: {
-      count: usage.count,
-      limit: usage.limit === -1 ? null : usage.limit,
-    },
-    periodStart: usage.periodStart,
-    periodEnd: usage.periodEnd,
-    nextResetDate,
-  });
-});
-
-billingRoutes.route("/", protectedBilling);
-
-// ---------------------------------------------------------------------------
 // Webhook — no auth (uses Stripe signature verification)
+// Must be registered BEFORE auth-protected routes.
 // ---------------------------------------------------------------------------
 
 /** POST /v1/billing/webhook — Handle Stripe webhook events */
@@ -299,3 +174,125 @@ billingRoutes.post("/webhook", async (c) => {
 
   return c.json({ received: true }, 200);
 });
+
+// ---------------------------------------------------------------------------
+// Auth-protected billing routes (checkout, portal, status)
+// ---------------------------------------------------------------------------
+
+/** POST /v1/billing/checkout — Create a Stripe Checkout session */
+billingRoutes.post("/checkout", apiKeyAuth, async (c) => {
+  const stripe = await getStripe();
+  if (!stripe) {
+    return c.json(
+      { error: { code: "SERVICE_UNAVAILABLE", message: "Billing is not configured", details: [{ field: "stripe", suggestion: "Set STRIPE_SECRET_KEY environment variable to enable billing." }] } },
+      503
+    );
+  }
+
+  const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
+  if (!userResult.ok || !userResult.value) {
+    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
+  }
+  const user = userResult.value;
+
+  // Accept price_id from the request body
+  const body = await c.req.json().catch(() => ({}));
+  const priceId = body.price_id;
+
+  if (!priceId || typeof priceId !== "string") {
+    return c.json(
+      { error: { code: "VALIDATION_ERROR", message: "price_id is required", details: [{ field: "price_id", suggestion: "Provide a valid Stripe Price ID in the request body." }] } },
+      400
+    );
+  }
+
+  // Create or reuse Stripe customer
+  let customerId = user.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name,
+      metadata: { ledge_user_id: user.id },
+    });
+    customerId = customer.id;
+    await engine.updateUserPlan(user.id, user.plan, customerId);
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: DASHBOARD_URL + "/billing?success=true",
+    cancel_url: DASHBOARD_URL + "/billing?canceled=true",
+    metadata: { ledge_user_id: user.id },
+  });
+
+  return success(c, { url: session.url });
+});
+
+/** POST /v1/billing/portal — Create a Stripe Customer Portal session */
+billingRoutes.post("/portal", apiKeyAuth, async (c) => {
+  const stripe = await getStripe();
+  if (!stripe) {
+    return c.json(
+      { error: { code: "SERVICE_UNAVAILABLE", message: "Billing is not configured", details: [{ field: "stripe", suggestion: "Set STRIPE_SECRET_KEY environment variable to enable billing." }] } },
+      503
+    );
+  }
+
+  const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
+  if (!userResult.ok || !userResult.value) {
+    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
+  }
+  const user = userResult.value;
+
+  if (!user.stripeCustomerId) {
+    return c.json(
+      { error: { code: "VALIDATION_ERROR", message: "No billing account found. Please upgrade first.", details: [] } },
+      400
+    );
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: user.stripeCustomerId,
+    return_url: DASHBOARD_URL + "/billing",
+  });
+
+  return success(c, { url: session.url });
+});
+
+/** GET /v1/billing/status — Get current billing status and usage */
+billingRoutes.get("/status", apiKeyAuth, async (c) => {
+  const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+
+  const userResult = await engine.getUserByLedger(apiKeyInfo.ledgerId);
+  if (!userResult.ok || !userResult.value) {
+    return errorResponse(c, createError(ErrorCode.INTERNAL_ERROR, "User not found"));
+  }
+  const user = userResult.value;
+
+  const usageResult = await engine.getUsage(apiKeyInfo.ledgerId);
+  const usage = usageResult.ok ? usageResult.value : { count: 0, limit: 500, periodStart: "", periodEnd: "" };
+
+  // Calculate next reset date
+  const endDate = new Date(usage.periodEnd || new Date());
+  endDate.setDate(endDate.getDate() + 1);
+  const nextResetDate = endDate.toISOString().split("T")[0];
+
+  return success(c, {
+    plan: user.plan,
+    usage: {
+      count: usage.count,
+      limit: usage.limit === -1 ? null : usage.limit,
+    },
+    periodStart: usage.periodStart,
+    periodEnd: usage.periodEnd,
+    nextResetDate,
+  });
+});
+
