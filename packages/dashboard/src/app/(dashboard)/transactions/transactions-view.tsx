@@ -68,9 +68,9 @@ export function TransactionsView({ initialData, accountMap }: Props) {
                 borderRadius: 10,
                 fontSize: 13,
                 fontWeight: 500,
-                backgroundColor: filter === s ? "rgba(232,71,10,0.06)" : "transparent",
-                color: filter === s ? "#E8470A" : "rgba(0,0,0,0.36)",
-                border: filter === s ? "1px solid rgba(232,71,10,0.18)" : "1px solid transparent",
+                backgroundColor: filter === s ? "rgba(59,130,246,0.1)" : "transparent",
+                color: filter === s ? "#3B82F6" : "rgba(0,0,0,0.36)",
+                border: filter === s ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
                 cursor: "pointer",
                 transition: "all 200ms cubic-bezier(0.16, 1, 0.3, 1)",
               }}
@@ -189,7 +189,7 @@ function TransactionRow({
                       <tr key={i}>
                         <td className="table-cell text-sm" style={{ paddingTop: 10, paddingBottom: 10 }}>
                           {acct && (
-                            <code className="font-mono text-xs" style={{ color: "#E8470A", marginRight: 8 }}>
+                            <code className="font-mono text-xs" style={{ color: "#3B82F6", marginRight: 8 }}>
                               {acct.code}
                             </code>
                           )}

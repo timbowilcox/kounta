@@ -83,9 +83,9 @@ export default function McpPage() {
               borderRadius: 10,
               fontSize: 14,
               fontWeight: 500,
-              backgroundColor: activeTool === key ? "rgba(232,71,10,0.06)" : "transparent",
-              color: activeTool === key ? "#E8470A" : "rgba(0,0,0,0.36)",
-              border: activeTool === key ? "1px solid rgba(232,71,10,0.18)" : "1px solid transparent",
+              backgroundColor: activeTool === key ? "rgba(59,130,246,0.1)" : "transparent",
+              color: activeTool === key ? "#3B82F6" : "rgba(0,0,0,0.36)",
+              border: activeTool === key ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
               cursor: "pointer",
               transition: "all 200ms cubic-bezier(0.16, 1, 0.3, 1)",
             }}
@@ -107,8 +107,8 @@ export default function McpPage() {
                   width: 28,
                   height: 28,
                   borderRadius: "50%",
-                  backgroundColor: "rgba(232,71,10,0.06)",
-                  color: "#E8470A",
+                  backgroundColor: "rgba(59,130,246,0.1)",
+                  color: "#3B82F6",
                 }}
               >
                 {i + 1}
@@ -123,7 +123,7 @@ export default function McpPage() {
       <div style={{ marginBottom: 32 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
           <div className="section-label">
-            Configuration \u2014 <code className="font-mono text-xs" style={{ color: "#E8470A" }}>{config.file}</code>
+            Configuration \u2014 <code className="font-mono text-xs" style={{ color: "#3B82F6" }}>{config.file}</code>
           </div>
           <CopyButton text={config.config} label="Copy config" />
         </div>
@@ -148,7 +148,7 @@ export default function McpPage() {
                 );
               }
               if (line.includes('"ledge"') || line.includes('"mcpServers"')) {
-                return <div key={i} style={{ color: "#E8470A" }}>{line}</div>;
+                return <div key={i} style={{ color: "#3B82F6" }}>{line}</div>;
               }
               return <div key={i}>{line}</div>;
             })}
@@ -162,7 +162,7 @@ export default function McpPage() {
         <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 12 }}>
           {mcpTools.map((tool) => (
             <div key={tool.name} className="card" style={{ padding: 18 }}>
-              <code className="font-mono text-xs font-medium" style={{ color: "#E8470A" }}>
+              <code className="font-mono text-xs font-medium" style={{ color: "#3B82F6" }}>
                 {tool.name}
               </code>
               <p className="text-xs" style={{ color: "rgba(0,0,0,0.36)", marginTop: 6, lineHeight: 1.5 }}>

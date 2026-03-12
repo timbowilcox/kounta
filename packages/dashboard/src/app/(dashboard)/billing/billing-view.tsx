@@ -81,7 +81,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
   const limit = billing.usage.limit ?? Infinity;
   const pct = limit === Infinity ? 0 : Math.min((billing.usage.count / limit) * 100, 100);
   const barColor =
-    pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#E8470A";
+    pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#3B82F6";
 
   const handleUpgrade = () => {
     setRedirecting(true);
@@ -166,7 +166,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
             >
               {planLabel(billing.plan)}
             </span>
-            <span className={"badge " + (isFree ? "badge-orange" : "badge-green")}>
+            <span className={"badge " + (isFree ? "badge-blue" : "badge-green")}>
               {planPrice(billing.plan)}
             </span>
           </div>
@@ -365,9 +365,13 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                 style={{
                   position: "relative",
                   border: isRecommended
-                    ? "2px solid #E8470A"
-                    : "1px solid rgba(0,0,0,0.10)",
+                    ? "2px solid #3B82F6"
+                    : isCurrent
+                      ? "1px solid rgba(59,130,246,0.3)"
+                      : "1px solid rgba(0,0,0,0.10)",
+                  borderLeft: isCurrent ? "3px solid #3B82F6" : undefined,
                   padding: 20,
+                  opacity: tier.comingSoon ? 0.6 : 1,
                 }}
               >
                 {isRecommended && (
@@ -378,7 +382,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                       top: -10,
                       left: "50%",
                       transform: "translateX(-50%)",
-                      backgroundColor: "#E8470A",
+                      backgroundColor: "#3B82F6",
                       color: "white",
                       padding: "2px 12px",
                       borderRadius: 10,
@@ -426,7 +430,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                         height="14"
                         viewBox="0 0 14 14"
                         fill="none"
-                        stroke="#E8470A"
+                        stroke="#3B82F6"
                         strokeWidth="1.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -440,22 +444,28 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                 </ul>
                 {isCurrent ? (
                   <div
-                    className="text-xs font-medium"
+                    className="text-xs font-semibold uppercase tracking-wide"
                     style={{
                       textAlign: "center",
-                      color: "rgba(0,0,0,0.36)",
-                      padding: "8px 0",
+                      backgroundColor: "rgba(59,130,246,0.1)",
+                      color: "#3B82F6",
+                      border: "1px solid rgba(59,130,246,0.3)",
+                      borderRadius: 9999,
+                      padding: "5px 12px",
                     }}
                   >
                     Current plan
                   </div>
                 ) : tier.comingSoon ? (
                   <div
-                    className="text-xs font-medium"
+                    className="text-xs font-semibold uppercase tracking-wide"
                     style={{
                       textAlign: "center",
-                      color: "rgba(0,0,0,0.36)",
-                      padding: "8px 0",
+                      backgroundColor: "rgba(100,116,139,0.1)",
+                      color: "rgba(148,163,184,1)",
+                      border: "1px solid rgba(100,116,139,0.2)",
+                      borderRadius: 9999,
+                      padding: "5px 12px",
                     }}
                   >
                     Coming soon

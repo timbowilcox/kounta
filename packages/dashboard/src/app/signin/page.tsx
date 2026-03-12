@@ -9,7 +9,7 @@ export default function SignInPage() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(700px circle at 50% 35%, rgba(232,71,10,0.05), transparent 70%)",
+          background: "radial-gradient(700px circle at 50% 35%, rgba(59,130,246,0.05), transparent 70%)",
         }}
       />
 

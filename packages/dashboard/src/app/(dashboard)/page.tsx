@@ -32,7 +32,7 @@ export default async function OverviewPage() {
         >
           {ledger.name}
         </h1>
-        <span className="badge badge-orange">{ledger.accountingBasis}</span>
+        <span className="badge badge-blue">{ledger.accountingBasis}</span>
         <span className="text-sm" style={{ color: "rgba(0,0,0,0.36)" }}>
           {ledger.currency}
         </span>

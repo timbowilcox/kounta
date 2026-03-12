@@ -75,9 +75,9 @@ export function StatementsView({
               borderRadius: 10,
               fontSize: 14,
               fontWeight: 500,
-              backgroundColor: activeTab === tab.key ? "rgba(232,71,10,0.06)" : "transparent",
-              color: activeTab === tab.key ? "#E8470A" : "rgba(0,0,0,0.36)",
-              border: activeTab === tab.key ? "1px solid rgba(232,71,10,0.18)" : "1px solid transparent",
+              backgroundColor: activeTab === tab.key ? "rgba(59,130,246,0.1)" : "transparent",
+              color: activeTab === tab.key ? "#3B82F6" : "rgba(0,0,0,0.36)",
+              border: activeTab === tab.key ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent",
               cursor: "pointer",
               transition: "all 200ms cubic-bezier(0.16, 1, 0.3, 1)",
             }}
@@ -122,8 +122,8 @@ export function StatementsView({
           borderRadius: 18,
           padding: 24,
           marginBottom: 24,
-          backgroundColor: "rgba(232,71,10,0.04)",
-          border: "1px solid rgba(232,71,10,0.06)",
+          backgroundColor: "rgba(59,130,246,0.06)",
+          border: "1px solid rgba(59,130,246,0.1)",
         }}
       >
         <p className="text-sm" style={{ color: "rgba(0,0,0,0.55)", lineHeight: 1.7 }}>
@@ -173,10 +173,10 @@ export function StatementsView({
                     padding: "14px 20px",
                     borderTop: "1px solid rgba(0,0,0,0.10)",
                     color: key === "netIncome" || key === "netChange"
-                      ? value >= 0 ? "#E8470A" : "#DC2626"
+                      ? value >= 0 ? "#3B82F6" : "#DC2626"
                       : "#0A0A0A",
                     backgroundColor: (key === "netIncome" || key === "netChange" || key === "totalAssets")
-                      ? "rgba(232,71,10,0.04)"
+                      ? "rgba(59,130,246,0.06)"
                       : undefined,
                   }}
                 >
@@ -200,7 +200,7 @@ function SectionRows({ section }: { section: StatementResponse["sections"][numbe
         <td
           colSpan={2}
           className="text-sm font-bold"
-          style={{ padding: "20px 20px 10px", color: "#E8470A" }}
+          style={{ padding: "20px 20px 10px", color: "#3B82F6" }}
         >
           {section.name}
         </td>
@@ -210,7 +210,7 @@ function SectionRows({ section }: { section: StatementResponse["sections"][numbe
         <tr key={line.accountCode + line.accountName} className="table-row">
           <td className="table-cell text-sm" style={{ paddingLeft: 36 }}>
             {line.accountCode && (
-              <code className="font-mono text-xs" style={{ color: "#E8470A", marginRight: 8 }}>
+              <code className="font-mono text-xs" style={{ color: "#3B82F6", marginRight: 8 }}>
                 {line.accountCode}
               </code>
             )}

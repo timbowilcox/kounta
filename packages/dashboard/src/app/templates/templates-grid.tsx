@@ -59,9 +59,9 @@ export function TemplatesGrid({ templates }: { templates: Template[] }) {
                   style={{
                     padding: "3px 10px",
                     borderRadius: 9999,
-                    backgroundColor: "rgba(232,71,10,0.06)",
-                    color: "#E8470A",
-                    border: "1px solid rgba(232,71,10,0.18)",
+                    backgroundColor: "rgba(59,130,246,0.1)",
+                    color: "#3B82F6",
+                    border: "1px solid rgba(59,130,246,0.3)",
                   }}
                 >
                   {t.businessType}

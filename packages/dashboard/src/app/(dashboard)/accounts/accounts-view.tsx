@@ -13,7 +13,7 @@ const typeLabels: Record<string, string> = {
 };
 
 const typeBadge: Record<string, string> = {
-  asset: "badge-orange", liability: "badge-amber", equity: "badge-green", revenue: "badge-green", expense: "badge-red",
+  asset: "badge-blue", liability: "badge-amber", equity: "badge-green", revenue: "badge-green", expense: "badge-red",
 };
 
 export function AccountsView({ accounts }: { accounts: AccountWithBalance[] }) {
@@ -125,7 +125,7 @@ function GroupRows({
           </div>
         </td>
         <td className="table-cell">
-          <span className={"badge " + (typeBadge[type] ?? "badge-orange")}>{typeLabels[type] ?? type}</span>
+          <span className={"badge " + (typeBadge[type] ?? "badge-blue")}>{typeLabels[type] ?? type}</span>
         </td>
         <td
           className="table-cell text-right font-mono text-sm font-medium"
@@ -139,13 +139,13 @@ function GroupRows({
         accounts.map((account) => (
           <tr key={account.id} className="table-row">
             <td className="table-cell" style={{ paddingLeft: 44 }}>
-              <code className="text-xs font-mono" style={{ color: "#E8470A" }}>
+              <code className="text-xs font-mono" style={{ color: "#3B82F6" }}>
                 {account.code}
               </code>
             </td>
             <td className="table-cell text-sm">{account.name}</td>
             <td className="table-cell">
-              <span className={"badge " + (typeBadge[type] ?? "badge-orange")}>{typeLabels[type] ?? type}</span>
+              <span className={"badge " + (typeBadge[type] ?? "badge-blue")}>{typeLabels[type] ?? type}</span>
             </td>
             <td
               className="table-cell text-right font-mono text-sm"

@@ -69,7 +69,7 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
             {keys.map((key) => (
               <tr key={key.id} className="table-row">
                 <td className="table-cell text-sm font-medium">{key.name}</td>
-                <td className="table-cell font-mono text-xs" style={{ color: "#E8470A" }}>{key.prefix}...</td>
+                <td className="table-cell font-mono text-xs" style={{ color: "#3B82F6" }}>{key.prefix}...</td>
                 <td className="table-cell text-sm">{formatDate(key.createdAt)}</td>
                 <td className="table-cell text-sm">{key.lastUsedAt ? formatDate(key.lastUsedAt) : "Never"}</td>
                 <td className="table-cell text-right">
@@ -163,7 +163,7 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
                     border: "1px solid rgba(0,0,0,0.10)",
                   }}
                 >
-                  <code className="text-sm font-mono" style={{ color: "#E8470A", wordBreak: "break-all" }}>{createdKey}</code>
+                  <code className="text-sm font-mono" style={{ color: "#3B82F6", wordBreak: "break-all" }}>{createdKey}</code>
                   <CopyButton text={createdKey} />
                 </div>
 
