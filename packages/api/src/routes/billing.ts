@@ -17,7 +17,7 @@ const STRIPE_WEBHOOK_SECRET = process.env["STRIPE_WEBHOOK_SECRET"];
 
 // Map Stripe price IDs to plan names
 const PRICE_TO_PLAN: Record<string, string> = {
-  "price_1T9ttSCyIk44TybILuV2rf1e": "builder",
+  "price_1T9ttSCyIk44TybLLuV2rf1e": "builder",
   "price_1T9tthCyIk44TybLKSNDey0u": "pro",
   "price_1T9tu7CyIk44TybLy8wONtPv": "platform",
 };

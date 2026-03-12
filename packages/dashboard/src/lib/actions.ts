@@ -135,7 +135,7 @@ export async function fetchBillingStatus(): Promise<BillingStatus> {
   return json.data;
 }
 
-export async function createCheckoutSession(priceId = "price_1T9ttSCyIk44TybILuV2rf1e"): Promise<string> {
+export async function createCheckoutSession(priceId = "price_1T9ttSCyIk44TybLLuV2rf1e"): Promise<string> {
   const session = await auth();
   const apiUrl = process.env.LEDGE_API_URL;
   if (!apiUrl) throw new Error("LEDGE_API_URL not configured");
