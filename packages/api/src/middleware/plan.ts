@@ -10,7 +10,7 @@ import type { LedgerEngine, PlanEnforcementResult } from "@ledge/core";
 const FREE_SOFT_LIMIT = 500;
 const FREE_HARD_LIMIT = 600;
 
-export const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://ledge-sigma.vercel.app";
+export const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://useledge.ai";
 export const UPGRADE_URL = `${DASHBOARD_URL}/billing`;
 
 export async function enforcePlanLimit(

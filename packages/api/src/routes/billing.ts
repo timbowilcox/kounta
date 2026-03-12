@@ -11,7 +11,7 @@ import { apiKeyAuth } from "../middleware/auth.js";
 import { success, errorResponse } from "../lib/responses.js";
 import { createError, ErrorCode } from "@ledge/core";
 
-const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://ledge-sigma.vercel.app";
+const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://useledge.ai";
 const STRIPE_SECRET_KEY = process.env["STRIPE_SECRET_KEY"];
 const STRIPE_WEBHOOK_SECRET = process.env["STRIPE_WEBHOOK_SECRET"];
 

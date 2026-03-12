@@ -8,7 +8,7 @@
 
 # Overview
 
-Phase 1 delivered a working engine: 235 tests passing, a Docker image, a deployed dashboard at ledge-sigma.vercel.app, an SDK, MCP server, three example apps, and full documentation. But the product is not end-to-end functional. The dashboard shows mock data. Auth is stubbed. There is no hosted API. A builder cannot sign up and use Ledge today.
+Phase 1 delivered a working engine: 235 tests passing, a Docker image, a deployed dashboard at useledge.ai, an SDK, MCP server, three example apps, and full documentation. But the product is not end-to-end functional. The dashboard shows mock data. Auth is stubbed. There is no hosted API. A builder cannot sign up and use Ledge today.
 
 Block 1 closes that gap. When Block 1 is complete, a builder can sign up with GitHub or Google, pick a template, get API keys, integrate Ledge into their app, see live financial statements, and upgrade to a paid plan when they outgrow the free tier. Every interaction is real, not mocked.
 
