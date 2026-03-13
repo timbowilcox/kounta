@@ -152,165 +152,125 @@ const ensureSystemUser = async (db: Database) => {
   }
 };
 
-/** Apply PostgreSQL migrations if tables don't exist yet. Idempotent. */
+/**
+ * Apply PostgreSQL migrations using a tracking table.
+ *
+ * Each migration is recorded in `_migrations` after it runs.
+ * On subsequent boots the runner skips already-applied migrations,
+ * so no SQL file needs to be idempotent on its own.
+ */
 const applyPostgresMigrations = async (db: PostgresDatabase) => {
-  // Check if schema already exists
-  const result = await db.get<{ exists: boolean }>(
-    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'ledgers') as exists"
-  );
-
-  if (result?.exists) {
-    console.log("PostgreSQL schema already exists — skipping migration");
-    await ensureSystemUser(db);
-
-    // Ensure 'updated' audit action exists (idempotent)
-    try {
-      await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
-    } catch {
-      /* already exists or not supported */
-    }
-
-    // Apply billing migration (003) if not yet applied
-    const usageTableExists = await db.get<{ exists: boolean }>(
-      "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'usage_periods') as exists"
-    );
-    if (!usageTableExists?.exists) {
-      const mgDir = findMigrationsDir();
-      if (mgDir) {
-        const billingMigration = join(mgDir, "003_billing.sql");
-        if (existsSync(billingMigration)) {
-          const sql = readFileSync(billingMigration, "utf-8");
-          await db.exec(sql);
-          console.log("Applied PostgreSQL migration: 003_billing.sql");
-        }
-      }
-    }
-
-    // Apply bank feeds migration (004) if not yet applied
-    const bankConnectionsExists = await db.get<{ exists: boolean }>(
-      "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'bank_connections') as exists"
-    );
-    if (!bankConnectionsExists?.exists) {
-      const mgDir = findMigrationsDir();
-      if (mgDir) {
-        const bankFeedsMigration = join(mgDir, "004_bank_feeds.sql");
-        if (existsSync(bankFeedsMigration)) {
-          const sql = readFileSync(bankFeedsMigration, "utf-8");
-          await db.exec(sql);
-          console.log("Applied PostgreSQL migration: 004_bank_feeds.sql");
-        }
-      }
-    }
-
-    // Apply intelligence migration (005) if not yet applied
-    const notificationsExists = await db.get<{ exists: boolean }>(
-      "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'notifications') as exists"
-    );
-    if (!notificationsExists?.exists) {
-      const mgDir = findMigrationsDir();
-      if (mgDir) {
-        const intelligenceMigration = join(mgDir, "005_intelligence.sql");
-        if (existsSync(intelligenceMigration)) {
-          const sql = readFileSync(intelligenceMigration, "utf-8");
-          await db.exec(sql);
-          console.log("Applied PostgreSQL migration: 005_intelligence.sql");
-        }
-      }
-    }
-
-    // Apply remaining migrations (006-009) idempotently
-    const laterMigrations: [string, string][] = [
-      ["ledger_currencies", "006_multi_currency.sql"],
-      ["conversations", "007_conversations.sql"],
-      ["classification_rules", "008_classification.sql"],
-      ["email_preferences", "009_email.sql"],
-      ["onboarding_state", "010_onboarding.sql"],
-      ["transaction_attachments", "011_attachments.sql"],
-    ];
-    for (const [checkTable, fileName] of laterMigrations) {
-      const tableExists = await db.get<{ exists: boolean }>(
-        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '${checkTable}') as exists`
-      );
-      if (!tableExists?.exists) {
-        const mgDir = findMigrationsDir();
-        if (mgDir) {
-          const migPath = join(mgDir, fileName);
-          if (existsSync(migPath)) {
-            const sql = readFileSync(migPath, "utf-8");
-            await db.exec(sql);
-            console.log(`Applied PostgreSQL migration: ${fileName}`);
-          }
-        }
-      }
-    }
-    return;
-  }
-
   const migrationsDir = findMigrationsDir();
   if (!migrationsDir) {
     console.warn("PostgreSQL migration files not found — schema must be applied manually");
     return;
   }
 
-  const pgMigration = join(migrationsDir, "001_initial_schema.sql");
-  if (existsSync(pgMigration)) {
-    const sql = readFileSync(pgMigration, "utf-8");
-    await db.exec(sql);
-    console.log("Applied PostgreSQL migration: 001_initial_schema.sql");
+  // ── 1. Create the tracking table (always safe — IF NOT EXISTS) ──
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 
-    // Add 'updated' to audit_action enum
-    try {
-      await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
-      console.log("Added 'updated' to audit_action enum");
-    } catch {
-      /* already exists */
-    }
+  // ── 2. Back-fill tracking rows for databases that existed before
+  //       the _migrations table was introduced.  We detect this by
+  //       checking for the 'ledgers' table (created by 001).
+  const schemaExists = await db.get<{ exists: boolean }>(
+    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'ledgers') as exists"
+  );
 
-    // Apply billing migration
-    const billingMigration = join(migrationsDir, "003_billing.sql");
-    if (existsSync(billingMigration)) {
-      const billingSql = readFileSync(billingMigration, "utf-8");
-      await db.exec(billingSql);
-      console.log("Applied PostgreSQL migration: 003_billing.sql");
-    }
-
-    // Apply bank feeds migration
-    const bankFeedsMigration = join(migrationsDir, "004_bank_feeds.sql");
-    if (existsSync(bankFeedsMigration)) {
-      const bankFeedsSql = readFileSync(bankFeedsMigration, "utf-8");
-      await db.exec(bankFeedsSql);
-      console.log("Applied PostgreSQL migration: 004_bank_feeds.sql");
-    }
-
-    // Apply intelligence migration
-    const intelligenceMigration = join(migrationsDir, "005_intelligence.sql");
-    if (existsSync(intelligenceMigration)) {
-      const intelligenceSql = readFileSync(intelligenceMigration, "utf-8");
-      await db.exec(intelligenceSql);
-      console.log("Applied PostgreSQL migration: 005_intelligence.sql");
-    }
-
-    // Apply remaining migrations (006-009)
-    const laterFiles = [
-      "006_multi_currency.sql",
-      "007_conversations.sql",
-      "008_classification.sql",
-      "009_email.sql",
-      "010_onboarding.sql",
-      "011_attachments.sql",
+  if (schemaExists?.exists) {
+    // The DB already has tables — figure out which migrations were
+    // already applied by probing for their anchor tables / columns.
+    const probes: [string, string][] = [
+      ["001_initial_schema.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'ledgers'"],
+      ["002_audit_action_updated.sql", "SELECT 1 FROM pg_enum WHERE enumlabel = 'updated' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'audit_action')"],
+      ["003_billing.sql",         "SELECT 1 FROM information_schema.tables WHERE table_name = 'usage_periods'"],
+      ["004_bank_feeds.sql",      "SELECT 1 FROM information_schema.tables WHERE table_name = 'bank_connections'"],
+      ["005_intelligence.sql",    "SELECT 1 FROM information_schema.tables WHERE table_name = 'notifications'"],
+      ["006_multi_currency.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'currency_settings'"],
+      ["007_conversations.sql",   "SELECT 1 FROM information_schema.tables WHERE table_name = 'conversations'"],
+      ["008_classification.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'classification_rules'"],
+      ["009_email.sql",           "SELECT 1 FROM information_schema.tables WHERE table_name = 'email_preferences'"],
+      ["010_onboarding.sql",      "SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_state'"],
+      ["011_attachments.sql",     "SELECT 1 FROM information_schema.tables WHERE table_name = 'transaction_attachments'"],
     ];
-    for (const fileName of laterFiles) {
-      const migPath = join(migrationsDir, fileName);
-      if (existsSync(migPath)) {
-        const sql = readFileSync(migPath, "utf-8");
-        await db.exec(sql);
-        console.log(`Applied PostgreSQL migration: ${fileName}`);
+
+    for (const [migName, probeQuery] of probes) {
+      const alreadyTracked = await db.get<{ name: string }>(
+        "SELECT name FROM _migrations WHERE name = $1",
+        [migName],
+      );
+      if (alreadyTracked) continue;
+
+      const probeResult = await db.get(probeQuery);
+      if (probeResult) {
+        await db.run(
+          "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+          [migName],
+        );
+        console.log(`Back-filled _migrations: ${migName}`);
       }
     }
-
-    // Seed system user
-    await ensureSystemUser(db);
   }
+
+  // ── 3. Ordered list of all PostgreSQL migrations ──
+  const pgMigrations = [
+    "001_initial_schema.sql",
+    "002_audit_action_updated.sql",   // virtual — handled inline below
+    "003_billing.sql",
+    "004_bank_feeds.sql",
+    "005_intelligence.sql",
+    "006_multi_currency.sql",
+    "007_conversations.sql",
+    "008_classification.sql",
+    "009_email.sql",
+    "010_onboarding.sql",
+    "011_attachments.sql",
+  ];
+
+  // ── 4. Apply each unapplied migration in order ──
+  for (const migName of pgMigrations) {
+    const alreadyApplied = await db.get<{ name: string }>(
+      "SELECT name FROM _migrations WHERE name = $1",
+      [migName],
+    );
+    if (alreadyApplied) continue;
+
+    // Special case: 002 is enum-only, no SQL file for PG
+    if (migName === "002_audit_action_updated.sql") {
+      try {
+        await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
+      } catch { /* already exists */ }
+      await db.run(
+        "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+        [migName],
+      );
+      console.log(`Applied PostgreSQL migration: ${migName}`);
+      continue;
+    }
+
+    const migPath = join(migrationsDir, migName);
+    if (!existsSync(migPath)) {
+      console.warn(`Migration file not found, skipping: ${migName}`);
+      continue;
+    }
+
+    const sql = readFileSync(migPath, "utf-8");
+    await db.exec(sql);
+
+    await db.run(
+      "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+      [migName],
+    );
+    console.log(`Applied PostgreSQL migration: ${migName}`);
+  }
+
+  // ── 5. Ensure system user exists ──
+  await ensureSystemUser(db);
 };
 
 /** Apply all SQLite migrations in order. */

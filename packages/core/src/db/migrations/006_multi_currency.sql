@@ -4,11 +4,13 @@
 -- Adds per-line-item currency tracking, exchange rates, and currency settings.
 -- The existing balance constraint trigger on line_items.amount is NOT changed;
 -- amount continues to hold the base-currency equivalent so debits == credits.
+--
+-- This migration is idempotent — safe to re-run on an existing database.
 -- ---------------------------------------------------------------------------
 
 -- ── New tables ─────────────────────────────────────────────────────────
 
-CREATE TABLE currency_settings (
+CREATE TABLE IF NOT EXISTS currency_settings (
   id              TEXT PRIMARY KEY,
   ledger_id       TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   currency_code   TEXT NOT NULL,
@@ -20,13 +22,20 @@ CREATE TABLE currency_settings (
   UNIQUE (ledger_id, currency_code)
 );
 
-CREATE INDEX idx_currency_settings_ledger ON currency_settings (ledger_id);
+CREATE INDEX IF NOT EXISTS idx_currency_settings_ledger ON currency_settings (ledger_id);
 
-CREATE TRIGGER trg_currency_settings_updated_at
-  BEFORE UPDATE ON currency_settings
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+-- Trigger: only create if it doesn't already exist
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_currency_settings_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_currency_settings_updated_at
+      BEFORE UPDATE ON currency_settings
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+END $$;
 
-CREATE TABLE exchange_rates (
+CREATE TABLE IF NOT EXISTS exchange_rates (
   id              TEXT PRIMARY KEY,
   ledger_id       TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   from_currency   TEXT NOT NULL,
@@ -38,14 +47,37 @@ CREATE TABLE exchange_rates (
   UNIQUE (ledger_id, from_currency, to_currency, effective_date)
 );
 
-CREATE INDEX idx_exchange_rates_lookup
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_lookup
   ON exchange_rates (ledger_id, from_currency, to_currency, effective_date DESC);
 
 -- ── Alter line_items ───────────────────────────────────────────────────
 
-ALTER TABLE line_items ADD COLUMN currency TEXT;
-ALTER TABLE line_items ADD COLUMN original_amount BIGINT;
-ALTER TABLE line_items ADD COLUMN exchange_rate BIGINT;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'line_items' AND column_name = 'currency'
+  ) THEN
+    ALTER TABLE line_items ADD COLUMN currency TEXT;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'line_items' AND column_name = 'original_amount'
+  ) THEN
+    ALTER TABLE line_items ADD COLUMN original_amount BIGINT;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'line_items' AND column_name = 'exchange_rate'
+  ) THEN
+    ALTER TABLE line_items ADD COLUMN exchange_rate BIGINT;
+  END IF;
+END $$;
 
 -- Backfill existing rows: currency = ledger currency, original_amount = amount
 UPDATE line_items li
@@ -53,15 +85,30 @@ SET currency = l.currency,
     original_amount = li.amount
 FROM transactions t
 JOIN ledgers l ON l.id = t.ledger_id
-WHERE t.id = li.transaction_id;
+WHERE t.id = li.transaction_id
+  AND li.currency IS NULL;
 
--- Now enforce NOT NULL
-ALTER TABLE line_items ALTER COLUMN currency SET NOT NULL;
-ALTER TABLE line_items ALTER COLUMN original_amount SET NOT NULL;
+-- Now enforce NOT NULL (safe if already set)
+DO $$ BEGIN
+  ALTER TABLE line_items ALTER COLUMN currency SET NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE line_items ALTER COLUMN original_amount SET NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 -- ── Alter accounts ─────────────────────────────────────────────────────
 
-ALTER TABLE accounts ADD COLUMN currency TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'accounts' AND column_name = 'currency'
+  ) THEN
+    ALTER TABLE accounts ADD COLUMN currency TEXT;
+  END IF;
+END $$;
 
 -- ── Seed currency_settings for each existing ledger ────────────────────
 
