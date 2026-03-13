@@ -244,6 +244,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "010_onboarding.sql",
     "011_attachments.sql",
     "012_recurring_entries.sql",
+    "013_closed_periods.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -326,6 +327,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "010_onboarding.sqlite.sql",
     "011_attachments.sqlite.sql",
     "012_recurring_entries.sqlite.sql",
+    "013_closed_periods.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

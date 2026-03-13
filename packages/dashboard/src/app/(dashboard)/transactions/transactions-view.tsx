@@ -11,11 +11,12 @@ import { usePostTransaction } from "@/components/post-transaction-provider";
 interface Props {
   initialData: PaginatedResult<TransactionWithLines>;
   accountMap: Record<string, { code: string; name: string }>;
+  closedThrough: string | null;
 }
 
 type StatusFilter = "all" | "posted" | "reversed";
 
-export function TransactionsView({ initialData, accountMap }: Props) {
+export function TransactionsView({ initialData, accountMap, closedThrough }: Props) {
   const [data, setData] = useState(initialData);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
@@ -44,6 +45,32 @@ export function TransactionsView({ initialData, accountMap }: Props) {
 
   const txAmount = (tx: TransactionWithLines) =>
     tx.lines.filter((l) => l.direction === "debit").reduce((sum, l) => sum + l.amount, 0);
+
+  // Group filtered transactions by accounting period (month/year)
+  const groupedByPeriod = (() => {
+    const groups: { key: string; label: string; transactions: TransactionWithLines[]; netAmount: number }[] = [];
+    const map = new Map<string, TransactionWithLines[]>();
+    for (const tx of filtered) {
+      const d = new Date(tx.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(tx);
+    }
+    // Sort keys descending
+    const sortedKeys = [...map.keys()].sort((a, b) => b.localeCompare(a));
+    for (const key of sortedKeys) {
+      const txns = map.get(key)!;
+      const [y, m] = key.split("-").map(Number);
+      const label = new Date(y, m - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+      const netAmount = txns.reduce((sum, tx) => {
+        const debits = tx.lines.filter(l => l.direction === "debit").reduce((s, l) => s + l.amount, 0);
+        const credits = tx.lines.filter(l => l.direction === "credit").reduce((s, l) => s + l.amount, 0);
+        return sum + debits - credits;
+      }, 0);
+      groups.push({ key, label, transactions: txns.sort((a, b) => b.date.localeCompare(a.date)), netAmount });
+    }
+    return groups;
+  })();
 
   const togglePersonal = () => {
     const next = !showPersonal;
@@ -138,16 +165,74 @@ export function TransactionsView({ initialData, accountMap }: Props) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((tx) => (
-              <TransactionRow
-                key={tx.id}
-                tx={tx}
-                amount={txAmount(tx)}
-                accountMap={accountMap}
-                isExpanded={expandedId === tx.id}
-                onToggle={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
-              />
-            ))}
+            {groupedByPeriod.map((group) => {
+              // Determine if this period is closed
+              const [y, m] = group.key.split("-").map(Number);
+              const lastDayOfMonth = new Date(y, m, 0).toISOString().split("T")[0];
+              const isClosed = closedThrough != null && lastDayOfMonth <= closedThrough;
+
+              return (
+              <PeriodGroup key={group.key}>
+                {/* Period header row */}
+                <tr>
+                  <td
+                    colSpan={4}
+                    style={{
+                      padding: "10px 16px",
+                      backgroundColor: isClosed ? "#F9FAFB" : "#FAFAFA",
+                      borderBottom: "1px solid #E5E5E5",
+                      borderTop: "1px solid #E5E5E5",
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#666666", letterSpacing: "0.02em" }}>
+                          {group.label}
+                        </span>
+                        {isClosed && (
+                          <span
+                            className="flex items-center gap-1"
+                            style={{
+                              padding: "1px 8px",
+                              borderRadius: 4,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              backgroundColor: "rgba(107,114,128,0.08)",
+                              color: "#6B7280",
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                            </svg>
+                            Closed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span style={{ fontSize: 12, color: "#999999", fontFamily: "var(--font-geist-mono)", fontVariantNumeric: "tabular-nums" }}>
+                          {group.transactions.length} transaction{group.transactions.length !== 1 ? "s" : ""}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: group.netAmount >= 0 ? "#16A34A" : "#DC2626", fontFamily: "var(--font-geist-mono)", fontVariantNumeric: "tabular-nums" }}>
+                          {group.netAmount >= 0 ? "+" : ""}{formatCurrency(Math.abs(group.netAmount))}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {group.transactions.map((tx) => (
+                  <TransactionRow
+                    key={tx.id}
+                    tx={tx}
+                    amount={txAmount(tx)}
+                    accountMap={accountMap}
+                    isExpanded={expandedId === tx.id}
+                    onToggle={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
+                  />
+                ))}
+              </PeriodGroup>
+              );
+            })}
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={4} className="table-cell text-center" style={{ padding: 48 }}>
@@ -256,6 +341,11 @@ export function TransactionsView({ initialData, accountMap }: Props) {
       )}
     </div>
   );
+}
+
+/** Wrapper to allow grouping rows inside tbody without extra DOM nodes. */
+function PeriodGroup({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
 
 function TransactionRow({

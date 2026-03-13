@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage() {
   let txResult: PaginatedResult<TransactionWithLines> = { data: [], nextCursor: null };
   const accountMap: Record<string, { code: string; name: string }> = {};
+  let closedThrough: string | null = null;
 
   try {
     const { client, ledgerId } = await getSessionClient();
@@ -21,9 +22,15 @@ export default async function TransactionsPage() {
         accountMap[a.id] = { code: a.code, name: a.name };
       }
     }
+
+    // Fetch closed-through date for period lock indicators
+    try {
+      const ledger = await client.ledgers.get(ledgerId);
+      closedThrough = (ledger as any).closedThrough ?? null;
+    } catch {}
   } catch {
     // Session or API error — render empty state
   }
 
-  return <TransactionsView initialData={txResult} accountMap={accountMap} />;
+  return <TransactionsView initialData={txResult} accountMap={accountMap} closedThrough={closedThrough} />;
 }

@@ -107,6 +107,7 @@ export type {
   Frequency,
   CreateRecurringEntryInput,
   UpdateRecurringEntryInput,
+
 } from "@ledge/core";
 
 export type {
@@ -121,9 +122,12 @@ export { ErrorCode } from "@ledge/core";
 
 export type { ConfirmAction } from "@ledge/core";
 
+export type { ClosedPeriod } from "@ledge/core";
+
 // --- Internal type imports -------------------------------------------------
 
 import type {
+  ClosedPeriod,
   Ledger,
   Account,
   AccountWithBalance,
@@ -257,6 +261,7 @@ export class Ledge {
   readonly conversations: ConversationsModule;
   readonly classification: ClassificationModule;
   readonly recurring: RecurringModule;
+  readonly periods: PeriodsModule;
 
   constructor(config: LedgeConfig) {
     this._apiKey = config.apiKey;
@@ -279,6 +284,7 @@ export class Ledge {
     this.conversations = new ConversationsModule(this);
     this.classification = new ClassificationModule(this);
     this.recurring = new RecurringModule(this);
+    this.periods = new PeriodsModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -372,6 +378,32 @@ class LedgersModule {
   /** Retrieve a ledger by ID. */
   async get(ledgerId: string): Promise<Ledger> {
     return this.c.request("GET", `/v1/ledgers/${ledgerId}`);
+  }
+
+  /** Update ledger settings. */
+  async update(ledgerId: string, input: { name?: string; fiscalYearStart?: number }): Promise<Ledger> {
+    return this.c.request("PATCH", `/v1/ledgers/${ledgerId}`, { body: input });
+  }
+}
+
+// --- Periods ---------------------------------------------------------------
+
+class PeriodsModule {
+  constructor(private readonly c: Ledge) {}
+
+  /** Close a period through the given date. */
+  async close(ledgerId: string, periodEnd: string): Promise<{ periodEnd: string; closedAt: string }> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/periods/close`, { body: { periodEnd } });
+  }
+
+  /** Reopen a previously closed period. */
+  async reopen(ledgerId: string, periodEnd: string): Promise<{ periodEnd: string; reopenedAt: string }> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/periods/reopen`, { body: { periodEnd } });
+  }
+
+  /** List closed periods. */
+  async list(ledgerId: string): Promise<ClosedPeriod[]> {
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/periods/closed`);
   }
 }
 

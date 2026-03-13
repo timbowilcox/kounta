@@ -10,7 +10,6 @@ const mainNavItems = [
   { href: "/accounts", label: "Accounts", icon: AccountsIcon },
   { href: "/transactions", label: "Transactions", icon: TransactionsIcon },
   { href: "/statements", label: "Statements", icon: StatementsIcon },
-  { href: "/assistant", label: "Assistant", icon: AssistantIcon },
   { href: "/bank-feeds", label: "Bank Feeds", icon: BankFeedsIcon },
   { href: "/notifications", label: "Insights", icon: InsightsIcon },
 ];
@@ -104,12 +103,48 @@ export function Sidebar() {
         </ul>
       </nav>
 
+      {/* Assistant — pinned above footer */}
+      <div style={{ paddingLeft: 12, paddingRight: 12, paddingBottom: 4 }}>
+        <div style={{ borderTop: "1px solid #E5E5E5", paddingTop: 8 }}>
+          {(() => {
+            const isAssistantActive = pathname.startsWith("/assistant");
+            return (
+              <Link
+                href="/assistant"
+                className="flex items-center gap-3 relative"
+                style={{
+                  padding: "0 12px",
+                  height: 36,
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontWeight: isAssistantActive ? 600 : 500,
+                  color: isAssistantActive ? "#0066FF" : "#666666",
+                  background: isAssistantActive
+                    ? "linear-gradient(135deg, #F0F6FF 0%, #F5F0FF 100%)"
+                    : "linear-gradient(135deg, #FAFBFF 0%, #F8F5FF 100%)",
+                  transition: "all 150ms ease",
+                }}
+              >
+                {isAssistantActive && (
+                  <span
+                    className="absolute left-0 top-1/2 -translate-y-1/2"
+                    style={{ width: 2, height: 16, borderRadius: 1, backgroundColor: "#0066FF" }}
+                  />
+                )}
+                <AssistantIcon active={isAssistantActive} />
+                Assistant
+              </Link>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Footer */}
       <div
         style={{
           paddingLeft: 12,
           paddingRight: 12,
-          paddingTop: 16,
+          paddingTop: 12,
           borderTop: "1px solid #E5E5E5",
         }}
       >

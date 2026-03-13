@@ -1,5 +1,6 @@
 import { getSessionClient } from "@/lib/ledge";
-import { fetchBillingStatus, fetchApiKeys } from "@/lib/actions";
+import { fetchBillingStatus, fetchApiKeys, fetchClosedPeriods } from "@/lib/actions";
+import type { ClosedPeriodSummary } from "@/lib/actions";
 import { SettingsView } from "./settings-view";
 import type { ApiKeySafe } from "@ledge/sdk";
 
@@ -16,6 +17,17 @@ export default async function SettingsPage() {
     client.currencies.listRates(ledgerId).catch(() => []),
   ]);
 
+  let fiscalYearStart = 1;
+  let closedThrough: string | null = null;
+  let closedPeriods: ClosedPeriodSummary[] = [];
+  try {
+    fiscalYearStart = (ledger as any).fiscalYearStart ?? 1;
+    closedThrough = (ledger as any).closedThrough ?? null;
+  } catch {}
+  try {
+    closedPeriods = await fetchClosedPeriods();
+  } catch {}
+
   return (
     <SettingsView
       ledger={ledger}
@@ -23,6 +35,9 @@ export default async function SettingsPage() {
       initialKeys={[...apiKeys] as ApiKeySafe[]}
       currencies={currencies as any[]}
       exchangeRates={exchangeRates as any[]}
+      fiscalYearStart={fiscalYearStart}
+      closedThrough={closedThrough}
+      closedPeriods={closedPeriods}
     />
   );
 }

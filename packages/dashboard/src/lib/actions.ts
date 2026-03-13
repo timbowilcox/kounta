@@ -589,3 +589,89 @@ export async function resumeRecurringEntryAction(entryId: string): Promise<boole
   return res.ok;
 }
 
+// --- Closed Periods -----------------------------------------------------------
+
+export interface ClosedPeriodSummary {
+  id: string;
+  ledgerId: string;
+  periodEnd: string;
+  closedAt: string;
+  closedBy: string;
+  reopenedAt: string | null;
+  reopenedBy: string | null;
+  createdAt: string;
+}
+
+export async function fetchClosedPeriods(): Promise<ClosedPeriodSummary[]> {
+  const session = await auth();
+  if (!session?.apiKey) return [];
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/closed`, {
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function closePeriodAction(periodEnd: string): Promise<ClosedPeriodSummary | null> {
+  const session = await auth();
+  if (!session?.apiKey) return null;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/close`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ periodEnd }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function reopenPeriodAction(periodEnd: string): Promise<ClosedPeriodSummary | null> {
+  const session = await auth();
+  if (!session?.apiKey) return null;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/reopen`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ periodEnd }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+// --- Ledger Update ------------------------------------------------------------
+
+export async function updateLedgerAction(updates: { name?: string; fiscalYearStart?: number }): Promise<boolean> {
+  const { client, ledgerId } = await getSessionClient();
+  try {
+    await client.ledgers.update(ledgerId, updates);
+    return true;
+  } catch {
+    return false;
+  }
+}
+

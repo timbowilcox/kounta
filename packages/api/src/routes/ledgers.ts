@@ -67,3 +67,21 @@ ledgerRoutes.get("/:ledgerId", apiKeyAuth, async (c) => {
 
   return success(c, result.value);
 });
+
+/** PATCH /v1/ledgers/:ledgerId — Update ledger settings (API key auth required) */
+ledgerRoutes.patch("/:ledgerId", apiKeyAuth, async (c) => {
+  const engine = c.get("engine");
+  const ledgerId = c.req.param("ledgerId");
+  const body = await c.req.json();
+
+  const result = await engine.updateLedger(ledgerId, {
+    name: body.name,
+    fiscalYearStart: body.fiscalYearStart,
+  });
+
+  if (!result.ok) {
+    return errorResponse(c, result.error);
+  }
+
+  return success(c, result.value);
+});

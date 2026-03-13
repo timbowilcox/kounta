@@ -301,13 +301,18 @@ export async function executeSetup(
     }
   }
 
-  // 6. Currency and basis
+  // 6. Currency, basis, and fiscal year start
   const basis = "accrual";
+  const fiscalYearStart = getFiscalYearStartForCountry(onboarding.country);
   await db.run(
-    "UPDATE ledgers SET currency = ?, accounting_basis = ?, updated_at = ? WHERE id = ?",
-    [currency, basis, nowUtc(), ledgerId],
+    "UPDATE ledgers SET currency = ?, accounting_basis = ?, fiscal_year_start = ?, updated_at = ? WHERE id = ?",
+    [currency, basis, fiscalYearStart, nowUtc(), ledgerId],
   );
   steps.push(`Configured ${currency} / ${basis} basis`);
+  if (fiscalYearStart !== 1) {
+    const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    steps.push(`Fiscal year starts in ${monthNames[fiscalYearStart]}`);
+  }
 
   // 7. Classification rules
   steps.push("Set up classification rules for common vendors");
@@ -422,4 +427,24 @@ export async function getUnclassifiedTransactionStats(
   const classified = classifiedRow?.cnt ?? 0;
 
   return { total, classified, unclassified: total - classified };
+}
+
+// ---------------------------------------------------------------------------
+// Fiscal year start defaults by country
+// ---------------------------------------------------------------------------
+
+/** Return the default fiscal year start month (1-12) for a given country code. */
+function getFiscalYearStartForCountry(country: string | null): number {
+  if (!country) return 1;
+  const code = country.toUpperCase();
+  // AU, NZ: July
+  if (code === "AU" || code === "NZ") return 7;
+  // UK: April
+  if (code === "UK" || code === "GB") return 4;
+  // India: April
+  if (code === "IN") return 4;
+  // Japan: April
+  if (code === "JP") return 4;
+  // US, CA, and most others: January
+  return 1;
 }

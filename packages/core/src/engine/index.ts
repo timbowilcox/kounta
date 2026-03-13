@@ -33,6 +33,7 @@ import type {
   RevaluationResult,
   Conversation,
   ConversationMessage,
+  ClosedPeriod,
 } from "../types/index.js";
 import type {
   BankConnection,
@@ -276,6 +277,17 @@ interface UserRow {
   updated_at: string;
 }
 
+interface ClosedPeriodRow {
+  id: string;
+  ledger_id: string;
+  period_end: string;
+  closed_at: string;
+  closed_by: string;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  created_at: string;
+}
+
 interface BalanceRow {
   balance: number | string;
 }
@@ -444,6 +456,17 @@ const toLedger = (row: LedgerRow): Ledger => ({
   closedThrough: row.closed_through,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+});
+
+const toClosedPeriod = (row: ClosedPeriodRow): ClosedPeriod => ({
+  id: row.id,
+  ledgerId: row.ledger_id,
+  periodEnd: row.period_end,
+  closedAt: row.closed_at,
+  closedBy: row.closed_by,
+  reopenedAt: row.reopened_at,
+  reopenedBy: row.reopened_by,
+  createdAt: row.created_at,
 });
 
 const toAccount = (row: AccountRow): Account => ({
@@ -3365,6 +3388,164 @@ export class LedgerEngine {
 
   async processRecurringEntries(): Promise<{ processed: number; failed: number }> {
     return processRecurringEntriesFn(this);
+  }
+
+  // -------------------------------------------------------------------------
+  // Period close operations
+  // -------------------------------------------------------------------------
+
+  /**
+   * Close a period through a given date. Prevents posting transactions
+   * on or before that date. Records an audit trail in closed_periods.
+   */
+  async closePeriod(
+    ledgerId: string,
+    periodEnd: string,
+    closedBy: string,
+  ): Promise<Result<{ periodEnd: string; closedAt: string }>> {
+    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return err(ledgerNotFoundError(ledgerId));
+
+    // If already closed through a later date, nothing to do
+    if (ledger.closed_through && ledger.closed_through >= periodEnd) {
+      return ok({ periodEnd, closedAt: nowUtc() });
+    }
+
+    const now = nowUtc();
+    const id = generateId();
+
+    // Insert closed_periods record
+    await this.db.run(
+      `INSERT INTO closed_periods (id, ledger_id, period_end, closed_at, closed_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (ledger_id, period_end) DO UPDATE SET closed_at = ?, closed_by = ?, reopened_at = NULL, reopened_by = NULL`,
+      [id, ledgerId, periodEnd, now, closedBy, now, now, closedBy],
+    );
+
+    // Update the ledger's closed_through to the max of current and new
+    await this.db.run(
+      "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
+      [periodEnd, now, ledgerId],
+    );
+
+    // Audit
+    const auditId = generateId();
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
+      [auditId, ledgerId, ledgerId, closedBy, JSON.stringify({ action: "close_period", periodEnd }), now],
+    );
+
+    return ok({ periodEnd, closedAt: now });
+  }
+
+  /**
+   * Reopen a closed period. Sets closed_through to the period before
+   * the reopened one (or null if reopening the earliest period).
+   */
+  async reopenPeriod(
+    ledgerId: string,
+    periodEnd: string,
+    reopenedBy: string,
+  ): Promise<Result<{ periodEnd: string; reopenedAt: string }>> {
+    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return err(ledgerNotFoundError(ledgerId));
+
+    const now = nowUtc();
+
+    // Mark the closed_periods record as reopened
+    await this.db.run(
+      `UPDATE closed_periods SET reopened_at = ?, reopened_by = ?
+       WHERE ledger_id = ? AND period_end = ? AND reopened_at IS NULL`,
+      [now, reopenedBy, ledgerId, periodEnd],
+    );
+
+    // Recalculate closed_through: max period_end that is still closed (not reopened)
+    const maxClosed = await this.db.get<{ max_period: string | null }>(
+      `SELECT MAX(period_end) as max_period FROM closed_periods
+       WHERE ledger_id = ? AND reopened_at IS NULL`,
+      [ledgerId],
+    );
+
+    const newClosedThrough = maxClosed?.max_period ?? null;
+    await this.db.run(
+      "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
+      [newClosedThrough, now, ledgerId],
+    );
+
+    // Audit
+    const auditId2 = generateId();
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
+      [auditId2, ledgerId, ledgerId, reopenedBy, JSON.stringify({ action: "reopen_period", periodEnd }), now],
+    );
+
+    return ok({ periodEnd, reopenedAt: now });
+  }
+
+  /**
+   * Check if a specific date falls within a closed period.
+   */
+  async isPeriodClosed(ledgerId: string, date: string): Promise<boolean> {
+    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return false;
+    return !!(ledger.closed_through && date <= ledger.closed_through);
+  }
+
+  /**
+   * List all closed periods for a ledger (including reopened history).
+   */
+  async listClosedPeriods(ledgerId: string): Promise<readonly ClosedPeriod[]> {
+    const rows = await this.db.all<ClosedPeriodRow>(
+      `SELECT * FROM closed_periods WHERE ledger_id = ? ORDER BY period_end DESC`,
+      [ledgerId],
+    );
+    return rows.map(toClosedPeriod);
+  }
+
+  // -------------------------------------------------------------------------
+  // Ledger update — update mutable settings
+  // -------------------------------------------------------------------------
+
+  async updateLedger(
+    ledgerId: string,
+    updates: { name?: string; fiscalYearStart?: number },
+  ): Promise<Result<Ledger>> {
+    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return err(ledgerNotFoundError(ledgerId));
+
+    const now = nowUtc();
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (updates.name !== undefined) {
+      sets.push("name = ?");
+      params.push(updates.name);
+    }
+    if (updates.fiscalYearStart !== undefined) {
+      if (updates.fiscalYearStart < 1 || updates.fiscalYearStart > 12) {
+        return err(createError(ErrorCode.VALIDATION_ERROR, "fiscalYearStart must be between 1 and 12"));
+      }
+      sets.push("fiscal_year_start = ?");
+      params.push(updates.fiscalYearStart);
+    }
+
+    if (sets.length === 0) {
+      return ok(toLedger(ledger));
+    }
+
+    sets.push("updated_at = ?");
+    params.push(now);
+    params.push(ledgerId);
+
+    await this.db.run(
+      `UPDATE ledgers SET ${sets.join(", ")} WHERE id = ?`,
+      params,
+    );
+
+    const updated = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    return ok(toLedger(updated!));
   }
 
 }

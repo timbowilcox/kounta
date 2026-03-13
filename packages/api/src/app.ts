@@ -29,6 +29,7 @@ import { emailRoutes } from "./routes/email.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { transactionAttachmentRoutes, attachmentRoutes } from "./routes/attachments.js";
 import { recurringRoutes, recurringAdminRoutes } from "./routes/recurring.js";
+import { periodRoutes } from "./routes/periods.js";
 
 export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Hono<Env> => {
   const app = new Hono<Env>();
@@ -101,6 +102,7 @@ export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Ho
   app.route("/v1/ledgers/:ledgerId/recurring", recurringRoutes);
   app.route("/v1/recurring", recurringAdminRoutes);
   app.route("/v1/onboarding", onboardingRoutes);
+  app.route("/v1/ledgers/:ledgerId/periods", periodRoutes);
 
   // ---------------------------------------------------------------------------
   // 404 fallback

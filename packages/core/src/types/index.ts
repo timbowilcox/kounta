@@ -39,6 +39,17 @@ export interface Ledger {
   readonly updatedAt: string;
 }
 
+export interface ClosedPeriod {
+  readonly id: string;
+  readonly ledgerId: string;
+  readonly periodEnd: string;
+  readonly closedAt: string;
+  readonly closedBy: string;
+  readonly reopenedAt: string | null;
+  readonly reopenedBy: string | null;
+  readonly createdAt: string;
+}
+
 export interface Account {
   readonly id: string;
   readonly ledgerId: string;

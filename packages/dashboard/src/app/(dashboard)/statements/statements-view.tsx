@@ -6,7 +6,9 @@ import {
   fetchIncomeStatement,
   fetchBalanceSheet,
   fetchCashFlow,
+  closePeriodAction,
 } from "@/lib/actions";
+import type { ClosedPeriodSummary } from "@/lib/actions";
 import type { StatementResponse } from "@ledge/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 
@@ -24,6 +26,9 @@ interface Props {
   initialCashFlow: StatementResponse;
   defaultStart: string;
   defaultEnd: string;
+  fiscalYearStart?: number;
+  closedThrough?: string | null;
+  closedPeriods?: ClosedPeriodSummary[];
 }
 
 export function StatementsView({
@@ -32,6 +37,9 @@ export function StatementsView({
   initialCashFlow,
   defaultStart,
   defaultEnd,
+  fiscalYearStart = 1,
+  closedThrough = null,
+  closedPeriods = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("pnl");
   const [startDate, setStartDate] = useState(defaultStart);
@@ -42,19 +50,48 @@ export function StatementsView({
     cash_flow: initialCashFlow,
   });
   const [isPending, startTransition] = useTransition();
+  const [closing, startClosing] = useTransition();
+  const [currentClosedThrough, setCurrentClosedThrough] = useState(closedThrough);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
 
   const statement = statements[activeTab];
 
-  const refresh = () => {
+  const refresh = (start?: string, end?: string) => {
+    const s = start ?? startDate;
+    const e = end ?? endDate;
     startTransition(async () => {
       const [pnl, bs, cf] = await Promise.all([
-        fetchIncomeStatement(startDate, endDate),
-        fetchBalanceSheet(endDate),
-        fetchCashFlow(startDate, endDate),
+        fetchIncomeStatement(s, e),
+        fetchBalanceSheet(e),
+        fetchCashFlow(s, e),
       ]);
       setStatements({ pnl, balance_sheet: bs, cash_flow: cf });
     });
   };
+
+  // Period presets — fiscal-year-aware
+  const presets = buildPresets(fiscalYearStart);
+  const applyPreset = (preset: { label: string; start: string; end: string }) => {
+    setStartDate(preset.start);
+    setEndDate(preset.end);
+    setActivePreset(preset.label);
+    refresh(preset.start, preset.end);
+  };
+
+  // Close period handler
+  const handleClosePeriod = () => {
+    startClosing(async () => {
+      await closePeriodAction(endDate);
+      setCurrentClosedThrough(endDate);
+    });
+  };
+
+  // Check if the current period includes closed dates
+  const includesClosedPeriod = currentClosedThrough && endDate >= (currentClosedThrough ?? "");
+  const closedThroughMonth = currentClosedThrough
+    ? new Date(currentClosedThrough + "T00:00:00").toLocaleString("en-US", { month: "long", year: "numeric" })
+    : null;
+  const isPeriodFullyClosed = currentClosedThrough && startDate <= currentClosedThrough && endDate <= currentClosedThrough;
 
   return (
     <div>
@@ -99,6 +136,32 @@ export function StatementsView({
         })}
       </div>
 
+      {/* Period presets */}
+      <div className="flex flex-wrap items-center" style={{ gap: 6, marginBottom: 16 }}>
+        {presets.map((p) => {
+          const isActive = activePreset === p.label;
+          return (
+            <button
+              key={p.label}
+              onClick={() => applyPreset(p)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                color: isActive ? "#0066FF" : "#666666",
+                backgroundColor: isActive ? "#F0F6FF" : "#F5F5F5",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 150ms ease",
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Date range */}
       <div className="flex items-center" style={{ gap: 12, marginBottom: 24 }}>
         <div>
@@ -108,7 +171,7 @@ export function StatementsView({
             className="input"
             style={{ width: 160 }}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); setActivePreset(null); }}
           />
         </div>
         <div>
@@ -118,15 +181,90 @@ export function StatementsView({
             className="input"
             style={{ width: 160 }}
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => { setEndDate(e.target.value); setActivePreset(null); }}
           />
         </div>
         <div style={{ alignSelf: "flex-end" }}>
-          <button className="btn-primary" onClick={refresh} disabled={isPending}>
+          <button className="btn-primary" onClick={() => { setActivePreset(null); refresh(); }} disabled={isPending}>
             {isPending ? "Loading..." : "Refresh"}
           </button>
         </div>
+        {/* Close period button */}
+        {!isPeriodFullyClosed && (
+          <div style={{ alignSelf: "flex-end", marginLeft: "auto" }}>
+            <button
+              onClick={handleClosePeriod}
+              disabled={closing}
+              style={{
+                padding: "0 14px",
+                height: 36,
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                color: "#D97706",
+                backgroundColor: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                cursor: closing ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="7" width="10" height="8" rx="1.5" />
+                <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+              </svg>
+              {closing ? "Closing..." : "Close period"}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Closed period indicator */}
+      {isPeriodFullyClosed && (
+        <div
+          style={{
+            borderRadius: 8,
+            padding: "12px 20px",
+            marginBottom: 16,
+            backgroundColor: "#F5F5F5",
+            border: "1px solid #E5E5E5",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#666666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="7" width="10" height="8" rx="1.5" />
+            <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "#666666" }}>
+            This period is closed. Numbers are locked.
+          </span>
+        </div>
+      )}
+      {includesClosedPeriod && !isPeriodFullyClosed && closedThroughMonth && (
+        <div
+          style={{
+            borderRadius: 8,
+            padding: "12px 20px",
+            marginBottom: 16,
+            backgroundColor: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="7" width="10" height="8" rx="1.5" />
+            <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "#92400E" }}>
+            Includes closed periods through {closedThroughMonth}.
+          </span>
+        </div>
+      )}
 
       {/* Plain-language summary */}
       <div
@@ -316,4 +454,65 @@ function formatTotalLabel(key: string): string {
     totalFinancing: "Cash from Financing",
   };
   return labels[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim();
+}
+
+// ---------------------------------------------------------------------------
+// Period preset builder — fiscal-year-aware
+// ---------------------------------------------------------------------------
+
+function buildPresets(fiscalYearStart: number): { label: string; start: string; end: string }[] {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-indexed
+
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const lastDay = (year: number, month: number) => new Date(year, month + 1, 0);
+  const firstDay = (year: number, month: number) => new Date(year, month, 1);
+
+  // This month
+  const thisMonthStart = firstDay(y, m);
+  const thisMonthEnd = lastDay(y, m);
+
+  // Last month
+  const lastMonthStart = firstDay(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+  const lastMonthEnd = lastDay(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+
+  // This quarter (calendar)
+  const qStart = Math.floor(m / 3) * 3;
+  const thisQStart = firstDay(y, qStart);
+  const thisQEnd = lastDay(y, qStart + 2);
+
+  // Last quarter
+  const lqStart = qStart === 0 ? 9 : qStart - 3;
+  const lqYear = qStart === 0 ? y - 1 : y;
+  const lastQStart = firstDay(lqYear, lqStart);
+  const lastQEnd = lastDay(lqYear, lqStart + 2);
+
+  // This calendar year
+  const thisYearStart = firstDay(y, 0);
+  const thisYearEnd = lastDay(y, 11);
+
+  // Last calendar year
+  const lastYearStart = firstDay(y - 1, 0);
+  const lastYearEnd = lastDay(y - 1, 11);
+
+  // Fiscal year (uses fiscalYearStart, 1-indexed month)
+  const fyMonth = fiscalYearStart - 1; // 0-indexed
+  const thisFYStartYear = m >= fyMonth ? y : y - 1;
+  const thisFYStart = firstDay(thisFYStartYear, fyMonth);
+  const thisFYEnd = lastDay(thisFYStartYear + 1, fyMonth - 1 < 0 ? 11 : fyMonth - 1);
+
+  const lastFYStart = firstDay(thisFYStartYear - 1, fyMonth);
+  const lastFYEnd = lastDay(thisFYStartYear, fyMonth - 1 < 0 ? 11 : fyMonth - 1);
+
+  return [
+    { label: "This month", start: fmt(thisMonthStart), end: fmt(thisMonthEnd) },
+    { label: "Last month", start: fmt(lastMonthStart), end: fmt(lastMonthEnd) },
+    { label: "This quarter", start: fmt(thisQStart), end: fmt(thisQEnd) },
+    { label: "Last quarter", start: fmt(lastQStart), end: fmt(lastQEnd) },
+    { label: "This year", start: fmt(thisYearStart), end: fmt(thisYearEnd) },
+    { label: "Last year", start: fmt(lastYearStart), end: fmt(lastYearEnd) },
+    { label: "This FY", start: fmt(thisFYStart), end: fmt(thisFYEnd) },
+    { label: "Last FY", start: fmt(lastFYStart), end: fmt(lastFYEnd) },
+  ];
 }

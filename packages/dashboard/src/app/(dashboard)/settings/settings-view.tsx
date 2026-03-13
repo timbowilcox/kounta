@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { formatDate } from "@/lib/format";
-import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction } from "@/lib/actions";
-import type { EmailPreferences } from "@/lib/actions";
+import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction } from "@/lib/actions";
+import type { EmailPreferences, ClosedPeriodSummary } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
 import type { ApiKeySafe } from "@ledge/sdk";
 import type { BillingStatus } from "@/lib/actions";
@@ -20,6 +20,9 @@ interface Props {
   initialKeys: ApiKeySafe[];
   currencies: any[];
   exchangeRates: any[];
+  fiscalYearStart: number;
+  closedThrough: string | null;
+  closedPeriods: ClosedPeriodSummary[];
 }
 
 // ── Tab config ─────────────────────────────────────────────────────────────
@@ -35,7 +38,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates }: Props) {
+export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates, fiscalYearStart, closedThrough, closedPeriods }: Props) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as SettingsTab) || "general";
   const [activeTab, setActiveTab] = useState<SettingsTab>(TABS.some(t => t.key === initialTab) ? initialTab : "general");
@@ -86,7 +89,7 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
       </div>
 
       {/* Tab content */}
-      {activeTab === "general" && <GeneralTab ledger={ledger} />}
+      {activeTab === "general" && <GeneralTab ledger={ledger} fiscalYearStart={fiscalYearStart} closedThrough={closedThrough} closedPeriods={closedPeriods} />}
       {activeTab === "currencies" && <CurrenciesTab currencies={currencies} exchangeRates={exchangeRates} />}
       {activeTab === "api-keys" && <ApiKeysTab initialKeys={initialKeys} />}
       {activeTab === "billing" && <BillingTab billing={billing} />}
@@ -98,11 +101,54 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
 
 // ── General Tab ────────────────────────────────────────────────────────────
 
-function GeneralTab({ ledger }: { ledger: Props["ledger"] }) {
+const MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: { ledger: Props["ledger"]; fiscalYearStart: number; closedThrough: string | null; closedPeriods: ClosedPeriodSummary[] }) {
   const { data: session } = useSession();
+  const [fyStart, setFyStart] = useState(fiscalYearStart);
+  const [fySaving, setFySaving] = useState(false);
+  const [fySaved, setFySaved] = useState(false);
+  const [periods, setPeriods] = useState(closedPeriods);
+  const [reopening, setReopening] = useState<string | null>(null);
+
+  const handleFyChange = async (month: number) => {
+    setFyStart(month);
+    setFySaving(true);
+    await updateLedgerAction({ fiscalYearStart: month });
+    setFySaving(false);
+    setFySaved(true);
+    setTimeout(() => setFySaved(false), 2000);
+  };
+
+  const handleReopen = async (periodEnd: string) => {
+    setReopening(periodEnd);
+    await reopenPeriodAction(periodEnd);
+    setPeriods((prev) => prev.map((p) => p.periodEnd === periodEnd ? { ...p, reopenedAt: new Date().toISOString(), reopenedBy: "user" } : p));
+    setReopening(null);
+  };
+
+  const activePeriods = periods.filter((p) => !p.reopenedAt);
+  const fmtPeriodEnd = (d: string) => {
+    const dt = new Date(d + "T00:00:00");
+    return dt.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Save indicator */}
+      {(fySaving || fySaved) && (
+        <div style={{
+          position: "fixed", top: 16, right: 16, zIndex: 50,
+          padding: "8px 16px", borderRadius: 6, fontSize: 12, fontWeight: 500,
+          backgroundColor: fySaved ? "#F0FDF4" : "#FAFAFA",
+          color: fySaved ? "#16A34A" : "#999999",
+          border: `1px solid ${fySaved ? "#BBF7D0" : "#E5E5E5"}`,
+          transition: "all 200ms ease",
+        }}>
+          {fySaving ? "Saving..." : "Saved"}
+        </div>
+      )}
+
       {/* Account info */}
       <div className="card">
         <div className="section-label" style={{ marginBottom: 16 }}>Account</div>
@@ -134,7 +180,89 @@ function GeneralTab({ ledger }: { ledger: Props["ledger"] }) {
           <InfoRow label="Currency" value={ledger.currency} />
           <InfoRow label="Accounting Basis" value={ledger.accountingBasis} />
           <InfoRow label="Created" value={formatDate(ledger.createdAt)} />
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: "#999999", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+              Fiscal Year Start
+            </label>
+            <select
+              className="input"
+              value={fyStart}
+              onChange={(e) => handleFyChange(Number(e.target.value))}
+              style={{ fontSize: 13, width: "100%" }}
+            >
+              {MONTH_NAMES.slice(1).map((name, i) => (
+                <option key={i + 1} value={i + 1}>{name}</option>
+              ))}
+            </select>
+          </div>
         </div>
+      </div>
+
+      {/* Period Close */}
+      <div className="card">
+        <div className="section-label" style={{ marginBottom: 4 }}>Period Close</div>
+        <p style={{ fontSize: 12, color: "#999999", marginBottom: 16 }}>
+          {closedThrough
+            ? `Books are closed through ${fmtPeriodEnd(closedThrough)}. No transactions can be posted on or before that date.`
+            : "No periods have been closed. Close periods from the Statements page."}
+        </p>
+
+        {activePeriods.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {activePeriods
+              .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between"
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    backgroundColor: "#F9FAFB",
+                    border: "1px solid #E5E5E5",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#6B7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                    </svg>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#0A0A0A" }}>
+                        Through {fmtPeriodEnd(p.periodEnd)}
+                      </span>
+                      <span style={{ fontSize: 12, color: "#999999", marginLeft: 12 }}>
+                        Closed {formatDate(p.closedAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleReopen(p.periodEnd)}
+                    disabled={reopening === p.periodEnd}
+                    style={{
+                      padding: "4px 12px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      backgroundColor: "transparent",
+                      color: "#D97706",
+                      border: "1px solid rgba(217,119,6,0.2)",
+                      cursor: reopening === p.periodEnd ? "wait" : "pointer",
+                      opacity: reopening === p.periodEnd ? 0.6 : 1,
+                    }}
+                  >
+                    {reopening === p.periodEnd ? "Reopening..." : "Reopen"}
+                  </button>
+                </div>
+              ))}
+          </div>
+        ) : (
+          !closedThrough && (
+            <div style={{ fontSize: 13, color: "#999999", padding: "12px 0" }}>
+              No closed periods to manage.
+            </div>
+          )
+        )}
       </div>
     </div>
   );
