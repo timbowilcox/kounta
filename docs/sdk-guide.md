@@ -1,575 +1,603 @@
-# SDK Guide
+# Ledge SDK Guide
 
-How to install, initialise, and use the `@ledge/sdk` TypeScript client.
+Complete reference for the Ledge TypeScript SDK. Every module, method, and type documented.
 
-## Install
+---
+
+## Installation
 
 ```bash
 npm install @ledge/sdk
 ```
 
-## Initialise
+---
+
+## Initialization
 
 ```typescript
 import { Ledge } from "@ledge/sdk";
 
 const ledge = new Ledge({
-  apiKey: "ldg_live_...",             // your API key
-  adminSecret: "sk_admin_...",        // optional — only for admin operations
-  baseUrl: "https://api.getledge.ai", // optional — defaults to production
+  apiKey: "ledge_live_...",
+  adminSecret: "...",        // optional, needed for admin endpoints
+  baseUrl: "https://api.useledge.ai", // optional, defaults to https://api.getledge.ai
 });
 ```
 
-### Configuration
+### Config Options
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `apiKey` | `string` | Yes | API key (`ldg_live_...` or `ldg_test_...`) |
-| `adminSecret` | `string` | No | Admin secret for bootstrap operations (ledger creation, API key management) |
-| `baseUrl` | `string` | No | API base URL (defaults to production) |
-| `fetch` | `typeof fetch` | No | Custom fetch function for edge runtimes, testing, or middleware |
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `apiKey` | `string` | Yes | Your Ledge API key (`ledge_live_...` or `ledge_test_...`) |
+| `adminSecret` | `string` | No | Admin secret for provisioning and key management |
+| `baseUrl` | `string` | No | API base URL (defaults to `https://api.getledge.ai`) |
+| `fetch` | `typeof fetch` | No | Custom fetch implementation |
+
+---
 
 ## Modules
 
-The SDK is organised into modules that mirror the REST API:
+### ledge.ledgers
 
-| Module | Description |
-|--------|-------------|
-| `ledge.ledgers` | Create and retrieve ledgers |
-| `ledge.accounts` | Create, list, and retrieve accounts |
-| `ledge.transactions` | Post, list, retrieve, and reverse transactions |
-| `ledge.reports` | Income statement, balance sheet, cash flow |
-| `ledge.audit` | List audit trail entries |
-| `ledge.imports` | Upload CSV/OFX files, review matches, confirm |
-| `ledge.templates` | List, recommend, and apply chart-of-accounts |
-| `ledge.apiKeys` | Create, list, and revoke API keys |
-
----
-
-## ledge.ledgers
-
-Requires `adminSecret` for creation.
-
-### create(input)
-
-Create a new ledger.
+Manage top-level ledger containers.
 
 ```typescript
+// create(input): Promise<Ledger>  -- requires admin auth
 const ledger = await ledge.ledgers.create({
   name: "Acme Corp",
-  ownerId: "usr_...",
   currency: "USD",
+  fiscalYearStart: "01-01",
   accountingBasis: "accrual",
+  ownerId: "user-uuid",
+  businessContext: { industry: "saas" },
 });
 
-console.log(ledger.id);       // UUIDv7
-console.log(ledger.currency); // "USD"
-```
+// get(ledgerId): Promise<Ledger>
+const l = await ledge.ledgers.get("ledger-uuid");
 
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | `string` | Yes | Ledger display name |
-| `ownerId` | `string` | Yes | Owner user ID |
-| `currency` | `string` | Yes | ISO currency code (e.g. `USD`, `EUR`) |
-| `accountingBasis` | `"accrual" \| "cash"` | Yes | Accounting basis |
-
-### get(ledgerId)
-
-Retrieve a ledger by ID.
-
-```typescript
-const ledger = await ledge.ledgers.get("ldg_abc123");
+// update(ledgerId, input): Promise<Ledger>
+const updated = await ledge.ledgers.update("ledger-uuid", {
+  name: "Acme Corp (renamed)",
+  fiscalYearStart: "04-01",
+});
 ```
 
 ---
 
-## ledge.accounts
+### ledge.accounts
 
-### create(ledgerId, input)
-
-Create a new account in the chart of accounts.
+Create and query accounts in the chart of accounts tree.
 
 ```typescript
-const account = await ledge.accounts.create("ldg_abc123", {
+// create(ledgerId, input): Promise<Account>
+const account = await ledge.accounts.create("ledger-uuid", {
   code: "1000",
   name: "Cash",
   type: "asset",
+  normalBalance: "debit",
+  parentCode: undefined,
+  metadata: { bankName: "First National" },
 });
 
-console.log(account.id);   // UUIDv7
-console.log(account.code); // "1000"
-```
+// list(ledgerId): Promise<AccountWithBalance[]>
+const accounts = await ledge.accounts.list("ledger-uuid");
 
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `code` | `string` | Yes | Account code (e.g. `1000`, `4100`) |
-| `name` | `string` | Yes | Display name |
-| `type` | `"asset" \| "liability" \| "equity" \| "revenue" \| "expense"` | Yes | Account type |
-| `parentCode` | `string` | No | Parent account code for sub-accounts |
-| `metadata` | `Record<string, unknown>` | No | Additional metadata |
-
-### list(ledgerId)
-
-List all accounts with current balances.
-
-```typescript
-const accounts = await ledge.accounts.list("ldg_abc123");
-
-for (const acct of accounts.data) {
-  console.log(acct.code, acct.name, acct.balance);
-}
-```
-
-### get(ledgerId, accountId)
-
-Retrieve a single account.
-
-```typescript
-const acct = await ledge.accounts.get("ldg_abc123", "acc_...");
-console.log(acct.balance); // integer cents
+// get(ledgerId, accountId): Promise<AccountWithBalance>
+const cash = await ledge.accounts.get("ledger-uuid", "account-uuid");
 ```
 
 ---
 
-## ledge.transactions
+### ledge.transactions
 
-### post(ledgerId, input)
-
-Post a balanced double-entry transaction. Debits must equal credits.
+Post, list, retrieve, and reverse immutable journal entries.
 
 ```typescript
-const txn = await ledge.transactions.post("ldg_abc123", {
-  date: "2025-03-10",
-  memo: "March subscription revenue",
+// post(ledgerId, input): Promise<TransactionWithLines>
+const txn = await ledge.transactions.post("ledger-uuid", {
+  date: "2026-03-14",
+  memo: "Office supplies purchase",
+  idempotencyKey: "inv-2026-0042",
+  sourceType: "api",
   lines: [
-    { accountCode: "1000", amount: 9900, direction: "debit" },  // Cash +$99.00
-    { accountCode: "4000", amount: 9900, direction: "credit" }, // Revenue +$99.00
+    { accountCode: "5100", amount: 4500, direction: "debit" },
+    { accountCode: "1000", amount: 4500, direction: "credit" },
   ],
+  effectiveDate: undefined,
+  sourceRef: "receipt-123",
+  agentId: undefined,
+  metadata: {},
 });
 
-console.log(txn.id);     // UUIDv7
-console.log(txn.status); // "posted"
-```
+// list(ledgerId, opts?): Promise<PaginatedResult<TransactionWithLines>>
+const page = await ledge.transactions.list("ledger-uuid", {
+  cursor: undefined,
+  limit: 50,
+});
 
-**Parameters (PostTransactionParams):**
+// get(ledgerId, transactionId): Promise<TransactionWithLines>
+const t = await ledge.transactions.get("ledger-uuid", "txn-uuid");
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `date` | `string` | Yes | Transaction date (ISO 8601) |
-| `memo` | `string` | Yes | Transaction description |
-| `lines` | `LineInput[]` | Yes | Line items (min 2, must balance) |
-| `effectiveDate` | `string` | No | Effective date if different from `date` |
-| `idempotencyKey` | `string` | No | Unique key to prevent duplicate posts |
-| `metadata` | `Record<string, unknown>` | No | Additional metadata |
-
-**LineInput:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `accountCode` | `string` | Yes | Account code |
-| `amount` | `number` | Yes | Amount in smallest currency unit (cents) |
-| `direction` | `"debit" \| "credit"` | Yes | Debit or credit |
-| `memo` | `string` | No | Line item memo |
-
-### list(ledgerId, options?)
-
-List transactions with cursor-based pagination.
-
-```typescript
-let cursor: string | undefined;
-do {
-  const page = await ledge.transactions.list("ldg_abc123", {
-    limit: 50,
-    cursor,
-  });
-
-  for (const txn of page.data) {
-    console.log(txn.memo, txn.date);
-  }
-
-  cursor = page.nextCursor ?? undefined;
-} while (cursor);
-```
-
-**Options (ListOptions):**
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `cursor` | `string` | — | Pagination cursor from previous response |
-| `limit` | `number` | 50 | Results per page (1–200) |
-
-### get(ledgerId, transactionId)
-
-Retrieve a single transaction with all line items.
-
-```typescript
-const txn = await ledge.transactions.get("ldg_abc123", "txn_...");
-
-for (const line of txn.lines) {
-  console.log(line.accountCode, line.direction, line.amount);
-}
-```
-
-### reverse(ledgerId, transactionId, reason)
-
-Reverse a posted transaction by creating offsetting entries.
-
-```typescript
+// reverse(ledgerId, transactionId, reason): Promise<TransactionWithLines>
 const reversal = await ledge.transactions.reverse(
-  "ldg_abc123",
-  "txn_...",
-  "Customer refund",
+  "ledger-uuid",
+  "txn-uuid",
+  "Duplicate entry"
 );
-
-console.log(reversal.status); // "posted"
-// Original transaction status becomes "reversed"
 ```
 
 ---
 
-## ledge.reports
+### ledge.reports
 
-### incomeStatement(ledgerId, startDate, endDate)
-
-Generate an Income Statement (P&L) for a date range.
+Generate financial statements.
 
 ```typescript
+// incomeStatement(ledgerId, startDate, endDate): Promise<StatementResponse>
 const pnl = await ledge.reports.incomeStatement(
-  "ldg_abc123",
-  "2025-01-01",
-  "2025-03-31",
+  "ledger-uuid",
+  "2026-01-01",
+  "2026-03-31"
 );
 
-console.log(pnl.statementType);       // "pnl"
-console.log(pnl.totals.netIncome);    // integer cents
-console.log(pnl.plainLanguageSummary); // human-readable summary
+// balanceSheet(ledgerId, asOfDate): Promise<StatementResponse>
+const bs = await ledge.reports.balanceSheet("ledger-uuid", "2026-03-31");
 
-for (const section of pnl.sections) {
-  console.log(section.title, section.total);
-  for (const line of section.lines) {
-    console.log("  ", line.accountCode, line.accountName, line.amount);
-  }
-}
-```
-
-### balanceSheet(ledgerId, asOfDate)
-
-Generate a Balance Sheet as of a specific date.
-
-```typescript
-const bs = await ledge.reports.balanceSheet("ldg_abc123", "2025-03-31");
-
-console.log(bs.totals.totalAssets);
-console.log(bs.totals.totalLiabilities);
-console.log(bs.totals.totalEquity);
-```
-
-### cashFlow(ledgerId, startDate, endDate)
-
-Generate a Cash Flow Statement for a date range.
-
-```typescript
-const cf = await ledge.reports.cashFlow("ldg_abc123", "2025-01-01", "2025-03-31");
-
-console.log(cf.totals.netCashChange);
+// cashFlow(ledgerId, startDate, endDate): Promise<StatementResponse>
+const cf = await ledge.reports.cashFlow(
+  "ledger-uuid",
+  "2026-01-01",
+  "2026-03-31"
+);
 ```
 
 ---
 
-## ledge.audit
+### ledge.audit
 
-### list(ledgerId, options?)
-
-List audit trail entries for a ledger.
+Query the append-only audit log.
 
 ```typescript
-const audit = await ledge.audit.list("ldg_abc123", { limit: 100 });
-
-for (const entry of audit.data) {
-  console.log(entry.action, entry.entityType, entry.entityId, entry.timestamp);
-}
+// list(ledgerId, opts?): Promise<PaginatedResult<AuditEntry>>
+const entries = await ledge.audit.list("ledger-uuid", {
+  cursor: undefined,
+  limit: 100,
+});
 ```
 
 ---
 
-## ledge.imports
+### ledge.imports
 
-### upload(ledgerId, input)
-
-Upload a CSV or OFX bank statement. Parses the file and runs the matching engine.
+Upload files (CSV/OFX), review matches, and confirm.
 
 ```typescript
-import { readFileSync } from "node:fs";
-
-const csv = readFileSync("bank-march.csv", "utf-8");
-const result = await ledge.imports.upload("ldg_abc123", {
-  fileContent: csv,
+// upload(ledgerId, input): Promise<ImportResult>
+const result = await ledge.imports.upload("ledger-uuid", {
+  fileContent: csvString,
   fileType: "csv",
-  filename: "bank-march.csv",
+  filename: "march-bank-statement.csv",
 });
 
-console.log(result.batch.rowCount);      // number of parsed rows
-console.log(result.batch.matchedCount);  // auto-matched rows
-console.log(result.batch.unmatchedCount);
+// list(ledgerId, opts?): Promise<PaginatedResult<ImportBatch>>
+const batches = await ledge.imports.list("ledger-uuid", { limit: 20 });
 
-for (const row of result.rows) {
-  console.log(row.payee, row.amount, row.matchStatus, row.confidence);
-}
-```
+// get(batchId): Promise<ImportResult>
+const batch = await ledge.imports.get("batch-uuid");
 
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `fileContent` | `string` | Yes | File content as a string |
-| `fileType` | `"csv" \| "ofx"` | Yes | File format |
-| `filename` | `string` | No | Original filename for reference |
-
-### list(ledgerId, options?)
-
-List import batches for a ledger.
-
-```typescript
-const imports = await ledge.imports.list("ldg_abc123");
-
-for (const batch of imports.data) {
-  console.log(batch.id, batch.status, batch.rowCount);
-}
-```
-
-### get(batchId)
-
-Get details of an import batch including all rows.
-
-```typescript
-const batch = await ledge.imports.get("imp_...");
-```
-
-### confirmMatches(batchId, actions)
-
-Confirm, reject, or override suggested transaction matches.
-
-```typescript
-await ledge.imports.confirmMatches("imp_...", [
-  { rowId: "row_1", action: "confirm" },
-  { rowId: "row_2", action: "reject" },
-  { rowId: "row_3", action: "override", overrideTransactionId: "txn_..." },
+// confirmMatches(batchId, actions): Promise<ImportResult>
+const confirmed = await ledge.imports.confirmMatches("batch-uuid", [
+  { rowId: "row-1", action: "accept" },
+  { rowId: "row-2", action: "reject" },
 ]);
 ```
 
-**Action types:**
-
-| Action | Description |
-|--------|-------------|
-| `confirm` | Accept the suggested match |
-| `reject` | Reject the suggested match |
-| `override` | Override with a specific transaction ID |
-
 ---
 
-## ledge.templates
+### ledge.templates
 
-### list()
-
-List all available templates.
+Browse and apply pre-built chart-of-accounts templates. List, get, and recommend require no authentication.
 
 ```typescript
+// list(): Promise<Template[]>  -- no auth
 const templates = await ledge.templates.list();
 
-for (const t of templates) {
-  console.log(t.slug, t.name, t.description);
-}
-```
+// get(idOrSlug): Promise<Template>  -- no auth
+const tpl = await ledge.templates.get("saas-startup");
 
-### get(idOrSlug)
-
-Get a single template with its full chart of accounts.
-
-```typescript
-const saas = await ledge.templates.get("saas");
-console.log(saas.accounts.length); // 18
-```
-
-### recommend(context)
-
-Get AI-powered template recommendations based on business context.
-
-```typescript
+// recommend(context): Promise<TemplateRecommendation[]>  -- no auth
 const recs = await ledge.templates.recommend({
-  industry: "software",
+  industry: "technology",
+  description: "B2B SaaS with monthly subscriptions",
   businessModel: "subscription",
 });
 
-console.log(recs[0].template.name);  // "SaaS"
-console.log(recs[0].reason);         // explanation of why
-console.log(recs[0].score);          // confidence score
-```
-
-### apply(ledgerId, templateSlug)
-
-Apply a template to a ledger (creates all accounts). Requires `adminSecret`.
-
-```typescript
-const applied = await ledge.templates.apply("ldg_abc123", "saas");
+// apply(ledgerId, templateSlug): Promise<{accounts, count}>  -- admin auth
+const applied = await ledge.templates.apply("ledger-uuid", "saas-startup");
 console.log(applied.count); // number of accounts created
 ```
 
 ---
 
-## ledge.apiKeys
+### ledge.apiKeys
 
-All API key operations require `adminSecret`.
-
-### create(input)
-
-Create a new API key for a ledger.
+Manage API keys scoped to a ledger. All methods require admin auth.
 
 ```typescript
+// create(input): Promise<ApiKeyWithRaw>  -- admin
 const key = await ledge.apiKeys.create({
-  userId: "usr_...",
-  ledgerId: "ldg_abc123",
-  name: "production",
+  userId: "user-uuid",
+  ledgerId: "ledger-uuid",
+  name: "Production Key",
+});
+// key.raw is the full key, shown only once
+
+// list(ledgerId): Promise<ApiKeySafe[]>  -- admin
+const keys = await ledge.apiKeys.list("ledger-uuid");
+
+// revoke(keyId): Promise<ApiKeySafe>  -- admin
+const revoked = await ledge.apiKeys.revoke("key-uuid");
+```
+
+---
+
+### ledge.admin
+
+Provision new users and their ledgers. Requires admin auth.
+
+```typescript
+// provision(input): Promise<ProvisionResult>  -- admin
+const result = await ledge.admin.provision({
+  email: "founder@acme.com",
+  name: "Jane Doe",
+  authProvider: "google",
+  authProviderId: "google-uid-123",
+  templateSlug: "saas-startup",
+});
+```
+
+---
+
+### ledge.bankFeeds
+
+Connect bank accounts, sync transactions, and confirm matches.
+
+```typescript
+// listConnections(ledgerId): Promise<BankConnection[]>
+const connections = await ledge.bankFeeds.listConnections("ledger-uuid");
+
+// getConnection(ledgerId, connectionId): Promise<BankConnection>
+const conn = await ledge.bankFeeds.getConnection("ledger-uuid", "conn-uuid");
+
+// listAccounts(ledgerId, connectionId): Promise<BankAccount[]>
+const bankAccts = await ledge.bankFeeds.listAccounts("ledger-uuid", "conn-uuid");
+
+// mapAccount(ledgerId, bankAccountId, accountId): Promise<BankAccount>
+const mapped = await ledge.bankFeeds.mapAccount(
+  "ledger-uuid",
+  "bank-acct-uuid",
+  "ledger-account-uuid"
+);
+
+// sync(ledgerId, bankAccountId, opts?): Promise<BankSyncLog>
+const syncLog = await ledge.bankFeeds.sync("ledger-uuid", "bank-acct-uuid", {
+  fromDate: "2026-03-01",
+  toDate: "2026-03-14",
 });
 
-console.log(key.rawKey); // only shown once — store securely
+// listSyncLogs(ledgerId, connectionId): Promise<BankSyncLog[]>
+const logs = await ledge.bankFeeds.listSyncLogs("ledger-uuid", "conn-uuid");
+
+// listTransactions(ledgerId, bankAccountId, opts?): Promise<BankTransaction[]>
+const bankTxns = await ledge.bankFeeds.listTransactions(
+  "ledger-uuid",
+  "bank-acct-uuid",
+  { status: "unmatched", limit: 100 }
+);
+
+// confirmMatch(ledgerId, bankTransactionId, action, overrideTransactionId?): Promise<BankTransaction>
+const matched = await ledge.bankFeeds.confirmMatch(
+  "ledger-uuid",
+  "bank-txn-uuid",
+  "accept",
+  "override-txn-uuid"
+);
 ```
 
-### list(ledgerId)
+---
 
-List API keys for a ledger (keys are masked).
+### ledge.notifications
+
+View and manage system notifications and insights.
 
 ```typescript
-const keys = await ledge.apiKeys.list("ldg_abc123");
+// list(ledgerId, opts?): Promise<PaginatedResult<Notification>>
+const notifs = await ledge.notifications.list("ledger-uuid", {
+  status: "unread",
+  type: "anomaly",
+  limit: 20,
+  cursor: undefined,
+});
 
-for (const k of keys) {
-  console.log(k.name, k.prefix); // prefix is e.g. "ldg_live_abc..."
-}
+// get(ledgerId, notificationId): Promise<Notification>
+const n = await ledge.notifications.get("ledger-uuid", "notif-uuid");
+
+// updateStatus(ledgerId, notificationId, status): Promise<Notification>
+const read = await ledge.notifications.updateStatus(
+  "ledger-uuid",
+  "notif-uuid",
+  "read"
+);
+
+// generateInsights(ledgerId): Promise<{generated, notifications}>
+const insights = await ledge.notifications.generateInsights("ledger-uuid");
+
+// getPreferences(ledgerId): Promise<NotificationPreference[]>
+const prefs = await ledge.notifications.getPreferences("ledger-uuid");
+
+// setPreference(ledgerId, type, enabled): Promise<NotificationPreference>
+const pref = await ledge.notifications.setPreference(
+  "ledger-uuid",
+  "anomaly",
+  true
+);
 ```
 
-### revoke(keyId)
+---
 
-Revoke an API key.
+### ledge.currencies
+
+Manage multi-currency settings, exchange rates, and conversions.
 
 ```typescript
-await ledge.apiKeys.revoke("key_...");
+// list(ledgerId): Promise<CurrencySetting[]>
+const currencies = await ledge.currencies.list("ledger-uuid");
+
+// enable(ledgerId, input): Promise<CurrencySetting>
+const eur = await ledge.currencies.enable("ledger-uuid", {
+  currencyCode: "EUR",
+  decimalPlaces: 2,
+  symbol: "E",
+});
+
+// listRates(ledgerId, opts?): Promise<PaginatedResult<ExchangeRate>>
+const rates = await ledge.currencies.listRates("ledger-uuid", { limit: 50 });
+
+// setRate(ledgerId, input): Promise<ExchangeRate>
+const rate = await ledge.currencies.setRate("ledger-uuid", {
+  fromCurrency: "USD",
+  toCurrency: "EUR",
+  rate: 920000,
+  effectiveDate: "2026-03-14",
+});
+
+// convert(ledgerId, input): Promise<ConvertAmountResult>
+const converted = await ledge.currencies.convert("ledger-uuid", {
+  amount: 100000,
+  fromCurrency: "USD",
+  toCurrency: "EUR",
+});
+
+// revalue(ledgerId, date): Promise<RevaluationResult[]>
+const revaluations = await ledge.currencies.revalue("ledger-uuid", "2026-03-14");
+```
+
+---
+
+### ledge.conversations
+
+Manage AI-assisted conversations scoped to a ledger.
+
+```typescript
+// list(ledgerId, opts?): Promise<PaginatedResult<Conversation>>
+const convos = await ledge.conversations.list("ledger-uuid", { limit: 10 });
+
+// create(ledgerId, title?): Promise<Conversation>
+const convo = await ledge.conversations.create("ledger-uuid", "Q1 Review");
+
+// get(ledgerId, conversationId): Promise<Conversation>
+const c = await ledge.conversations.get("ledger-uuid", "convo-uuid");
+
+// update(ledgerId, conversationId, messages, title?): Promise<Conversation>
+const updated = await ledge.conversations.update(
+  "ledger-uuid",
+  "convo-uuid",
+  [{ role: "user", content: "What were our top expenses last month?" }],
+  "Expense Analysis"
+);
+
+// delete(ledgerId, conversationId): Promise<void>
+await ledge.conversations.delete("ledger-uuid", "convo-uuid");
+```
+
+---
+
+### ledge.classification
+
+Manage classification rules, merchant aliases, and auto-categorize transactions.
+
+```typescript
+// listRules(ledgerId, opts?): Promise<ClassificationRule[]>
+const rules = await ledge.classification.listRules("ledger-uuid");
+
+// createRule(ledgerId, input): Promise<ClassificationRule>
+const rule = await ledge.classification.createRule("ledger-uuid", {
+  pattern: "AMZN*",
+  accountCode: "5100",
+  description: "Amazon purchases",
+});
+
+// getRule(ledgerId, ruleId): Promise<ClassificationRule>
+const r = await ledge.classification.getRule("ledger-uuid", "rule-uuid");
+
+// updateRule(ledgerId, ruleId, input): Promise<ClassificationRule>
+const updatedRule = await ledge.classification.updateRule(
+  "ledger-uuid",
+  "rule-uuid",
+  { accountCode: "5200" }
+);
+
+// deleteRule(ledgerId, ruleId): Promise<void>
+await ledge.classification.deleteRule("ledger-uuid", "rule-uuid");
+
+// classify(ledgerId, input): Promise<ClassificationResult | null>
+const match = await ledge.classification.classify("ledger-uuid", {
+  description: "AMZN Mktp US*1A2B3C",
+  amount: 4599,
+});
+
+// classifyBankTransaction(ledgerId, bankTransactionId, accountId, isPersonal?): Promise<BankTransaction>
+const classified = await ledge.classification.classifyBankTransaction(
+  "ledger-uuid",
+  "bank-txn-uuid",
+  "account-uuid",
+  false
+);
+
+// listAliases(ledgerId): Promise<MerchantAlias[]>
+const aliases = await ledge.classification.listAliases("ledger-uuid");
+
+// addAlias(ledgerId, canonicalName, alias): Promise<MerchantAlias>
+const alias = await ledge.classification.addAlias(
+  "ledger-uuid",
+  "Amazon",
+  "AMZN Mktp US"
+);
+```
+
+---
+
+### ledge.recurring
+
+Schedule and manage recurring journal entries.
+
+```typescript
+// list(ledgerId): Promise<RecurringEntry[]>
+const entries = await ledge.recurring.list("ledger-uuid");
+
+// create(ledgerId, input): Promise<RecurringEntry>
+const entry = await ledge.recurring.create("ledger-uuid", {
+  memo: "Monthly rent",
+  frequency: "monthly",
+  startDate: "2026-04-01",
+  lines: [
+    { accountCode: "5000", amount: 250000, direction: "debit" },
+    { accountCode: "2000", amount: 250000, direction: "credit" },
+  ],
+});
+
+// get(ledgerId, id): Promise<RecurringEntry & {recentLogs}>
+const re = await ledge.recurring.get("ledger-uuid", "entry-uuid");
+
+// update(ledgerId, id, input): Promise<RecurringEntry>
+const updatedEntry = await ledge.recurring.update("ledger-uuid", "entry-uuid", {
+  memo: "Monthly rent (updated)",
+});
+
+// delete(ledgerId, id): Promise<void>
+await ledge.recurring.delete("ledger-uuid", "entry-uuid");
+
+// pause(ledgerId, id): Promise<RecurringEntry>
+const paused = await ledge.recurring.pause("ledger-uuid", "entry-uuid");
+
+// resume(ledgerId, id): Promise<RecurringEntry>
+const resumed = await ledge.recurring.resume("ledger-uuid", "entry-uuid");
+```
+
+---
+
+### ledge.periods
+
+Close and reopen accounting periods.
+
+```typescript
+// close(ledgerId, periodEnd): Promise<{periodEnd, closedAt}>
+const closed = await ledge.periods.close("ledger-uuid", "2026-03-31");
+
+// reopen(ledgerId, periodEnd): Promise<{periodEnd, reopenedAt}>
+const reopened = await ledge.periods.reopen("ledger-uuid", "2026-03-31");
+
+// list(ledgerId): Promise<ClosedPeriod[]>
+const periods = await ledge.periods.list("ledger-uuid");
+```
+
+---
+
+### ledge.stripeConnect
+
+Connect and sync with Stripe via OAuth.
+
+```typescript
+// authorize(): Promise<{url}>
+const { url } = await ledge.stripeConnect.authorize();
+// Redirect the user to url to complete OAuth
+
+// status(): Promise<StripeConnectStatus | null>
+const status = await ledge.stripeConnect.status();
+
+// disconnect(): Promise<{disconnected}>
+const { disconnected } = await ledge.stripeConnect.disconnect();
+
+// sync(): Promise<{syncing, message}>
+const { syncing, message } = await ledge.stripeConnect.sync();
 ```
 
 ---
 
 ## Error Handling
 
-Non-2xx responses throw a `LedgeApiError` with structured fields.
+All SDK methods throw a `LedgeApiError` on non-2xx responses. The error includes structured details to help you diagnose and recover from failures.
 
 ```typescript
-import { LedgeApiError } from "@ledge/sdk";
+import { Ledge, LedgeApiError } from "@ledge/sdk";
+
+const ledge = new Ledge({ apiKey: "ledge_live_..." });
 
 try {
-  await ledge.transactions.post("ldg_abc123", { /* ... */ });
-} catch (e) {
-  if (e instanceof LedgeApiError) {
-    console.log(e.status);    // HTTP status code (e.g. 400)
-    console.log(e.code);      // error code (e.g. "UNBALANCED_TRANSACTION")
-    console.log(e.message);   // human-readable message
-    console.log(e.details);   // array of detail objects with suggestion field
-    console.log(e.requestId); // request ID for support tickets
+  await ledge.transactions.post("ledger-uuid", {
+    date: "2026-03-14",
+    memo: "Unbalanced entry",
+    lines: [
+      { accountCode: "1000", amount: 5000, direction: "debit" },
+      { accountCode: "2000", amount: 4000, direction: "credit" },
+    ],
+  });
+} catch (err) {
+  if (err instanceof LedgeApiError) {
+    console.error(err.status);      // HTTP status code, e.g. 422
+    console.error(err.code);        // Machine-readable error code, e.g. "UNBALANCED_TRANSACTION"
+    console.error(err.message);     // Human-readable message
+    console.error(err.details);     // Field-level details array:
+    // [{ field: "lines", expected: "debits === credits", actual: "5000 !== 4000" }]
+    console.error(err.suggestion);  // e.g. "Add a credit line for 1000 or adjust existing lines"
   }
 }
 ```
 
-Every error response includes a `details[].suggestion` field with a recommended next step.
+### LedgeApiError Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `status` | `number` | HTTP status code |
+| `code` | `string` | Machine-readable error code |
+| `message` | `string` | Human-readable error description |
+| `details` | `Array<{field, expected, actual}>` | Field-level validation errors |
+| `suggestion` | `string \| undefined` | Suggested corrective action |
 
 ---
 
-## Types
+## Pagination
 
-All domain types are re-exported from `@ledge/sdk` — no need to install `@ledge/core`:
-
-```typescript
-import type {
-  Ledger,
-  Account,
-  AccountWithBalance,
-  TransactionWithLines,
-  LineItem,
-  StatementResponse,
-  ImportBatch,
-  ImportRow,
-  Template,
-  AuditEntry,
-  PaginatedResult,
-} from "@ledge/sdk";
-```
-
----
-
-## Custom Fetch
-
-Pass a custom `fetch` for edge runtimes, testing, or middleware:
+All list endpoints that return large collections use cursor-based pagination. The default limit is 50 and the maximum is 200.
 
 ```typescript
-const ledge = new Ledge({
-  apiKey: "ldg_live_...",
-  fetch: myCustomFetch,
-});
-```
+let cursor: string | undefined;
 
----
-
-## Full Example
-
-End-to-end workflow: create a ledger, apply a template, post transactions, generate reports.
-
-```typescript
-import { Ledge } from "@ledge/sdk";
-
-// Admin client for setup
-const admin = new Ledge({
-  apiKey: "ldg_live_...",
-  adminSecret: process.env.LEDGE_ADMIN_SECRET,
-});
-
-// 1. Create a ledger
-const ledger = await admin.ledgers.create({
-  name: "My SaaS Business",
-  ownerId: "usr_...",
-  currency: "USD",
-  accountingBasis: "accrual",
-});
-
-// 2. Apply a template
-await admin.templates.apply(ledger.id, "saas");
-
-// 3. Create an API key
-const key = await admin.apiKeys.create({
-  userId: "usr_...",
-  ledgerId: ledger.id,
-  name: "app",
-});
-
-// 4. Switch to a regular client with the new key
-const ledge = new Ledge({ apiKey: key.rawKey });
-
-// 5. Post a transaction
-await ledge.transactions.post(ledger.id, {
-  date: "2025-03-10",
-  memo: "Monthly subscription — Acme Inc",
-  lines: [
-    { accountCode: "1000", amount: 9900, direction: "debit" },
-    { accountCode: "4000", amount: 9900, direction: "credit" },
-  ],
-  idempotencyKey: "stripe_inv_abc123",
-});
-
-// 6. Generate a P&L
-const pnl = await ledge.reports.incomeStatement(
-  ledger.id,
-  "2025-03-01",
-  "2025-03-31",
-);
-
-console.log(pnl.plainLanguageSummary);
+do {
+  const page = await ledge.transactions.list("ledger-uuid", { cursor, limit: 100 });
+  for (const txn of page.data) {
+    console.log(txn.id, txn.memo);
+  }
+  cursor = page.nextCursor;
+} while (cursor);
 ```
