@@ -29,7 +29,7 @@ export function Sidebar() {
       <li key={href} style={{ listStyle: "none" }}>
         <Link
           href={href}
-          className="flex items-center gap-3 relative"
+          className={`flex items-center gap-3 relative sidebar-nav-link${isActive ? " sidebar-nav-link--active" : ""}`}
           style={{
             padding: "0 12px",
             height: 36,
@@ -38,19 +38,6 @@ export function Sidebar() {
             fontWeight: isActive ? 600 : 500,
             color: isActive ? "#0066FF" : "#666666",
             backgroundColor: isActive ? "#F0F6FF" : "transparent",
-            transition: "all 150ms ease",
-          }}
-          onMouseEnter={(e) => {
-            if (!isActive) {
-              e.currentTarget.style.backgroundColor = "#F5F5F5";
-              e.currentTarget.style.color = "#0A0A0A";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isActive) {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "#666666";
-            }
           }}
         >
           {isActive && (
