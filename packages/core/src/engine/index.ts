@@ -106,6 +106,23 @@ import type {
   MerchantAlias,
 } from "../classification/types.js";
 import { generateId, nowUtc } from "./id.js";
+import type {
+  RecurringEntry,
+  RecurringEntryLog,
+  CreateRecurringEntryInput,
+  UpdateRecurringEntryInput,
+} from "../recurring/types.js";
+import {
+  createRecurringEntry as createRecurringEntryFn,
+  listRecurringEntries as listRecurringEntriesFn,
+  getRecurringEntry as getRecurringEntryFn,
+  updateRecurringEntry as updateRecurringEntryFn,
+  deleteRecurringEntry as deleteRecurringEntryFn,
+  pauseRecurringEntry as pauseRecurringEntryFn,
+  resumeRecurringEntry as resumeRecurringEntryFn,
+  getLogsForEntry as getLogsForEntryFn,
+} from "../recurring/recurring.js";
+import { processRecurringEntries as processRecurringEntriesFn } from "../recurring/scheduler.js";
 
 // ---------------------------------------------------------------------------
 // Normal balance derivation
@@ -3308,6 +3325,46 @@ export class LedgerEngine {
   ): Promise<Result<MerchantAlias>> {
     const result = await this.getAliasService().addAlias(canonicalName, alias);
     return ok(result);
+  }
+
+  // -------------------------------------------------------------------------
+  // Recurring entries
+  // -------------------------------------------------------------------------
+
+  async createRecurringEntry(input: CreateRecurringEntryInput): Promise<Result<RecurringEntry>> {
+    return createRecurringEntryFn(this.db, input);
+  }
+
+  async listRecurringEntries(ledgerId: string): Promise<Result<readonly RecurringEntry[]>> {
+    return listRecurringEntriesFn(this.db, ledgerId);
+  }
+
+  async getRecurringEntry(id: string): Promise<Result<RecurringEntry>> {
+    return getRecurringEntryFn(this.db, id);
+  }
+
+  async updateRecurringEntry(id: string, input: UpdateRecurringEntryInput): Promise<Result<RecurringEntry>> {
+    return updateRecurringEntryFn(this.db, id, input);
+  }
+
+  async deleteRecurringEntry(id: string): Promise<Result<{ id: string; deleted: true }>> {
+    return deleteRecurringEntryFn(this.db, id);
+  }
+
+  async pauseRecurringEntry(id: string): Promise<Result<RecurringEntry>> {
+    return pauseRecurringEntryFn(this.db, id);
+  }
+
+  async resumeRecurringEntry(id: string): Promise<Result<RecurringEntry>> {
+    return resumeRecurringEntryFn(this.db, id);
+  }
+
+  async getRecurringEntryLogs(entryId: string, limit?: number): Promise<readonly RecurringEntryLog[]> {
+    return getLogsForEntryFn(this.db, entryId, limit);
+  }
+
+  async processRecurringEntries(): Promise<{ processed: number; failed: number }> {
+    return processRecurringEntriesFn(this);
   }
 
 }

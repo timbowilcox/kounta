@@ -17,6 +17,7 @@ export * from "./email/index.js";
 export * from "./onboarding/index.js";
 export * from "./storage/index.js";
 export * from "./attachments/index.js";
+export * from "./recurring/index.js";
 export type { Database, Row, RunResult } from "./db/database.js";
 export { SqliteDatabase } from "./db/sqlite.js";
 export { PostgresDatabase } from "./db/postgres.js";

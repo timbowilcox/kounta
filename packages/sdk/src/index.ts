@@ -99,6 +99,14 @@ export type {
   CreateClassificationRuleInput,
   UpdateClassificationRuleInput,
   ListClassificationRulesOptions,
+
+  // Recurring entries
+  RecurringEntry,
+  RecurringEntryLog,
+  RecurringLineItem,
+  Frequency,
+  CreateRecurringEntryInput,
+  UpdateRecurringEntryInput,
 } from "@ledge/core";
 
 export type {
@@ -146,6 +154,10 @@ import type {
   MerchantAlias,
   RuleType,
   RuleField,
+  RecurringEntry,
+  RecurringEntryLog,
+  Frequency,
+  RecurringLineItem,
 } from "@ledge/core";
 
 import type {
@@ -244,6 +256,7 @@ export class Ledge {
   readonly currencies: CurrenciesModule;
   readonly conversations: ConversationsModule;
   readonly classification: ClassificationModule;
+  readonly recurring: RecurringModule;
 
   constructor(config: LedgeConfig) {
     this._apiKey = config.apiKey;
@@ -265,6 +278,7 @@ export class Ledge {
     this.currencies = new CurrenciesModule(this);
     this.conversations = new ConversationsModule(this);
     this.classification = new ClassificationModule(this);
+    this.recurring = new RecurringModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1032,5 +1046,69 @@ class ClassificationModule {
     return this.c.request("POST", `/v1/ledgers/${ledgerId}/classification/aliases`, {
       body: { canonicalName, alias },
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recurring Module
+// ---------------------------------------------------------------------------
+
+class RecurringModule {
+  constructor(private readonly c: Ledge) {}
+
+  /** List all recurring entries for a ledger. */
+  async list(ledgerId: string): Promise<RecurringEntry[]> {
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/recurring`);
+  }
+
+  /** Create a new recurring entry. */
+  async create(
+    ledgerId: string,
+    input: {
+      description: string;
+      lineItems: readonly RecurringLineItem[];
+      frequency: Frequency;
+      dayOfMonth?: number | null;
+      nextRunDate: string;
+      autoReverse?: boolean;
+    },
+  ): Promise<RecurringEntry> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/recurring`, { body: input });
+  }
+
+  /** Get a recurring entry by ID (includes recent logs). */
+  async get(ledgerId: string, id: string): Promise<RecurringEntry & { recentLogs: RecurringEntryLog[] }> {
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/recurring/${id}`);
+  }
+
+  /** Update a recurring entry. */
+  async update(
+    ledgerId: string,
+    id: string,
+    input: {
+      description?: string;
+      lineItems?: readonly RecurringLineItem[];
+      frequency?: Frequency;
+      dayOfMonth?: number | null;
+      nextRunDate?: string;
+      autoReverse?: boolean;
+    },
+  ): Promise<RecurringEntry> {
+    return this.c.request("PUT", `/v1/ledgers/${ledgerId}/recurring/${id}`, { body: input });
+  }
+
+  /** Delete a recurring entry. */
+  async delete(ledgerId: string, id: string): Promise<void> {
+    return this.c.request("DELETE", `/v1/ledgers/${ledgerId}/recurring/${id}`);
+  }
+
+  /** Pause a recurring entry. */
+  async pause(ledgerId: string, id: string): Promise<RecurringEntry> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/recurring/${id}/pause`);
+  }
+
+  /** Resume a recurring entry. */
+  async resume(ledgerId: string, id: string): Promise<RecurringEntry> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/recurring/${id}/resume`);
   }
 }

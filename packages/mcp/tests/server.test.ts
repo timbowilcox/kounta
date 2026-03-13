@@ -60,7 +60,7 @@ function parseToolResult(result: { content: unknown[] }): unknown {
 // ---------------------------------------------------------------------------
 
 describe("Tool discovery", () => {
-  it("lists all 32 tools", async () => {
+  it("lists all 37 tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
@@ -72,6 +72,7 @@ describe("Tool discovery", () => {
       "convert_amount",
       "create_account",
       "create_classification_rule",
+      "create_recurring_entry",
       "enable_currency",
       "generate_insights",
       "get_import_batch",
@@ -87,8 +88,11 @@ describe("Tool discovery", () => {
       "list_exchange_rates",
       "list_merchant_aliases",
       "list_notifications",
+      "list_recurring_entries",
       "map_bank_account",
+      "pause_recurring_entry",
       "post_transaction",
+      "resume_recurring_entry",
       "revalue_accounts",
       "reverse_transaction",
       "search_transactions",
@@ -96,6 +100,7 @@ describe("Tool discovery", () => {
       "setup_ledger",
       "sync_bank_account",
       "update_notification",
+      "update_recurring_entry",
     ]);
   });
 });

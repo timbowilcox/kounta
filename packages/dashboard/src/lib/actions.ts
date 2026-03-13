@@ -507,3 +507,85 @@ export async function deleteAttachmentAction(attachmentId: string): Promise<bool
   return res.ok;
 }
 
+// --- Recurring Entries ------------------------------------------------------
+
+export interface RecurringEntrySummary {
+  id: string;
+  ledgerId: string;
+  userId: string;
+  description: string;
+  lineItems: { accountId: string; amount: number; direction: string }[];
+  frequency: string;
+  dayOfMonth: number | null;
+  nextRunDate: string;
+  lastRunDate: string | null;
+  autoReverse: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export async function fetchRecurringEntries(): Promise<RecurringEntrySummary[]> {
+  const session = await auth();
+  if (!session?.apiKey) return [];
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring`, {
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function deleteRecurringEntryAction(entryId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  return res.ok;
+}
+
+export async function pauseRecurringEntryAction(entryId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}/pause`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  return res.ok;
+}
+
+export async function resumeRecurringEntryAction(entryId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}/resume`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  return res.ok;
+}
+

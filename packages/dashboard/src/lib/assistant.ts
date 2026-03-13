@@ -57,7 +57,7 @@ Guidelines:
 // Tool definitions
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction"]);
+const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction", "create_recurring_entry"]);
 
 const tools: Anthropic.Tool[] = [
   {
@@ -184,6 +184,43 @@ const tools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "list_recurring_entries",
+    description: "List all recurring journal entries for the ledger. Shows active and paused entries with their schedule and next run date.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "create_recurring_entry",
+    description: "Create a new recurring journal entry for automated periodic postings (depreciation, accruals, etc.). Line items must balance (debits = credits). Uses account IDs, not codes. This is a write operation that requires user confirmation.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        description: { type: "string", description: "Description of the recurring entry (e.g. 'Monthly depreciation')" },
+        lineItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              accountId: { type: "string", description: "Account ID (UUID)" },
+              amount: { type: "number", description: "Amount in smallest currency unit (cents)" },
+              direction: { type: "string", enum: ["debit", "credit"] },
+            },
+            required: ["accountId", "amount", "direction"],
+          },
+          description: "Balanced line items (debits must equal credits)",
+        },
+        frequency: { type: "string", enum: ["weekly", "monthly", "quarterly", "annually"], description: "How often to post" },
+        dayOfMonth: { type: "number", description: "Day of month for monthly/quarterly/annually (1-28)" },
+        nextRunDate: { type: "string", description: "First run date (YYYY-MM-DD)" },
+        autoReverse: { type: "boolean", description: "Auto-reverse on 1st of next period (for accruals)" },
+      },
+      required: ["description", "lineItems", "frequency", "nextRunDate"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -279,6 +316,21 @@ async function executeTool(
       };
     }
 
+    case "list_recurring_entries":
+      return { output: await client.recurring.list(ledgerId) };
+
+    case "create_recurring_entry":
+      // Write tool — return confirmation instead of executing
+      return {
+        output: {
+          confirmation_required: true,
+          action: "create_recurring_entry",
+          description: `Create recurring entry: ${input.description} (${input.frequency})`,
+          details: input,
+        },
+        isWriteConfirmation: true,
+      };
+
     default:
       return { output: { error: `Unknown tool: ${toolName}` } };
   }
@@ -311,6 +363,20 @@ export async function executeConfirmedWrite(
         input.transactionId as string,
         input.reason as string,
       );
+
+    case "create_recurring_entry":
+      return client.recurring.create(ledgerId, {
+        description: input.description as string,
+        lineItems: input.lineItems as Array<{
+          accountId: string;
+          amount: number;
+          direction: "debit" | "credit";
+        }>,
+        frequency: input.frequency as "weekly" | "monthly" | "quarterly" | "annually",
+        dayOfMonth: (input.dayOfMonth as number) ?? undefined,
+        nextRunDate: input.nextRunDate as string,
+        autoReverse: (input.autoReverse as boolean) ?? false,
+      });
 
     default:
       throw new Error(`Not a write tool: ${toolName}`);

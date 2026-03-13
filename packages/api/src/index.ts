@@ -19,7 +19,7 @@ import type { Database } from "@ledge/core";
 import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@ledge/core";
 import type { AttachmentStorage } from "@ledge/core";
 import { createApp } from "./app.js";
-import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence } from "@ledge/core";
+import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries } from "@ledge/core";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -107,6 +107,18 @@ const main = async () => {
       }
     } catch (err) {
       console.error("Email scheduler error:", err);
+    }
+
+    // Process recurring entries once per day at UTC midnight
+    try {
+      if (new Date().getUTCHours() === 0) {
+        const result = await processRecurringEntries(engine);
+        if (result.processed > 0 || result.failed > 0) {
+          console.log(`Recurring entries: ${result.processed} processed, ${result.failed} failed`);
+        }
+      }
+    } catch (err) {
+      console.error("Recurring entries scheduler error:", err);
     }
   };
 
@@ -197,6 +209,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["009_email.sql",           "SELECT 1 FROM information_schema.tables WHERE table_name = 'email_preferences'"],
       ["010_onboarding.sql",      "SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_state'"],
       ["011_attachments.sql",     "SELECT 1 FROM information_schema.tables WHERE table_name = 'transaction_attachments'"],
+      ["012_recurring_entries.sql","SELECT 1 FROM information_schema.tables WHERE table_name = 'recurring_entries'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -230,6 +243,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "009_email.sql",
     "010_onboarding.sql",
     "011_attachments.sql",
+    "012_recurring_entries.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -311,6 +325,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "009_email.sqlite.sql",
     "010_onboarding.sqlite.sql",
     "011_attachments.sqlite.sql",
+    "012_recurring_entries.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {
