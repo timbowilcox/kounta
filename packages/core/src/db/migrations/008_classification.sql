@@ -46,8 +46,23 @@ CREATE INDEX IF NOT EXISTS idx_merchant_aliases_canonical
   ON merchant_aliases (canonical_name);
 
 -- Add is_personal and suggested_account_id to bank_transactions
-ALTER TABLE bank_transactions ADD COLUMN is_personal BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE bank_transactions ADD COLUMN suggested_account_id TEXT REFERENCES accounts(id);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'bank_transactions' AND column_name = 'is_personal'
+  ) THEN
+    ALTER TABLE bank_transactions ADD COLUMN is_personal BOOLEAN NOT NULL DEFAULT false;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'bank_transactions' AND column_name = 'suggested_account_id'
+  ) THEN
+    ALTER TABLE bank_transactions ADD COLUMN suggested_account_id TEXT REFERENCES accounts(id);
+  END IF;
+END $$;
 
 -- Seed merchant aliases for common SaaS vendors
 INSERT INTO merchant_aliases (id, canonical_name, alias, created_at) VALUES

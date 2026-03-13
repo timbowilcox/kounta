@@ -234,43 +234,51 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
 
   // ── 4. Apply each unapplied migration in order ──
   for (const migName of pgMigrations) {
-    const alreadyApplied = await db.get<{ name: string }>(
-      "SELECT name FROM _migrations WHERE name = $1",
-      [migName],
-    );
-    if (alreadyApplied) continue;
+    try {
+      const alreadyApplied = await db.get<{ name: string }>(
+        "SELECT name FROM _migrations WHERE name = $1",
+        [migName],
+      );
+      if (alreadyApplied) continue;
 
-    // Special case: 002 is enum-only, no SQL file for PG
-    if (migName === "002_audit_action_updated.sql") {
-      try {
-        await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
-      } catch { /* already exists */ }
+      // Special case: 002 is enum-only, no SQL file for PG
+      if (migName === "002_audit_action_updated.sql") {
+        try {
+          await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
+        } catch { /* already exists */ }
+        await db.run(
+          "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+          [migName],
+        );
+        console.log(`Applied PostgreSQL migration: ${migName}`);
+        continue;
+      }
+
+      const migPath = join(migrationsDir, migName);
+      if (!existsSync(migPath)) {
+        console.warn(`Migration file not found, skipping: ${migName}`);
+        continue;
+      }
+
+      const sql = readFileSync(migPath, "utf-8");
+      await db.exec(sql);
+
       await db.run(
         "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
         [migName],
       );
       console.log(`Applied PostgreSQL migration: ${migName}`);
-      continue;
+    } catch (err) {
+      console.error(`Migration ${migName} failed (continuing):`, err);
     }
-
-    const migPath = join(migrationsDir, migName);
-    if (!existsSync(migPath)) {
-      console.warn(`Migration file not found, skipping: ${migName}`);
-      continue;
-    }
-
-    const sql = readFileSync(migPath, "utf-8");
-    await db.exec(sql);
-
-    await db.run(
-      "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
-      [migName],
-    );
-    console.log(`Applied PostgreSQL migration: ${migName}`);
   }
 
   // ── 5. Ensure system user exists ──
-  await ensureSystemUser(db);
+  try {
+    await ensureSystemUser(db);
+  } catch (err) {
+    console.error("Failed to ensure system user (continuing):", err);
+  }
 };
 
 /** Apply all SQLite migrations in order. */

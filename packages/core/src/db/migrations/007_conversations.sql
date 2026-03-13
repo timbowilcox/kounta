@@ -6,9 +6,9 @@
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS conversations (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  ledger_id   UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ledger_id   TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   title       TEXT,
   messages    JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),

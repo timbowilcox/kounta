@@ -2,8 +2,8 @@
 -- Tracks conversational onboarding flow and progress checklist items
 
 CREATE TABLE IF NOT EXISTS onboarding_state (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   business_type TEXT,
   business_age TEXT,
   payment_processor TEXT,
@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS onboarding_state (
 );
 
 CREATE TABLE IF NOT EXISTS onboarding_checklist (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   item TEXT NOT NULL,
   completed BOOLEAN NOT NULL DEFAULT false,
   completed_at TIMESTAMPTZ,
