@@ -210,6 +210,9 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["010_onboarding.sql",      "SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_state'"],
       ["011_attachments.sql",     "SELECT 1 FROM information_schema.tables WHERE table_name = 'transaction_attachments'"],
       ["012_recurring_entries.sql","SELECT 1 FROM information_schema.tables WHERE table_name = 'recurring_entries'"],
+      ["013_closed_periods.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'closed_periods'"],
+      ["014_global_classifications.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'global_classifications'"],
+      ["015_stripe_connect.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_connections'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -245,6 +248,8 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "011_attachments.sql",
     "012_recurring_entries.sql",
     "013_closed_periods.sql",
+    "014_global_classifications.sql",
+    "015_stripe_connect.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -328,6 +333,8 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "011_attachments.sqlite.sql",
     "012_recurring_entries.sqlite.sql",
     "013_closed_periods.sqlite.sql",
+    "014_global_classifications.sqlite.sql",
+    "015_stripe_connect.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {
