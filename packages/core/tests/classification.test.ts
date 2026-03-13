@@ -33,6 +33,10 @@ const migration008 = readFileSync(
   resolve(__dirname, "../src/db/migrations/008_classification.sqlite.sql"),
   "utf-8",
 );
+const migration014 = readFileSync(
+  resolve(__dirname, "../src/db/migrations/014_global_classifications.sqlite.sql"),
+  "utf-8",
+);
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
@@ -45,6 +49,7 @@ const createTestDb = async (): Promise<Database> => {
   db.exec(migration006);
   db.exec(migration007);
   db.exec(migration008);
+  db.exec(migration014);
   return db;
 };
 

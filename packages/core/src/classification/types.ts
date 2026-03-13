@@ -4,7 +4,7 @@
 
 export type RuleType = "exact" | "contains" | "regex" | "amount_range";
 export type RuleField = "description" | "merchant_name" | "category";
-export type ClassificationLayer = "exact_rule" | "fuzzy_match" | "ai_suggestion";
+export type ClassificationLayer = "exact_rule" | "fuzzy_match" | "global_consensus" | "ai_suggestion";
 
 export interface ClassificationRule {
   readonly id: string;

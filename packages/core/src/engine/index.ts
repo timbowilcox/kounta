@@ -98,6 +98,7 @@ import { createLedgerSchema, createAccountSchema, postTransactionSchema, createI
 import { createAliasService } from "../classification/aliases.js";
 import { createRulesService } from "../classification/rules.js";
 import { createClassificationEngine } from "../classification/engine.js";
+import { recordClassification } from "../classification/global.js";
 import type {
   ClassificationRule,
   ClassificationResult,
@@ -3275,6 +3276,20 @@ export class LedgerEngine {
            WHERE id = ?`,
           [result.accountId, result.isPersonal ? 1 : 0, result.confidence, ts, row.id],
         );
+
+        // Fire-and-forget: record high-confidence auto-matches to global table
+        const canonical = await this.getAliasService().normalise(row.description);
+        const acctRow = await this.db.get<{ type: string }>(
+          "SELECT type FROM accounts WHERE id = ?",
+          [result.accountId],
+        );
+        if (acctRow) {
+          recordClassification(
+            this.db, canonical, acctRow.type, result.accountName,
+            result.accountCode, result.isPersonal,
+          ).catch(() => { /* never block */ });
+        }
+
         classified++;
       } else if (result.confidence >= 0.60) {
         // Mark as suggested — keep status as pending but set the suggestion
@@ -3327,6 +3342,20 @@ export class LedgerEngine {
       accountId,
       isPersonal,
     );
+
+    // Fire-and-forget: record to global crowdsourced classification table.
+    // Only record if we have a real account (not personal-only mark).
+    if (accountId) {
+      const acct = await this.db.get<{ type: string; name: string; code: string }>(
+        "SELECT type, name, code FROM accounts WHERE id = ?",
+        [accountId],
+      );
+      if (acct) {
+        const canonical = await this.getAliasService().normalise(row.description);
+        recordClassification(this.db, canonical, acct.type, acct.name, acct.code, isPersonal)
+          .catch(() => { /* never block the user action */ });
+      }
+    }
 
     const updated = await this.db.get<BankTransactionRow>(
       "SELECT * FROM bank_transactions WHERE id = ?",

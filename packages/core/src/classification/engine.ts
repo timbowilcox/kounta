@@ -7,7 +7,8 @@
 //   2. Check exact-match rules (rule_type = 'exact')
 //   3. Check contains rules (rule_type = 'contains')
 //   4. Fuzzy match: normalised merchant has a rule under different alias
-//   5. Return null — AI layer handles this separately (future)
+//   5. Global consensus: crowdsourced classification intelligence
+//   6. Return null — AI layer handles this separately (future)
 //
 // When a rule matches: increment hit_count, update last_hit_at, return
 // ClassificationResult with confidence from the rule.
@@ -20,11 +21,13 @@ import type {
 } from "./types.js";
 import type { AliasService } from "./aliases.js";
 import { nowUtc } from "../engine/id.js";
+import { queryGlobalClassification, findMatchingAccount } from "./global.js";
 
 interface AccountLookupRow {
   id: string;
   code: string;
   name: string;
+  type: string;
 }
 
 export interface ClassificationEngine {
@@ -41,7 +44,7 @@ export function createClassificationEngine(
   /** Look up account code + name by ID. */
   const getAccountInfo = async (accountId: string): Promise<AccountLookupRow | null> => {
     const row = await db.get<AccountLookupRow>(
-      "SELECT id, code, name FROM accounts WHERE id = ?",
+      "SELECT id, code, name, type FROM accounts WHERE id = ?",
       [accountId],
     );
     return row ?? null;
@@ -110,6 +113,34 @@ export function createClassificationEngine(
     return null;
   };
 
+  /** Try global consensus classification for a canonical merchant. */
+  const tryGlobalConsensus = async (
+    ledgerId: string,
+    canonicalMerchant: string,
+  ): Promise<ClassificationResult | null> => {
+    const globalResult = await queryGlobalClassification(db, canonicalMerchant);
+    if (!globalResult) return null;
+
+    // Get all accounts in this ledger to find a matching one
+    const userAccounts = await db.all<AccountLookupRow>(
+      "SELECT id, code, name, type FROM accounts WHERE ledger_id = ?",
+      [ledgerId],
+    );
+
+    const matched = findMatchingAccount(userAccounts, globalResult);
+    if (!matched) return null; // No reasonable match in user's chart of accounts
+
+    return {
+      accountId: matched.id,
+      accountCode: matched.code,
+      accountName: matched.name,
+      isPersonal: globalResult.isPersonal,
+      confidence: globalResult.confidence,
+      ruleId: null,
+      layer: "global_consensus",
+    };
+  };
+
   return {
     async classify(
       ledgerId: string,
@@ -168,7 +199,11 @@ export function createClassificationEngine(
         if (fuzzyResult) return fuzzyResult;
       }
 
-      // Step 7: No match found — return null (AI layer handles this separately)
+      // Step 7: Global consensus — crowdsourced classification intelligence
+      const globalResult = await tryGlobalConsensus(ledgerId, canonicalName);
+      if (globalResult) return globalResult;
+
+      // Step 8: No match found — return null (AI layer handles this separately)
       return null;
     },
   };
