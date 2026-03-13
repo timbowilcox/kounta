@@ -196,14 +196,14 @@ export class LedgeApiError extends Error {
 
   constructor(
     status: number,
-    body: { code: string; message: string; details?: unknown[]; requestId?: string },
+    body?: { code?: string; message?: string; details?: unknown[]; requestId?: string } | null,
   ) {
-    super(body.message);
+    super(body?.message ?? `API error (${status})`);
     this.name = "LedgeApiError";
     this.status = status;
-    this.code = body.code;
-    this.details = body.details;
-    this.requestId = body.requestId;
+    this.code = body?.code ?? "UNKNOWN";
+    this.details = body?.details;
+    this.requestId = body?.requestId;
   }
 }
 

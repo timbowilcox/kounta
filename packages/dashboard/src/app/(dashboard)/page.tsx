@@ -18,7 +18,16 @@ function getGreeting(): string {
 }
 
 export default async function OverviewPage() {
-  const { client, ledgerId } = await getSessionClient();
+  let client: Awaited<ReturnType<typeof getSessionClient>>["client"] | null = null;
+  let ledgerId = "";
+  try {
+    const sc = await getSessionClient();
+    client = sc.client;
+    ledgerId = sc.ledgerId;
+  } catch {
+    // Session or API key missing — render empty state
+  }
+
   const session = await auth();
   const rawName = session?.user?.name;
   const firstName = rawName
@@ -27,11 +36,23 @@ export default async function OverviewPage() {
       ? session.user.email.split("@")[0].charAt(0).toUpperCase() + session.user.email.split("@")[0].slice(1)
       : "";
 
-  const [ledger, accountsList, txResult] = await Promise.all([
-    client.ledgers.get(ledgerId),
-    client.accounts.list(ledgerId),
-    client.transactions.list(ledgerId, { limit: 5 }),
-  ]);
+  // Fetch data with safe defaults — each call fails independently
+  type LedgerInfo = { name: string; currency: string; accountingBasis: string };
+  let ledger: LedgerInfo = { name: "Ledge", currency: "USD", accountingBasis: "accrual" };
+  let accountsList: AccountWithBalance[] = [];
+  let recentTransactions: TransactionWithLines[] = [];
+
+  if (client && ledgerId) {
+    const [ledgerResult, accountsResult, txResult] = await Promise.allSettled([
+      client.ledgers.get(ledgerId),
+      client.accounts.list(ledgerId),
+      client.transactions.list(ledgerId, { limit: 5 }),
+    ]);
+
+    if (ledgerResult.status === "fulfilled") ledger = ledgerResult.value as LedgerInfo;
+    if (accountsResult.status === "fulfilled") accountsList = accountsResult.value;
+    if (txResult.status === "fulfilled") recentTransactions = [...(txResult.value?.data ?? [])];
+  }
 
   const accountCount = accountsList.length;
   const totalAssets = accountsList
@@ -43,8 +64,6 @@ export default async function OverviewPage() {
   const totalExpenses = accountsList
     .filter((a: AccountWithBalance) => a.type === "expense")
     .reduce((sum: number, a: AccountWithBalance) => sum + Math.abs(a.balance), 0);
-
-  const recentTransactions = txResult.data;
 
   return (
     <div>
