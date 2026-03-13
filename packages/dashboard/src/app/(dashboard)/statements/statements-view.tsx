@@ -8,6 +8,7 @@ import {
   fetchCashFlow,
 } from "@/lib/actions";
 import type { StatementResponse } from "@ledge/sdk";
+import { ContextualPrompt } from "@/components/contextual-prompt";
 
 type Tab = "pnl" | "balance_sheet" | "cash_flow";
 
@@ -57,12 +58,15 @@ export function StatementsView({
 
   return (
     <div>
-      <h1
-        className="font-bold"
-        style={{ fontSize: 24, color: "#0A0A0A", marginBottom: 28, fontFamily: "var(--font-family-display)" }}
-      >
-        Statements
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+        <h1
+          className="font-bold"
+          style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
+        >
+          Statements
+        </h1>
+        <ContextualPrompt placeholder="Generate or ask about statements..." />
+      </div>
 
       {/* Underline tab selector */}
       <div

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { formatCurrency, formatDate, truncateId } from "@/lib/format";
 import { fetchTransactions } from "@/lib/actions";
 import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@ledge/sdk";
+import { ContextualPrompt } from "@/components/contextual-prompt";
 
 interface Props {
   initialData: PaginatedResult<TransactionWithLines>;
@@ -40,12 +41,15 @@ export function TransactionsView({ initialData, accountMap }: Props) {
 
   return (
     <div>
-      <h1
-        className="font-bold"
-        style={{ fontSize: 24, color: "#0A0A0A", marginBottom: 28, fontFamily: "var(--font-family-display)" }}
-      >
-        Transactions
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+        <h1
+          className="font-bold"
+          style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
+        >
+          Transactions
+        </h1>
+        <ContextualPrompt placeholder="Search or ask about transactions..." />
+      </div>
 
       {/* Search and filters */}
       <div className="flex items-center" style={{ gap: 16, marginBottom: 24 }}>

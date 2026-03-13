@@ -263,3 +263,73 @@ a {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* Chat / Assistant animations */
+
+@keyframes chat-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes chat-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes chat-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.chat-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #3B82F6;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: chat-spin 0.8s linear infinite;
+}
+
+.chat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #CBD5E1;
+  animation: chat-pulse 1.5s infinite;
+}
+
+.chat-dot-1 { animation-delay: 0s; }
+.chat-dot-2 { animation-delay: 0.3s; }
+.chat-dot-3 { animation-delay: 0.6s; }
+
+.chat-tool-shimmer {
+  background: linear-gradient(90deg, #F7F7F6 25%, #EFEFED 50%, #F7F7F6 75%) !important;
+  background-size: 200% 100%;
+  animation: chat-shimmer 2s infinite;
+}
+
+.chat-prompt-btn:hover {
+  transform: scale(1.02);
+  border-color: rgba(59,130,246,0.3) !important;
+  background-color: rgba(59,130,246,0.04) !important;
+}
+
+/* Command bar */
+
+@keyframes command-bar-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes command-bar-slide-up {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Contextual prompt */
+
+.contextual-prompt:hover {
+  border-color: rgba(0,0,0,0.18);
+  color: rgba(0,0,0,0.55);
+}

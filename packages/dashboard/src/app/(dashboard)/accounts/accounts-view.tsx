@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import type { AccountWithBalance, AccountType } from "@ledge/sdk";
+import { ContextualPrompt } from "@/components/contextual-prompt";
 
 const typeOrder: Record<string, number> = {
   asset: 0, liability: 1, equity: 2, revenue: 3, expense: 4,
@@ -44,12 +45,15 @@ export function AccountsView({ accounts }: { accounts: AccountWithBalance[] }) {
 
   return (
     <div>
-      <h1
-        className="font-bold"
-        style={{ fontSize: 24, color: "#0A0A0A", marginBottom: 28, fontFamily: "var(--font-family-display)" }}
-      >
-        Account Tree
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+        <h1
+          className="font-bold"
+          style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
+        >
+          Account Tree
+        </h1>
+        <ContextualPrompt placeholder="Ask about account balances..." />
+      </div>
 
       <div className="card" style={{ padding: 0 }}>
         <table className="w-full">

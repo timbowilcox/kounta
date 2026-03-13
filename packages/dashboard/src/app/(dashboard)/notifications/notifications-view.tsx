@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { Notification, NotificationSeverity, NotificationStatus, NotificationType } from "@ledge/sdk";
+import { ContextualPrompt } from "@/components/contextual-prompt";
 
 interface NotificationsViewProps {
   notifications: readonly unknown[];
@@ -298,26 +299,29 @@ export function NotificationsView({ notifications, error }: NotificationsViewPro
 function PageHeader({ unreadCount }: { unreadCount: number }) {
   return (
     <>
-      <div className="flex items-center" style={{ gap: 12, marginBottom: 8 }}>
-        <h1
-          className="font-bold"
-          style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
-        >
-          Insights
-        </h1>
-        {unreadCount > 0 && (
-          <span
-            className="text-xs font-bold"
-            style={{
-              backgroundColor: "#3B82F6",
-              color: "#fff",
-              padding: "2px 10px",
-              borderRadius: 12,
-            }}
+      <div className="flex items-center" style={{ gap: 12, marginBottom: 8, justifyContent: "space-between" }}>
+        <div className="flex items-center" style={{ gap: 12 }}>
+          <h1
+            className="font-bold"
+            style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
           >
-            {unreadCount} new
-          </span>
-        )}
+            Insights
+          </h1>
+          {unreadCount > 0 && (
+            <span
+              className="text-xs font-bold"
+              style={{
+                backgroundColor: "#3B82F6",
+                color: "#fff",
+                padding: "2px 10px",
+                borderRadius: 12,
+              }}
+            >
+              {unreadCount} new
+            </span>
+          )}
+        </div>
+        <ContextualPrompt placeholder="Ask about trends and insights..." />
       </div>
       <p className="text-sm" style={{ color: "rgba(0,0,0,0.55)", marginBottom: 32, lineHeight: 1.6 }}>
         Automated financial insights and alerts generated from your ledger activity.

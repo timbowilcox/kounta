@@ -3,6 +3,7 @@ import { formatCurrency, formatDate, formatNumber, truncateId } from "@/lib/form
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import type { TransactionWithLines, AccountWithBalance } from "@ledge/sdk";
+import { ContextualPrompt } from "@/components/contextual-prompt";
 
 export const dynamic = "force-dynamic";
 
@@ -40,16 +41,19 @@ export default async function OverviewPage() {
   return (
     <div>
       {/* Greeting */}
-      <div style={{ marginBottom: 32 }}>
-        <h1
-          className="font-bold"
-          style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)", marginBottom: 4 }}
-        >
-          {getGreeting()}, {firstName}
-        </h1>
-        <p className="text-sm" style={{ color: "rgba(0,0,0,0.45)" }}>
-          {ledger.name} &middot; {ledger.currency} &middot; {ledger.accountingBasis}
-        </p>
+      <div style={{ marginBottom: 32, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <h1
+            className="font-bold"
+            style={{ fontSize: 24, color: "#0A0A0A", fontFamily: "var(--font-family-display)", marginBottom: 4 }}
+          >
+            {getGreeting()}, {firstName}
+          </h1>
+          <p className="text-sm" style={{ color: "rgba(0,0,0,0.45)" }}>
+            {ledger.name} &middot; {ledger.currency} &middot; {ledger.accountingBasis}
+          </p>
+        </div>
+        <ContextualPrompt placeholder="Ask about your financial overview..." />
       </div>
 
       {/* Metric cards */}
