@@ -1,10 +1,14 @@
 "use client";
 
 import type { BankConnection } from "@ledge/sdk";
+import { useState, useTransition } from "react";
+import { fetchBankTransactions, markBankTransactionPersonal } from "@/lib/actions";
+import type { BankTransactionSummary } from "@/lib/actions";
 
 interface BankFeedsViewProps {
   connections: unknown[];
   error: string | null;
+  initialBankTxns: BankTransactionSummary[];
 }
 
 const statusBadge: Record<string, { label: string; className: string }> = {
@@ -25,7 +29,7 @@ function formatDate(iso: string | null): string {
   });
 }
 
-export function BankFeedsView({ connections, error }: BankFeedsViewProps) {
+export function BankFeedsView({ connections, error, initialBankTxns }: BankFeedsViewProps) {
   const typed = connections as BankConnection[];
 
   if (error === "upgrade") {
@@ -177,6 +181,9 @@ export function BankFeedsView({ connections, error }: BankFeedsViewProps) {
         </table>
       </div>
 
+      {/* Bank Transactions */}
+      <BankTransactionsSection initialTxns={initialBankTxns} />
+
       {/* API guide */}
       <div style={{ marginTop: 32 }}>
         <ApiGuide />
@@ -315,6 +322,167 @@ function ApiGuide() {
       </div>
     </div>
   );
+}
+
+type BankTxnFilter = "business" | "personal" | "all";
+
+function BankTransactionsSection({ initialTxns }: { initialTxns: BankTransactionSummary[] }) {
+  const [txns, setTxns] = useState<BankTransactionSummary[]>(initialTxns);
+  const [filter, setFilter] = useState<BankTxnFilter>("business");
+  const [isPending, startTransition] = useTransition();
+
+  const handleFilterChange = (f: BankTxnFilter) => {
+    setFilter(f);
+    startTransition(async () => {
+      const result = await fetchBankTransactions(f);
+      setTxns(result);
+    });
+  };
+
+  const handleMarkPersonal = (txnId: string) => {
+    startTransition(async () => {
+      const ok = await markBankTransactionPersonal(txnId);
+      if (ok) {
+        setTxns((prev) => prev.filter((t) => t.id !== txnId));
+      }
+    });
+  };
+
+  if (txns.length === 0 && filter === "business") {
+    return null; // Don't show empty business section
+  }
+
+  return (
+    <div style={{ marginTop: 32 }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+        <div className="section-label">Bank Transactions</div>
+        <div className="flex" style={{ gap: 4 }}>
+          {(["business", "personal", "all"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => handleFilterChange(f)}
+              className="capitalize"
+              style={{
+                padding: "0 12px",
+                height: 28,
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                backgroundColor: filter === f ? "#F0F6FF" : "transparent",
+                color: filter === f ? "#0066FF" : "#999999",
+                border: filter === f ? "1px solid rgba(0,102,255,0.2)" : "1px solid transparent",
+                cursor: "pointer",
+                transition: "all 150ms ease",
+              }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 0, opacity: isPending ? 0.6 : 1, transition: "opacity 150ms" }}>
+        <table className="w-full">
+          <thead>
+            <tr>
+              <th className="table-header" style={{ width: 100 }}>Date</th>
+              <th className="table-header">Description</th>
+              <th className="table-header text-right" style={{ width: 120 }}>Amount</th>
+              <th className="table-header text-right" style={{ width: 100 }}>Status</th>
+              <th className="table-header text-right" style={{ width: 100 }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {txns.map((txn) => {
+              const isPersonal = txn.isPersonal;
+              return (
+                <tr key={txn.id} className="table-row">
+                  <td
+                    className="table-cell font-mono"
+                    style={{ fontSize: 13, color: isPersonal ? "rgba(0,0,0,0.36)" : "#666666" }}
+                  >
+                    {formatDate(txn.date)}
+                  </td>
+                  <td className="table-cell" style={{ fontSize: 13, color: isPersonal ? "rgba(0,0,0,0.36)" : "#0A0A0A", fontWeight: 500 }}>
+                    <span>{txn.description}</span>
+                    {isPersonal && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginLeft: 8,
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          backgroundColor: "rgba(220,38,38,0.08)",
+                          color: "#DC2626",
+                        }}
+                      >
+                        Personal
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className="table-cell text-right font-mono"
+                    style={{ fontSize: 13, color: isPersonal ? "rgba(0,0,0,0.36)" : undefined }}
+                  >
+                    {formatBankAmount(txn.amount)}
+                  </td>
+                  <td className="table-cell text-right">
+                    <span className={bankStatusBadge(txn.status)}>
+                      {txn.status}
+                    </span>
+                  </td>
+                  <td className="table-cell text-right">
+                    {!isPersonal && txn.status === "pending" && (
+                      <button
+                        onClick={() => handleMarkPersonal(txn.id)}
+                        disabled={isPending}
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: "1px solid #E5E5E5",
+                          backgroundColor: "#FFFFFF",
+                          color: "#666666",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Mark personal
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {txns.length === 0 && (
+              <tr>
+                <td colSpan={5} className="table-cell text-center" style={{ padding: 32, color: "#999999", fontSize: 13 }}>
+                  No {filter === "all" ? "" : filter} bank transactions found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatBankAmount(cents: number): string {
+  const abs = Math.abs(cents);
+  const formatted = `$${(abs / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return cents < 0 ? `-${formatted}` : formatted;
+}
+
+function bankStatusBadge(status: string): string {
+  switch (status) {
+    case "posted": return "badge badge-green";
+    case "matched": return "badge badge-green";
+    case "pending": return "badge badge-amber";
+    case "ignored": return "badge badge-red";
+    default: return "badge";
+  }
 }
 
 function methodColor(method: string): string {

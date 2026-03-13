@@ -16,7 +16,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import type { Database } from "@ledge/core";
-import { SqliteDatabase, PostgresDatabase, LedgerEngine } from "@ledge/core";
+import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@ledge/core";
+import type { AttachmentStorage } from "@ledge/core";
 import { createApp } from "./app.js";
 import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence } from "@ledge/core";
 
@@ -78,7 +79,16 @@ const main = async () => {
   }
 
   const engine = new LedgerEngine(db);
-  const app = createApp(engine);
+
+  // Initialize attachment storage if configured
+  let storage: AttachmentStorage | undefined;
+  const attachmentsDir = process.env["LEDGE_ATTACHMENTS_DIR"];
+  if (attachmentsDir) {
+    storage = new LocalFileStorage(attachmentsDir);
+    console.log(`Attachment storage: ${attachmentsDir}`);
+  }
+
+  const app = createApp(engine, storage);
 
   const port = parseInt(process.env["PORT"] ?? "3001", 10);
 
@@ -214,6 +224,8 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["conversations", "007_conversations.sql"],
       ["classification_rules", "008_classification.sql"],
       ["email_preferences", "009_email.sql"],
+      ["onboarding_state", "010_onboarding.sql"],
+      ["transaction_attachments", "011_attachments.sql"],
     ];
     for (const [checkTable, fileName] of laterMigrations) {
       const tableExists = await db.get<{ exists: boolean }>(
@@ -284,6 +296,8 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       "007_conversations.sql",
       "008_classification.sql",
       "009_email.sql",
+      "010_onboarding.sql",
+      "011_attachments.sql",
     ];
     for (const fileName of laterFiles) {
       const migPath = join(migrationsDir, fileName);
@@ -317,6 +331,8 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "007_conversations.sqlite.sql",
     "008_classification.sqlite.sql",
     "009_email.sqlite.sql",
+    "010_onboarding.sqlite.sql",
+    "011_attachments.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

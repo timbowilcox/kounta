@@ -2,7 +2,7 @@
 // Hono context types for the Ledge API.
 // ---------------------------------------------------------------------------
 
-import type { LedgerEngine } from "@ledge/core";
+import type { LedgerEngine, AttachmentStorage } from "@ledge/core";
 
 export type Env = {
   Variables: {
@@ -15,5 +15,7 @@ export type Env = {
     };
     /** Unique request ID for tracing */
     requestId: string;
+    /** Attachment file storage (optional — set if LEDGE_ATTACHMENTS_DIR is configured) */
+    storage?: AttachmentStorage;
   };
 };

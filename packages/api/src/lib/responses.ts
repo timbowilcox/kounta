@@ -33,6 +33,7 @@ const httpStatusForCode: Record<string, number> = {
   [ErrorCode.BANK_FEED_PROVIDER_ERROR]: 502,
   [ErrorCode.BANK_FEED_NOT_CONFIGURED]: 503,
   [ErrorCode.NOTIFICATION_NOT_FOUND]: 404,
+  [ErrorCode.ATTACHMENT_NOT_FOUND]: 404,
   [ErrorCode.EXCHANGE_RATE_NOT_FOUND]: 404,
   [ErrorCode.CURRENCY_NOT_ENABLED]: 400,
   [ErrorCode.CURRENCY_MISMATCH]: 400,

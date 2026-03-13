@@ -24,6 +24,7 @@ const typeLabels: Record<NotificationType, string> = {
   unclassified_transactions: "Unclassified",
   sync_complete: "Sync Complete",
   reconciliation_needed: "Reconciliation",
+  receipt_prompt: "Receipt Prompt",
   system: "System",
 };
 
@@ -35,6 +36,7 @@ function typeIcon(type: NotificationType): string {
     case "unclassified_transactions": return "📂";
     case "sync_complete": return "✅";
     case "reconciliation_needed": return "🔄";
+    case "receipt_prompt": return "🧾";
     case "system": return "🔔";
   }
 }

@@ -2223,6 +2223,7 @@ export class LedgerEngine {
     bankAccountId?: string;
     ledgerId?: string;
     status?: BankTransaction["status"];
+    isPersonal?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<Result<readonly BankTransaction[]>> {
@@ -2240,6 +2241,10 @@ export class LedgerEngine {
     if (params.status) {
       conditions.push("status = ?");
       values.push(params.status);
+    }
+    if (params.isPersonal !== undefined) {
+      conditions.push("is_personal = ?");
+      values.push(params.isPersonal ? 1 : 0);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -2332,6 +2337,20 @@ export class LedgerEngine {
     if (!row) return err(createError(ErrorCode.INTERNAL_ERROR, "Bank transaction not found"));
 
     const ts = nowUtc();
+
+    // Personal transactions cannot be confirmed into the ledger — auto-ignore
+    const isPersonal = row.is_personal === 1 || row.is_personal === true;
+    if (isPersonal && action === "confirm") {
+      await this.db.run(
+        "UPDATE bank_transactions SET status = 'ignored', updated_at = ? WHERE id = ?",
+        [ts, bankTransactionId]
+      );
+      const updated = await this.db.get<BankTransactionRow>(
+        "SELECT * FROM bank_transactions WHERE id = ?",
+        [bankTransactionId]
+      );
+      return ok(toBankTransaction(updated!));
+    }
 
     if (action === "ignore") {
       await this.db.run(

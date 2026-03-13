@@ -9,6 +9,7 @@ export type NotificationType =
   | "unclassified_transactions"
   | "sync_complete"
   | "reconciliation_needed"
+  | "receipt_prompt"
   | "system";
 
 export type NotificationSeverity = "info" | "warning" | "critical";

@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import { generateId } from "@ledge/core";
-import type { LedgerEngine } from "@ledge/core";
+import type { LedgerEngine, AttachmentStorage } from "@ledge/core";
 import type { Env } from "./lib/context.js";
 import { ledgerRoutes } from "./routes/ledgers.js";
 import { accountRoutes } from "./routes/accounts.js";
@@ -26,8 +26,10 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { provisionRoutes } from "./routes/provision.js";
 import { billingRoutes } from "./routes/billing.js";
 import { emailRoutes } from "./routes/email.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
+import { transactionAttachmentRoutes, attachmentRoutes } from "./routes/attachments.js";
 
-export const createApp = (engine: LedgerEngine): Hono<Env> => {
+export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Hono<Env> => {
   const app = new Hono<Env>();
 
   // ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ export const createApp = (engine: LedgerEngine): Hono<Env> => {
   app.use("*", async (c, next) => {
     c.set("engine", engine);
     c.set("requestId", generateId());
+    if (storage) c.set("storage", storage);
     await next();
   });
 
@@ -85,6 +88,8 @@ export const createApp = (engine: LedgerEngine): Hono<Env> => {
   app.route("/v1/ledgers/:ledgerId/notifications", notificationRoutes);
   app.route("/v1/ledgers/:ledgerId/currencies", currencyRoutes);
   app.route("/v1/ledgers/:ledgerId/conversations", conversationRoutes);
+  app.route("/v1/ledgers/:ledgerId/transactions/:transactionId/attachments", transactionAttachmentRoutes);
+  app.route("/v1/attachments", attachmentRoutes);
   app.route("/v1/imports/:batchId", importBatchRoutes);
   app.route("/v1/ledgers", ledgerRoutes);
   app.route("/v1/templates", templateRoutes);
@@ -92,6 +97,7 @@ export const createApp = (engine: LedgerEngine): Hono<Env> => {
   app.route("/v1/admin", provisionRoutes);
   app.route("/v1/billing", billingRoutes);
   app.route("/v1/email", emailRoutes);
+  app.route("/v1/onboarding", onboardingRoutes);
 
   // ---------------------------------------------------------------------------
   // 404 fallback

@@ -248,6 +248,106 @@ export async function fetchEmailPreferences(): Promise<EmailPreferences | null> 
   return json.data;
 }
 
+// --- Onboarding ---------------------------------------------------------------
+
+export interface OnboardingState {
+  id: string;
+  userId: string;
+  businessType: string | null;
+  businessAge: string | null;
+  paymentProcessor: string | null;
+  bankSituation: string | null;
+  businessStructure: string | null;
+  country: string | null;
+  currency: string | null;
+  completedSteps: string[];
+  completedAt: string | null;
+}
+
+export interface OnboardingChecklistItem {
+  id: string;
+  userId: string;
+  item: string;
+  completed: boolean;
+  completedAt: string | null;
+  dismissed: boolean;
+}
+
+export interface SetupResult {
+  ledgerId: string;
+  templateSlug: string;
+  accountCount: number;
+  steps: string[];
+}
+
+async function onboardingFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
+  const session = await auth();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  if (!session?.apiKey) throw new Error("No authenticated session");
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.apiKey}`,
+  };
+  if (body) headers["Content-Type"] = "application/json";
+
+  return fetch(`${apiUrl}/v1/onboarding${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+}
+
+export async function fetchOnboardingState(): Promise<OnboardingState | null> {
+  const res = await onboardingFetch("/state");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function createOnboardingState(): Promise<OnboardingState | null> {
+  const res = await onboardingFetch("/state", "POST");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function updateOnboardingStateAction(updates: Partial<OnboardingState>): Promise<OnboardingState | null> {
+  const res = await onboardingFetch("/state", "PUT", updates);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function executeOnboardingSetup(): Promise<SetupResult | null> {
+  const res = await onboardingFetch("/setup", "POST");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchChecklist(): Promise<OnboardingChecklistItem[]> {
+  const res = await onboardingFetch("/checklist");
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function completeChecklistItemAction(item: string): Promise<void> {
+  await onboardingFetch(`/checklist/${item}/complete`, "POST");
+}
+
+export async function dismissChecklistAction(): Promise<void> {
+  await onboardingFetch("/checklist/dismiss", "POST");
+}
+
+export async function fetchClassificationStats(): Promise<{ total: number; classified: number; unclassified: number }> {
+  const res = await onboardingFetch("/classification-stats");
+  if (!res.ok) return { total: 0, classified: 0, unclassified: 0 };
+  const json = await res.json();
+  return json.data;
+}
+
 export async function updateEmailPreferences(updates: Partial<Omit<EmailPreferences, "userId">>): Promise<EmailPreferences | null> {
   const session = await auth();
   if (!session?.apiKey) return null;
@@ -267,3 +367,143 @@ export async function updateEmailPreferences(updates: Partial<Omit<EmailPreferen
   const json = await res.json();
   return json.data;
 }
+
+// --- Bank Transactions (personal filtering) --------------------------------
+
+export interface BankTransactionSummary {
+  id: string;
+  bankAccountId: string;
+  ledgerId: string;
+  date: string;
+  amount: number;
+  type: string;
+  description: string;
+  category: string | null;
+  status: string;
+  isPersonal: boolean;
+  matchedTransactionId: string | null;
+  matchConfidence: number | null;
+  suggestedAccountId: string | null;
+  suggestedAccountName: string | null;
+}
+
+export async function fetchBankTransactions(
+  filter?: "business" | "personal" | "all",
+  limit = 50,
+): Promise<BankTransactionSummary[]> {
+  const session = await auth();
+  if (!session?.apiKey) return [];
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const params = new URLSearchParams();
+  if (filter === "business") params.set("isPersonal", "false");
+  else if (filter === "personal") params.set("isPersonal", "true");
+  if (limit) params.set("limit", String(limit));
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/bank-feeds/transactions${qs}`, {
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function markBankTransactionPersonal(bankTxnId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(
+    `${apiUrl}/v1/ledgers/${ledgerId}/bank-feeds/transactions/${bankTxnId}/mark-personal`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    },
+  );
+
+  return res.ok;
+}
+
+// --- Attachments -----------------------------------------------------------
+
+export interface AttachmentSummary {
+  id: string;
+  transactionId: string;
+  ledgerId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  downloadUrl: string;
+}
+
+export async function fetchAttachments(transactionId: string): Promise<AttachmentSummary[]> {
+  const session = await auth();
+  if (!session?.apiKey) return [];
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(
+    `${apiUrl}/v1/ledgers/${ledgerId}/transactions/${transactionId}/attachments`,
+    {
+      headers: { Authorization: `Bearer ${session.apiKey}` },
+      cache: "no-store",
+    },
+  );
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  const raw: Omit<AttachmentSummary, "downloadUrl">[] = json.data ?? [];
+  return raw.map((a) => ({ ...a, downloadUrl: `${apiUrl}/v1/attachments/${a.id}/download` }));
+}
+
+export async function uploadAttachment(transactionId: string, formData: FormData): Promise<AttachmentSummary | null> {
+  const session = await auth();
+  if (!session?.apiKey) return null;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(
+    `${apiUrl}/v1/ledgers/${ledgerId}/transactions/${transactionId}/attachments`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.apiKey}` },
+      body: formData,
+      cache: "no-store",
+    },
+  );
+
+  if (!res.ok) return null;
+  const json = await res.json();
+  const att = json.data;
+  return att ? { ...att, downloadUrl: `${apiUrl}/v1/attachments/${att.id}/download` } : null;
+}
+
+export async function deleteAttachmentAction(attachmentId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/attachments/${attachmentId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${session.apiKey}` },
+    cache: "no-store",
+  });
+
+  return res.ok;
+}
+

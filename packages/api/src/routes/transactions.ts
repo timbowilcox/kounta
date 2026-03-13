@@ -67,6 +67,37 @@ transactionRoutes.post("/", async (c) => {
   // Increment usage counter (best-effort — migration may not be applied)
   try { await engine.incrementUsage(ledgerId!); } catch { /* ignore */ }
 
+  // Receipt prompt — notify for expenses over $75 (7500 cents)
+  try {
+    const RECEIPT_THRESHOLD = 7500;
+    const tx = result.value;
+    const expenseDebits = tx.lines.filter((l) => l.direction === "debit" && l.amount >= RECEIPT_THRESHOLD);
+    if (expenseDebits.length > 0) {
+      // Check if any debit line targets an expense account
+      for (const line of expenseDebits) {
+        const acctResult = await engine.getAccount(line.accountId);
+        if (acctResult.ok && acctResult.value.type === "expense") {
+          const apiKeyInfo = c.get("apiKeyInfo");
+          if (apiKeyInfo) {
+            const amountDisplay = `$${(line.amount / 100).toFixed(2)}`;
+            await engine.createNotification({
+              ledgerId: ledgerId!,
+              userId: apiKeyInfo.userId,
+              type: "receipt_prompt",
+              severity: "info",
+              title: `Attach receipt for ${amountDisplay} expense`,
+              body: `Transaction "${tx.memo}" includes a ${amountDisplay} expense. Consider attaching a receipt for audit readiness.`,
+              data: { transactionId: tx.id, accountId: line.accountId, amount: line.amount },
+              actionType: "attach_receipt",
+              actionData: { transactionId: tx.id },
+            });
+          }
+          break; // One notification per transaction
+        }
+      }
+    }
+  } catch { /* Receipt prompt is best-effort — never block transaction creation */ }
+
   // Add usage header
   const newCount = (enforcement.count ?? 0) + 1;
   c.header("X-Ledge-Usage", String(newCount) + "/" + String(enforcement.limit ?? 500));

@@ -118,6 +118,32 @@ export async function GET(request: Request) {
       }
 
       const categoryLabel = decodeURIComponent(category);
+
+      // If marked as personal, call the mark-personal endpoint instead
+      if (categoryLabel === "personal" || categoryLabel === "Personal — exclude") {
+        try {
+          const ledgerId = url.searchParams.get("ledger") ?? (tokenData.payload as Record<string, string>).ledgerId;
+          if (ledgerId) {
+            await fetch(
+              `${LEDGE_API_URL}/v1/ledgers/${ledgerId}/bank-feeds/transactions/${txnId}/mark-personal`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${LEDGE_ADMIN_SECRET}`,
+                },
+              },
+            );
+          }
+        } catch {
+          // Best-effort — still show success page
+        }
+        return new NextResponse(
+          successPage("Marked as personal (excluded from ledger)"),
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        );
+      }
+
       // In a full implementation, this would call the classification API
       // For now, return success confirmation
       return new NextResponse(

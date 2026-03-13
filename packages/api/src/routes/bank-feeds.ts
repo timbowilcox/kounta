@@ -296,24 +296,33 @@ bankFeedRoutes.get("/transactions", async (c) => {
   if (planError) return planError;
 
   const engine = c.get("engine");
+  const ledgerId = c.req.param("ledgerId")!;
   const bankAccountId = c.req.query("bankAccountId");
   const status = c.req.query("status") as "pending" | "matched" | "posted" | "ignored" | undefined;
+  const isPersonalStr = c.req.query("isPersonal");
+  const isPersonal = isPersonalStr === "true" ? true : isPersonalStr === "false" ? false : undefined;
   const limitStr = c.req.query("limit");
   const limit = limitStr ? parseInt(limitStr, 10) : undefined;
 
-  if (!bankAccountId) {
+  if (!bankAccountId && !ledgerId) {
     return errorResponse(
       c,
-      createError(ErrorCode.VALIDATION_ERROR, "bankAccountId query parameter is required", [
+      createError(ErrorCode.VALIDATION_ERROR, "bankAccountId or ledgerId is required", [
         {
           field: "bankAccountId",
-          suggestion: "Provide ?bankAccountId=xxx to list transactions for a specific bank account.",
+          suggestion: "Provide ?bankAccountId=xxx to list transactions for a specific bank account, or use the ledgerId from the URL path.",
         },
       ])
     );
   }
 
-  const result = await engine.listBankTransactions({ bankAccountId, status, limit });
+  const result = await engine.listBankTransactions({
+    bankAccountId: bankAccountId ?? undefined,
+    ledgerId,
+    status,
+    isPersonal,
+    limit,
+  });
   if (!result.ok) return errorResponse(c, result.error);
 
   return success(c, result.value);
@@ -351,5 +360,28 @@ bankFeedRoutes.post("/transactions/:bankTransactionId/confirm", async (c) => {
   );
   if (!result.ok) return errorResponse(c, result.error);
 
+  return success(c, result.value);
+});
+
+/** POST /v1/ledgers/:ledgerId/bank-feeds/transactions/:bankTransactionId/mark-personal — Mark as personal */
+bankFeedRoutes.post("/transactions/:bankTransactionId/mark-personal", async (c) => {
+  const planError = await requirePaidPlan(c);
+  if (planError) return planError;
+
+  const engine = c.get("engine");
+  const bankTransactionId = c.req.param("bankTransactionId")!;
+
+  // classifyBankTransaction sets is_personal and auto-generates a rule
+  const result = await engine.classifyBankTransaction(
+    bankTransactionId,
+    "", // no target account — personal transactions don't map to a ledger account
+    true, // isPersonal
+  );
+  if (!result.ok) return errorResponse(c, result.error);
+
+  // Also set status to ignored so it won't appear in pending lists
+  await engine.confirmBankTransactionMatch(bankTransactionId, "ignore");
+
+  // Return the updated bank transaction from the classify result
   return success(c, result.value);
 });
