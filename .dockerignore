@@ -10,5 +10,14 @@ docs
 .env.*
 *.log
 packages/dashboard
-packages/mcp
 packages/sdk
+
+# MCP — exclude non-essential files but keep src + config for Dockerfile.mcp
+packages/mcp/tests
+packages/mcp/dist
+packages/mcp/node_modules
+
+# Core — exclude non-essential files but keep src + config for builds
+packages/core/tests
+packages/core/dist
+packages/core/node_modules
