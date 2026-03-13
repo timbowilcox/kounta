@@ -20,7 +20,7 @@ export const getOAuthUrl = (clientId: string, redirectUri: string, state?: strin
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
-    scope: "read_only",
+    scope: "read_write",
     redirect_uri: redirectUri,
   });
   if (state) params.set("state", state);
