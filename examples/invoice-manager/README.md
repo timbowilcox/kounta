@@ -119,7 +119,7 @@ src/
     account-balances.tsx  # Renders all account balances grouped by type
     recent-transactions.tsx # Transaction journal
   lib/
-    ledge.ts              # Kounta SDK singleton
+    kounta.ts             # Kounta SDK singleton
     format.ts             # Currency and date formatters
     seed.ts               # CLI seed script
 ```

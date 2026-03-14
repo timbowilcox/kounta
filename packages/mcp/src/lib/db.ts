@@ -82,7 +82,7 @@ async function initSqlite(): Promise<InitResult> {
   await db.run(
     `INSERT INTO users (id, email, name, auth_provider, auth_provider_id)
      VALUES (?, ?, ?, ?, ?)`,
-    [SYSTEM_USER_ID, "system@ledge.local", "System", "system", "system"],
+    [SYSTEM_USER_ID, "system@kounta.local", "System", "system", "system"],
   );
 
   const engine = new LedgerEngine(db);
@@ -102,7 +102,7 @@ async function ensureSystemUser(db: Database): Promise<void> {
     `INSERT INTO users (id, email, name, auth_provider, auth_provider_id)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (auth_provider, auth_provider_id) DO NOTHING`,
-    [SYSTEM_USER_ID, "system@ledge.local", "System", "system", "system"],
+    [SYSTEM_USER_ID, "system@kounta.local", "System", "system", "system"],
   );
   if (result.changes > 0) {
     console.log("[mcp] Created system user for MCP operations");

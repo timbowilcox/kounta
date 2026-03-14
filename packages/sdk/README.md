@@ -13,7 +13,7 @@ npm install @kounta/sdk
 ```typescript
 import { Kounta } from "@kounta/sdk";
 
-const ledge = new Kounta({
+const kounta = new Kounta({
   apiKey: "ldg_live_...",             // your API key
   adminSecret: "sk_admin_...",        // optional — only for admin operations
   baseUrl: "https://api.kounta.ai", // optional — defaults to production
@@ -26,21 +26,21 @@ The SDK is organised into modules that mirror the REST API:
 
 | Module              | Description                                   |
 | ------------------- | --------------------------------------------- |
-| `ledge.ledgers`     | Create and retrieve ledgers                   |
-| `ledge.accounts`    | Create, list, and retrieve accounts           |
-| `ledge.transactions`| Post, list, retrieve, and reverse transactions|
-| `ledge.reports`     | Income statement, balance sheet, cash flow     |
-| `ledge.audit`       | List audit trail entries                       |
-| `ledge.imports`     | Upload CSV/OFX files, review matches, confirm  |
-| `ledge.templates`   | List, recommend, and apply chart-of-accounts   |
-| `ledge.apiKeys`     | Create, list, and revoke API keys              |
+| `kounta.ledgers`     | Create and retrieve ledgers                   |
+| `kounta.accounts`    | Create, list, and retrieve accounts           |
+| `kounta.transactions`| Post, list, retrieve, and reverse transactions|
+| `kounta.reports`     | Income statement, balance sheet, cash flow     |
+| `kounta.audit`       | List audit trail entries                       |
+| `kounta.imports`     | Upload CSV/OFX files, review matches, confirm  |
+| `kounta.templates`   | List, recommend, and apply chart-of-accounts   |
+| `kounta.apiKeys`     | Create, list, and revoke API keys              |
 
 ## Post a transaction
 
 Every transaction must balance — debits equal credits, amounts in integer cents.
 
 ```typescript
-const txn = await ledge.transactions.post("ldg_abc123", {
+const txn = await kounta.transactions.post("ldg_abc123", {
   date: "2025-03-10",
   memo: "March subscription revenue",
   lines: [
@@ -56,7 +56,7 @@ console.log(txn.status); // "posted"
 ## Generate a P&L (income statement)
 
 ```typescript
-const pnl = await ledge.reports.incomeStatement(
+const pnl = await kounta.reports.incomeStatement(
   "ldg_abc123",
   "2025-01-01",  // startDate
   "2025-03-31",  // endDate
@@ -78,27 +78,27 @@ for (const section of pnl.sections) {
 
 ```typescript
 // Balance sheet — point-in-time snapshot
-const bs = await ledge.reports.balanceSheet("ldg_abc123", "2025-03-31");
+const bs = await kounta.reports.balanceSheet("ldg_abc123", "2025-03-31");
 
 // Cash-flow statement — period-based
-const cf = await ledge.reports.cashFlow("ldg_abc123", "2025-01-01", "2025-03-31");
+const cf = await kounta.reports.cashFlow("ldg_abc123", "2025-01-01", "2025-03-31");
 ```
 
 ## Accounts
 
 ```typescript
 // Create accounts
-const cash = await ledge.accounts.create("ldg_abc123", {
+const cash = await kounta.accounts.create("ldg_abc123", {
   code: "1000",
   name: "Cash",
   type: "asset",
 });
 
 // List all accounts (with current balances)
-const accounts = await ledge.accounts.list("ldg_abc123");
+const accounts = await kounta.accounts.list("ldg_abc123");
 
 // Get a single account
-const acct = await ledge.accounts.get("ldg_abc123", cash.id);
+const acct = await kounta.accounts.get("ldg_abc123", cash.id);
 console.log(acct.balance); // integer cents
 ```
 
@@ -107,7 +107,7 @@ console.log(acct.balance); // integer cents
 Transactions are immutable. To undo one, reverse it — this creates a new offsetting entry:
 
 ```typescript
-const reversal = await ledge.transactions.reverse(
+const reversal = await kounta.transactions.reverse(
   "ldg_abc123",
   txn.id,
   "Customer refund",
@@ -121,7 +121,7 @@ List endpoints return `{ data, nextCursor }`:
 ```typescript
 let cursor: string | undefined;
 do {
-  const page = await ledge.transactions.list("ldg_abc123", {
+  const page = await kounta.transactions.list("ldg_abc123", {
     limit: 50,
     cursor,
   });
@@ -143,7 +143,7 @@ import { readFileSync } from "node:fs";
 
 // 1. Upload
 const csv = readFileSync("bank-march.csv", "utf-8");
-const result = await ledge.imports.upload("ldg_abc123", {
+const result = await kounta.imports.upload("ldg_abc123", {
   fileContent: csv,
   fileType: "csv",
   filename: "bank-march.csv",
@@ -158,7 +158,7 @@ for (const row of result.rows) {
 }
 
 // 3. Confirm / reject / override matches
-await ledge.imports.confirmMatches(result.batch.id, [
+await kounta.imports.confirmMatches(result.batch.id, [
   { rowId: result.rows[0].id, action: "confirm" },
   { rowId: result.rows[1].id, action: "reject" },
   { rowId: result.rows[2].id, action: "override", overrideTransactionId: "txn_..." },
@@ -171,17 +171,17 @@ Bootstrap a ledger with a pre-built chart of accounts:
 
 ```typescript
 // List available templates
-const templates = await ledge.templates.list();
+const templates = await kounta.templates.list();
 
 // Get AI-powered recommendations
-const recs = await ledge.templates.recommend({
+const recs = await kounta.templates.recommend({
   industry: "software",
   businessModel: "subscription",
 });
 console.log(recs[0].template.name, recs[0].reason);
 
 // Apply to a ledger (admin)
-const applied = await ledge.templates.apply("ldg_abc123", "saas");
+const applied = await kounta.templates.apply("ldg_abc123", "saas");
 console.log(`Created ${applied.count} accounts`);
 ```
 
@@ -224,7 +224,7 @@ Non-2xx responses throw a `KountaApiError` with structured fields:
 import { KountaApiError, ErrorCode } from "@kounta/sdk";
 
 try {
-  await ledge.transactions.post("ldg_abc123", { /* unbalanced */ });
+  await kounta.transactions.post("ldg_abc123", { /* unbalanced */ });
 } catch (e) {
   if (e instanceof KountaApiError) {
     console.log(e.status);    // 400
@@ -271,7 +271,7 @@ import type {
 Pass a custom `fetch` for edge runtimes, testing, or middleware:
 
 ```typescript
-const ledge = new Kounta({
+const kounta = new Kounta({
   apiKey: "ldg_live_...",
   fetch: myCustomFetch,
 });

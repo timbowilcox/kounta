@@ -5,7 +5,7 @@ A Next.js example app that uses **@kounta/sdk** to track SaaS subscription reven
 ## What This Example Shows
 
 - **Stripe webhook integration** — receives `invoice.payment_succeeded` events and records them as balanced journal entries
-- **Live financial statements** — P&L and Balance Sheet rendered server-side on every page load using `ledge.reports.incomeStatement()` and `ledge.reports.balanceSheet()`
+- **Live financial statements** — P&L and Balance Sheet rendered server-side on every page load using `kounta.reports.incomeStatement()` and `kounta.reports.balanceSheet()`
 - **SaaS template** — uses Kounta's built-in SaaS chart of accounts (18 accounts including Subscription Revenue, Deferred Revenue, Hosting & Infrastructure, etc.)
 - **Idempotent transaction posting** — Stripe invoice IDs used as idempotency keys prevent duplicate entries
 - **Simulate payments** — click a button to simulate payments without needing a real Stripe account
@@ -142,7 +142,7 @@ examples/saas-tracker/
 │   │   ├── recent-transactions.tsx # Transaction list table
 │   │   └── simulate-payment.tsx    # Payment simulation button
 │   └── lib/
-│       ├── ledge.ts                # Kounta SDK client singleton
+│       ├── kounta.ts               # Kounta SDK client singleton
 │       ├── format.ts               # Currency/date formatters
 │       └── seed.ts                 # CLI seed script
 ├── .env.example                    # Environment template
@@ -203,4 +203,4 @@ const balanceSheet = await kounta.reports.balanceSheet(LEDGER_ID, today);
 - **Add more Stripe events** — handle `charge.refunded` to post reversal entries
 - **Track deferred revenue** — when a customer prepays annually, debit Cash / credit Deferred Revenue, then recognize monthly
 - **Add usage-based billing** — post metered usage from your billing system to account 4200
-- **Connect your bank** — use `ledge.imports.upload()` to reconcile bank statements against Kounta entries
+- **Connect your bank** — use `kounta.imports.upload()` to reconcile bank statements against Kounta entries

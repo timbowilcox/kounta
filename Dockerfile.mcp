@@ -2,7 +2,7 @@
 # Kounta MCP Server — HTTP/SSE deployment image
 #
 # Connects to the same PostgreSQL database as the API.
-# Deploy as a separate Railway service at mcp.useledge.ai.
+# Deploy as a separate Railway service at mcp.kounta.ai.
 #
 # Required env vars:
 #   DATABASE_URL          — PostgreSQL connection string (same as API)
@@ -28,14 +28,14 @@ COPY packages/core/package.json packages/core/tsconfig.json packages/core/
 COPY packages/mcp/package.json  packages/mcp/tsconfig.json  packages/mcp/
 
 # Install dependencies (frozen lockfile for reproducibility)
-RUN pnpm install --frozen-lockfile --filter=@ledge/core --filter=@ledge/mcp
+RUN pnpm install --frozen-lockfile --filter=@kounta/core --filter=@kounta/mcp
 
 # Copy source files
 COPY packages/core/src packages/core/src
 COPY packages/mcp/src  packages/mcp/src
 
 # Build core first, then mcp (dependency order)
-RUN pnpm --filter=@ledge/core build && pnpm --filter=@ledge/mcp build
+RUN pnpm --filter=@kounta/core build && pnpm --filter=@kounta/mcp build
 
 # ---- Stage 2: Prune to production deps only -----------------------------------
 FROM node:20-slim AS pruner
@@ -48,19 +48,19 @@ COPY --from=builder /build/package.json /build/pnpm-workspace.yaml /build/pnpm-l
 COPY --from=builder /build/packages/core/package.json packages/core/
 COPY --from=builder /build/packages/mcp/package.json  packages/mcp/
 
-RUN pnpm install --frozen-lockfile --prod --filter=@ledge/core --filter=@ledge/mcp
+RUN pnpm install --frozen-lockfile --prod --filter=@kounta/core --filter=@kounta/mcp
 
 # ---- Stage 3: Runtime ----------------------------------------------------------
 FROM node:20-slim AS runtime
 
 LABEL org.opencontainers.image.title="Kounta MCP Server" \
       org.opencontainers.image.description="MCP server with SSE transport for Kounta accounting engine" \
-      org.opencontainers.image.vendor="getledge" \
-      org.opencontainers.image.url="https://getledge.dev"
+      org.opencontainers.image.vendor="kounta" \
+      org.opencontainers.image.url="https://kounta.ai"
 
 # Create non-root user
-RUN groupadd --gid 1001 ledge && \
-    useradd  --uid 1001 --gid ledge --shell /bin/false --create-home ledge
+RUN groupadd --gid 1001 kounta && \
+    useradd  --uid 1001 --gid kounta --shell /bin/false --create-home kounta
 
 WORKDIR /app
 
@@ -75,7 +75,7 @@ COPY --from=builder /build/packages/core/package.json packages/core/
 COPY --from=builder /build/packages/mcp/dist        packages/mcp/dist
 COPY --from=builder /build/packages/mcp/package.json  packages/mcp/
 
-USER ledge
+USER kounta
 
 ENV NODE_ENV=production \
     PORT=3005 \

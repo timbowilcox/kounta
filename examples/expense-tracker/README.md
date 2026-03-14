@@ -44,7 +44,7 @@ A Next.js app using **@kounta/sdk** that demonstrates Kounta's import and reconc
 ## Reconciliation Flow
 
 1. **Record expenses** — Creates double-entry transactions (debit expense, credit cash)
-2. **Import CSV** — `ledge.imports.upload()` parses the CSV and runs the matching engine
+2. **Import CSV** — `kounta.imports.upload()` parses the CSV and runs the matching engine
 3. **Matching engine scores** each imported row against existing transactions:
    - **Date score** (0–40 points): Exact match = 40, within 1 day = 30, within 3 days = 20
    - **Amount score** (0–40 points): Exact match = 40, within 1% = 30, within 5% = 20
@@ -116,13 +116,13 @@ The `sample-bank-statement.csv` has 12 rows — 10 that overlap with these trans
 
 | Method | Purpose |
 |--------|---------|
-| `ledge.transactions.post()` | Record an expense |
-| `ledge.transactions.list()` | Show recent transactions |
-| `ledge.accounts.list()` | Get account balances |
-| `ledge.imports.upload()` | Parse CSV and run matching |
-| `ledge.imports.confirmMatches()` | Confirm/reject matches |
-| `ledge.reports.incomeStatement()` | Generate P&L |
-| `ledge.reports.balanceSheet()` | Generate balance sheet |
+| `kounta.transactions.post()` | Record an expense |
+| `kounta.transactions.list()` | Show recent transactions |
+| `kounta.accounts.list()` | Get account balances |
+| `kounta.imports.upload()` | Parse CSV and run matching |
+| `kounta.imports.confirmMatches()` | Confirm/reject matches |
+| `kounta.reports.incomeStatement()` | Generate P&L |
+| `kounta.reports.balanceSheet()` | Generate balance sheet |
 
 ## Extension Ideas
 
