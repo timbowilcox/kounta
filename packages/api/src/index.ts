@@ -19,7 +19,7 @@ import type { Database } from "@ledge/core";
 import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@ledge/core";
 import type { AttachmentStorage } from "@ledge/core";
 import { createApp } from "./app.js";
-import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries } from "@ledge/core";
+import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition } from "@ledge/core";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -120,6 +120,18 @@ const main = async () => {
     } catch (err) {
       console.error("Recurring entries scheduler error:", err);
     }
+
+    // Process revenue recognition once per day at UTC midnight
+    try {
+      if (new Date().getUTCHours() === 0) {
+        const revResult = await processAllPendingRecognition(engine.getDb(), engine);
+        if (revResult.processed > 0 || revResult.failed > 0) {
+          console.log(`Revenue recognition: ${revResult.processed} processed, ${revResult.failed} failed`);
+        }
+      }
+    } catch (err) {
+      console.error("Revenue recognition scheduler error:", err);
+    }
   };
 
   // Run once at startup (after a short delay to let the server warm up)
@@ -213,6 +225,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["013_closed_periods.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'closed_periods'"],
       ["014_global_classifications.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'global_classifications'"],
       ["015_stripe_connect.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_connections'"],
+      ["016_revenue_recognition.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'revenue_schedules'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -250,6 +263,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "013_closed_periods.sql",
     "014_global_classifications.sql",
     "015_stripe_connect.sql",
+    "016_revenue_recognition.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -335,6 +349,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "013_closed_periods.sqlite.sql",
     "014_global_classifications.sqlite.sql",
     "015_stripe_connect.sqlite.sql",
+    "016_revenue_recognition.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

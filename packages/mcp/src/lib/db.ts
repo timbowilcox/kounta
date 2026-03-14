@@ -66,6 +66,7 @@ async function initSqlite(): Promise<InitResult> {
     "013_closed_periods.sqlite.sql",
     "014_global_classifications.sqlite.sql",
     "015_stripe_connect.sqlite.sql",
+    "016_revenue_recognition.sqlite.sql",
   ];
 
   for (const file of sqliteMigrations) {
