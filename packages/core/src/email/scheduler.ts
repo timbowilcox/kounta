@@ -280,7 +280,8 @@ export const checkOnboardingSequence = async (engine: LedgerEngine): Promise<num
           `SELECT COUNT(*) as count FROM bank_transactions bt
            JOIN bank_accounts ba ON bt.bank_account_id = ba.id
            JOIN bank_connections bc ON ba.connection_id = bc.id
-           WHERE bc.user_id = ? AND bt.matched_transaction_id IS NULL AND bt.is_personal = ?`,
+           JOIN ledgers l ON bc.ledger_id = l.id
+           WHERE l.owner_id = ? AND bt.matched_transaction_id IS NULL AND bt.is_personal = ?`,
           [user.id, false],
         );
         const count = result?.count ?? 0;
@@ -339,7 +340,8 @@ const buildDigestData = async (
      FROM bank_transactions bt
      JOIN bank_accounts ba ON bt.bank_account_id = ba.id
      JOIN bank_connections bc ON ba.connection_id = bc.id
-     WHERE bc.user_id = ? AND bt.matched_transaction_id IS NULL AND bt.is_personal = ?
+     JOIN ledgers l ON bc.ledger_id = l.id
+     WHERE l.owner_id = ? AND bt.matched_transaction_id IS NULL AND bt.is_personal = ?
      ORDER BY bt.date DESC
      LIMIT 10`,
     [userId, false],
