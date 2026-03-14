@@ -112,6 +112,20 @@ export type {
   StripeConnection,
   StripeConnectionStatus,
 
+  // Revenue Recognition
+  RevenueSchedule,
+  RevenueScheduleEntry,
+  RevenueScheduleWithEntries,
+  CreateScheduleInput,
+  UpdateScheduleInput,
+  RevenueMetrics,
+  MrrHistoryEntry,
+  ProcessingResult,
+  RevenueSourceType,
+  RevenueScheduleStatus,
+  RevenueEntryStatus,
+  RevenueFrequency,
+
 } from "@ledge/core";
 
 export type {
@@ -166,6 +180,11 @@ import type {
   RecurringEntryLog,
   Frequency,
   RecurringLineItem,
+  RevenueSchedule,
+  RevenueScheduleWithEntries,
+  RevenueMetrics,
+  MrrHistoryEntry,
+  ProcessingResult,
 } from "@ledge/core";
 
 import type {
@@ -267,6 +286,7 @@ export class Ledge {
   readonly recurring: RecurringModule;
   readonly periods: PeriodsModule;
   readonly stripeConnect: StripeConnectModule;
+  readonly revenue: RevenueModule;
 
   constructor(config: LedgeConfig) {
     this._apiKey = config.apiKey;
@@ -291,6 +311,7 @@ export class Ledge {
     this.recurring = new RecurringModule(this);
     this.periods = new PeriodsModule(this);
     this.stripeConnect = new StripeConnectModule(this);
+    this.revenue = new RevenueModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1185,5 +1206,78 @@ class StripeConnectModule {
   /** Trigger a manual sync of Stripe data (last 90 days). */
   async sync(): Promise<{ syncing: boolean; message: string }> {
     return this.c.request("POST", "/v1/stripe-connect/sync");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Revenue Module
+// ---------------------------------------------------------------------------
+
+class RevenueModule {
+  constructor(private readonly c: Ledge) {}
+
+  /** List revenue recognition schedules. */
+  async listSchedules(
+    opts?: {
+      status?: string;
+      customerName?: string;
+      stripeSubscriptionId?: string;
+      cursor?: string;
+      limit?: number;
+    },
+  ): Promise<PaginatedResult<RevenueSchedule>> {
+    const qs = buildQuery({
+      status: opts?.status,
+      customerName: opts?.customerName,
+      stripeSubscriptionId: opts?.stripeSubscriptionId,
+      cursor: opts?.cursor,
+      limit: opts?.limit,
+    });
+    return this.c.requestPaginated<RevenueSchedule>(`/v1/revenue/schedules${qs}`);
+  }
+
+  /** Get a single revenue schedule with all entries. */
+  async getSchedule(scheduleId: string): Promise<RevenueScheduleWithEntries> {
+    return this.c.request("GET", `/v1/revenue/schedules/${scheduleId}`);
+  }
+
+  /** Create a manual revenue recognition schedule. */
+  async createSchedule(input: {
+    totalAmount: number;
+    recognitionStart: string;
+    recognitionEnd: string;
+    currency?: string;
+    customerName?: string;
+    description?: string;
+    sourceRef?: string;
+    deferredRevenueAccountId?: string;
+    revenueAccountId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<RevenueScheduleWithEntries> {
+    return this.c.request("POST", "/v1/revenue/schedules", { body: input });
+  }
+
+  /** Update a revenue schedule (pause, cancel, resume). */
+  async updateSchedule(
+    scheduleId: string,
+    input: { action: "pause" | "cancel" | "resume"; reason?: string },
+  ): Promise<RevenueScheduleWithEntries> {
+    return this.c.request("PUT", `/v1/revenue/schedules/${scheduleId}`, { body: input });
+  }
+
+  /** Manually trigger revenue recognition processing. */
+  async processRecognition(): Promise<ProcessingResult> {
+    return this.c.request("POST", "/v1/revenue/process");
+  }
+
+  /** Get revenue metrics (MRR, ARR, deferred balance, etc.). */
+  async getMetrics(): Promise<RevenueMetrics> {
+    return this.c.request("GET", "/v1/revenue/metrics");
+  }
+
+  /** Get MRR history over time (last N months). */
+  async getMrrHistory(months?: number): Promise<MrrHistoryEntry[]> {
+    const qs = buildQuery({ months });
+    return this.c.request("GET", `/v1/revenue/mrr-history${qs}`);
   }
 }

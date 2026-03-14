@@ -194,7 +194,7 @@ describe("HTTP/SSE transport", () => {
     await client.connect(transport);
 
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(39);
+    expect(tools.length).toBe(44);
 
     const toolNames = tools.map((t) => t.name).sort();
     expect(toolNames).toContain("setup_ledger");
