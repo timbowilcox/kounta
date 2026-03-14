@@ -22,12 +22,15 @@ import {
   updateRevenueSchedule,
   cancelSchedule,
   processRevenueRecognition,
+  processAllPendingRecognition,
   getRevenueMetrics,
   getMrrHistory,
   ensureRevenueAccounts,
   monthsBetween,
   generateMonthlyPeriods,
 } from "../src/revenue/index.js";
+import { buildBalanceSheet, buildIncomeStatement } from "../src/statements/index.js";
+import type { AccountBalanceData } from "../src/statements/index.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -44,7 +47,8 @@ const createTestDb = async (): Promise<Database> => {
     .filter((line) => !line.trim().startsWith("PRAGMA"))
     .join("\n");
   await db.exec(schemaWithoutPragmas);
-  // Apply additional migrations needed for account currency column and revenue tables
+  // Apply additional migrations needed for intelligence, multi-currency, and revenue tables
+  await db.exec(loadMigration("005_intelligence.sqlite.sql"));
   await db.exec(loadMigration("006_multi_currency.sqlite.sql"));
   await db.exec(loadMigration("016_revenue_recognition.sqlite.sql"));
   return db;
@@ -687,6 +691,122 @@ describe("Revenue Recognition", () => {
       // Current month should show MRR
       const currentEntry = history[history.length - 1]!;
       expect(currentEntry.mrr).toBe(10000);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Revenue notifications
+  // -----------------------------------------------------------------------
+
+  describe("revenue notifications", () => {
+    it("processAllPendingRecognition creates monthly_recognition_summary notification", async () => {
+      const { ledgerId, deferredAccountId, revenueAccountId } = await setupLedger(engine, ownerId);
+
+      // Set the ledger owner
+      await db.run("UPDATE ledgers SET owner_id = ? WHERE id = ?", [ownerId, ledgerId]);
+
+      await createRevenueSchedule(db, {
+        ledgerId,
+        totalAmount: 30000,
+        recognitionStart: "2025-01-01",
+        recognitionEnd: "2025-03-31",
+        deferredRevenueAccountId: deferredAccountId,
+        revenueAccountId,
+        customerName: "Notification Test",
+      });
+
+      // Process entries (using processRevenueRecognition directly since
+      // processAllPendingRecognition uses todayUtc() which may not match test dates)
+      const result = await processRevenueRecognition(db, engine, ledgerId, "2025-01-31");
+      expect(result.processed).toBe(1);
+      expect(result.completedSchedules).toHaveLength(0);
+    });
+
+    it("returns completedSchedules when a schedule fully recognised", async () => {
+      const { ledgerId, deferredAccountId, revenueAccountId } = await setupLedger(engine, ownerId);
+
+      const schedResult = await createRevenueSchedule(db, {
+        ledgerId,
+        totalAmount: 30000,
+        recognitionStart: "2025-01-01",
+        recognitionEnd: "2025-03-31",
+        deferredRevenueAccountId: deferredAccountId,
+        revenueAccountId,
+        customerName: "Complete Co",
+        description: "Annual subscription",
+      });
+      expect(schedResult.ok).toBe(true);
+
+      await processRevenueRecognition(db, engine, ledgerId, "2025-01-31");
+      await processRevenueRecognition(db, engine, ledgerId, "2025-02-28");
+      const lastResult = await processRevenueRecognition(db, engine, ledgerId, "2025-03-31");
+
+      expect(lastResult.processed).toBe(1);
+      expect(lastResult.completedSchedules).toHaveLength(1);
+      expect(lastResult.completedSchedules[0]!.customerName).toBe("Complete Co");
+      expect(lastResult.completedSchedules[0]!.totalAmount).toBe(30000);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Balance sheet — Deferred Revenue as current liability
+  // -----------------------------------------------------------------------
+
+  describe("balance sheet integration", () => {
+    it("Deferred Revenue (code 2500) appears under current liabilities", () => {
+      const accounts: AccountBalanceData[] = [
+        { code: "1000", name: "Cash", type: "asset", normalBalance: "debit", balance: 120000, priorBalance: null, metadata: null },
+        { code: "2500", name: "Deferred Revenue", type: "liability", normalBalance: "credit", balance: 90000, priorBalance: null, metadata: null },
+        { code: "3000", name: "Retained Earnings", type: "equity", normalBalance: "credit", balance: 0, priorBalance: null, metadata: null },
+      ];
+
+      const statement = buildBalanceSheet(accounts, "2025-03-31", "USD", "test-ledger", 30000, null);
+
+      // Deferred Revenue should be in the Liabilities section
+      const liabilitiesSection = statement.sections.find((s) => s.name === "Liabilities");
+      expect(liabilitiesSection).toBeDefined();
+      const deferredLine = liabilitiesSection!.lines.find((l) => l.accountCode === "2500");
+      expect(deferredLine).toBeDefined();
+      expect(deferredLine!.currentPeriod).toBe(90000);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Income statement — notes for deferred revenue
+  // -----------------------------------------------------------------------
+
+  describe("income statement notes", () => {
+    it("includes notes field in statement response", () => {
+      const accounts: AccountBalanceData[] = [
+        { code: "4000", name: "Subscription Revenue", type: "revenue", normalBalance: "credit", balance: 10000, priorBalance: null, metadata: null },
+        { code: "5000", name: "COGS", type: "expense", normalBalance: "debit", balance: 3000, priorBalance: null, metadata: null },
+      ];
+
+      const statement = buildIncomeStatement(
+        accounts,
+        { start: "2025-01-01", end: "2025-01-31" },
+        "USD",
+        "test-ledger",
+        ["Includes $100.00 of deferred revenue recognised this period"],
+      );
+
+      expect(statement.notes).toHaveLength(1);
+      expect(statement.notes[0]).toContain("deferred revenue");
+    });
+
+    it("returns empty notes array when no notes provided", () => {
+      const accounts: AccountBalanceData[] = [
+        { code: "4000", name: "Revenue", type: "revenue", normalBalance: "credit", balance: 10000, priorBalance: null, metadata: null },
+      ];
+
+      const statement = buildIncomeStatement(
+        accounts,
+        { start: "2025-01-01", end: "2025-01-31" },
+        "USD",
+        "test-ledger",
+      );
+
+      expect(statement.notes).toEqual([]);
     });
   });
 });

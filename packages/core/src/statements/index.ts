@@ -55,14 +55,15 @@ const isCashAccount = (a: { code: string; metadata: Record<string, unknown> | nu
 const isCurrentAccount = (a: { code: string; type: AccountType; metadata: Record<string, unknown> | null }): boolean => {
   const n = codeNum(a.code);
   if (a.type === "asset") return (n >= 1000 && n < 1500) || tagsInclude(a.metadata, "current", "cash");
-  if (a.type === "liability") return (n >= 2000 && n < 2500) || tagsInclude(a.metadata, "current");
+  // Liabilities: 2000-2599 are current (includes 2500 Deferred Revenue)
+  if (a.type === "liability") return (n >= 2000 && n < 2600) || tagsInclude(a.metadata, "current");
   return false;
 };
 
 const isNonCurrentAccount = (a: { code: string; type: AccountType; metadata: Record<string, unknown> | null }): boolean => {
   const n = codeNum(a.code);
   if (a.type === "asset") return (n >= 1500 && n < 2000) || tagsInclude(a.metadata, "non-current");
-  if (a.type === "liability") return (n >= 2500 && n < 3000) || tagsInclude(a.metadata, "non-current");
+  if (a.type === "liability") return (n >= 2600 && n < 3000) || tagsInclude(a.metadata, "non-current");
   return false;
 };
 
@@ -106,6 +107,7 @@ export const buildIncomeStatement = (
   period: StatementPeriod,
   currency: string,
   ledgerId: string,
+  notes?: readonly string[],
 ): StatementResponse => {
   const revenueAccounts = accounts.filter((a) => a.type === "revenue");
   const cogsAccounts = accounts.filter((a) => a.type === "expense" && isCogsAccount(a));
@@ -141,6 +143,7 @@ export const buildIncomeStatement = (
     sections: [revenueSection, cogsSection, opexSection],
     totals: { totalRevenue, totalCogs, grossProfit, totalOpex, netIncome },
     warnings,
+    notes: notes ?? [],
     plainLanguageSummary: summary,
   };
 };
@@ -206,6 +209,7 @@ export const buildBalanceSheet = (
     sections: [assetsSection, liabilitiesSection, equitySection],
     totals: { totalAssets, totalLiabilities, totalEquity },
     warnings,
+    notes: [],
     plainLanguageSummary: summary,
   };
 };
@@ -325,6 +329,7 @@ export const buildCashFlowStatement = (
     sections: [operatingSection, investingSection, financingSection],
     totals: { operatingTotal, investingTotal, financingTotal, netCashChange, startingCash, endingCash },
     warnings,
+    notes: [],
     plainLanguageSummary: summary,
   };
 };

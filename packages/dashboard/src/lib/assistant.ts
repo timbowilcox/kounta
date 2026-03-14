@@ -221,6 +221,26 @@ const tools: Anthropic.Tool[] = [
       required: ["description", "lineItems", "frequency", "nextRunDate"],
     },
   },
+  {
+    name: "get_revenue_metrics",
+    description: "Get revenue recognition metrics: MRR, ARR, deferred revenue balance, recognised this month, and active schedule count.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "list_revenue_schedules",
+    description: "List revenue recognition schedules. Optionally filter by status (active, completed, cancelled, paused).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["active", "completed", "cancelled", "paused"], description: "Filter by schedule status" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -329,6 +349,16 @@ async function executeTool(
           details: input,
         },
         isWriteConfirmation: true,
+      };
+
+    case "get_revenue_metrics":
+      return { output: await client.revenue.getMetrics() };
+
+    case "list_revenue_schedules":
+      return {
+        output: await client.revenue.listSchedules({
+          status: input.status as string | undefined,
+        }),
       };
 
     default:

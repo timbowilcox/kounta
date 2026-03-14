@@ -12,6 +12,7 @@ import type {
   CashPositionData,
   AnomalyData,
   UnclassifiedData,
+  LargeDeferredBalanceData,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -317,6 +318,45 @@ export async function detectAnomalies(
   }
 
   return anomalies;
+}
+
+// ---------------------------------------------------------------------------
+// Large Deferred Balance — alert when deferred revenue is disproportionately high
+// ---------------------------------------------------------------------------
+
+export async function analyzeDeferredBalance(
+  db: Database,
+  ledgerId: string,
+): Promise<LargeDeferredBalanceData | null> {
+  // Total deferred revenue (amount_remaining on active/paused schedules)
+  const deferredRow = await db.get<{ total: number | null }>(
+    `SELECT SUM(amount_remaining) AS total
+     FROM revenue_schedules
+     WHERE ledger_id = ? AND status IN ('active', 'paused')`,
+    [ledgerId],
+  );
+  const deferredBalance = Number(deferredRow?.total ?? 0);
+  if (deferredBalance === 0) return null;
+
+  // Average monthly recognised over the last 3 months
+  const threeMonthsAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    .toISOString().split("T")[0]!;
+
+  const recognisedRow = await db.get<{ total: number | null }>(
+    `SELECT SUM(e.amount) AS total
+     FROM revenue_schedule_entries e
+     WHERE e.ledger_id = ? AND e.status = 'posted' AND e.posted_at >= ?`,
+    [ledgerId, `${threeMonthsAgo}T00:00:00`],
+  );
+  const totalRecognised3m = Number(recognisedRow?.total ?? 0);
+  const monthlyRecognised = totalRecognised3m > 0 ? Math.round(totalRecognised3m / 3) : 0;
+
+  // Only alert if deferred > 3x monthly recognised
+  if (monthlyRecognised <= 0) return null;
+  const monthsOfDeferred = Math.round((deferredBalance / monthlyRecognised) * 10) / 10;
+  if (monthsOfDeferred <= 3) return null;
+
+  return { deferredBalance, monthlyRecognised, monthsOfDeferred };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,3 @@
+-- Ledge: Migration 017 — Revenue Recognition Notification Types (SQLite)
+-- No schema changes needed — SQLite notifications table uses TEXT for type.
+-- This file is a no-op placeholder to keep migration numbering consistent.

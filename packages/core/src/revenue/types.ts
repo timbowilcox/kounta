@@ -86,7 +86,15 @@ export interface MrrHistoryEntry {
   readonly mrr: number;
 }
 
+export interface CompletedScheduleInfo {
+  readonly scheduleId: string;
+  readonly customerName: string;
+  readonly totalAmount: number;
+  readonly description: string | null;
+}
+
 export interface ProcessingResult {
   readonly processed: number;
   readonly totalRecognised: number;
+  readonly completedSchedules: readonly CompletedScheduleInfo[];
 }

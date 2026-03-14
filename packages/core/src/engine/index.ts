@@ -87,12 +87,14 @@ import {
   analyzeCashPosition,
   detectAnomalies,
   findUnclassifiedTransactions,
+  analyzeDeferredBalance,
 } from "../intelligence/analyzer.js";
 import {
   renderMonthlySummary,
   renderCashPosition,
   renderAnomalies,
   renderUnclassified,
+  renderLargeDeferredBalance,
 } from "../intelligence/renderer.js";
 import { createLedgerSchema, createAccountSchema, postTransactionSchema, createImportSchema, confirmMatchesSchema } from "../schemas/index.js";
 import { createAliasService } from "../classification/aliases.js";
@@ -1558,8 +1560,28 @@ export class LedgerEngine {
       });
     }
 
+    // Check for deferred revenue activity during this period
+    const notes: string[] = [];
+    try {
+      const deferredActivity = await this.db.get<{ total: number | null }>(
+        `SELECT SUM(e.amount) AS total
+         FROM revenue_schedule_entries e
+         JOIN revenue_schedules s ON e.schedule_id = s.id
+         WHERE e.ledger_id = ? AND e.status = 'posted'
+           AND e.posted_at >= ? AND e.posted_at <= ?`,
+        [ledgerId, `${startDate}T00:00:00`, `${endDate}T23:59:59`],
+      );
+      const recognised = Number(deferredActivity?.total ?? 0);
+      if (recognised > 0) {
+        const dollars = (recognised / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        notes.push(`Includes $${dollars} of deferred revenue recognised this period`);
+      }
+    } catch {
+      // revenue_schedule_entries table may not exist — skip
+    }
+
     return ok(
-      buildIncomeStatement(accounts, { start: startDate, end: endDate }, ledger.currency, ledgerId),
+      buildIncomeStatement(accounts, { start: startDate, end: endDate }, ledger.currency, ledgerId, notes),
     );
   }
 
@@ -2766,6 +2788,22 @@ export class LedgerEngine {
         title: rendered.title,
         body: rendered.body,
         data: unclassified as unknown as Record<string, unknown>,
+      });
+      if (result.ok) created.push(result.value);
+    }
+
+    // 5. Large deferred revenue balance
+    const deferredData = await analyzeDeferredBalance(this.db, ledgerId);
+    if (deferredData) {
+      const rendered = renderLargeDeferredBalance(deferredData);
+      const result = await this.createNotification({
+        ledgerId,
+        userId,
+        type: "large_deferred_balance",
+        severity: "info",
+        title: rendered.title,
+        body: rendered.body,
+        data: deferredData as unknown as Record<string, unknown>,
       });
       if (result.ok) created.push(result.value);
     }

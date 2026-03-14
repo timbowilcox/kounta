@@ -15,8 +15,14 @@ import type {
   RevenueMetrics,
   MrrHistoryEntry,
   ProcessingResult,
+  CompletedScheduleInfo,
 } from "./types.js";
 import type { Result, PaginatedResult } from "../types/index.js";
+import {
+  renderMonthlyRecognitionSummary,
+  renderScheduleCompletion,
+} from "../intelligence/renderer.js";
+import type { MonthlyRecognitionSummaryData, ScheduleCompletionData } from "../intelligence/types.js";
 
 // ---------------------------------------------------------------------------
 // Row ↔ Domain mappers
@@ -447,6 +453,7 @@ export const processRevenueRecognition = async (
 
   let processed = 0;
   let totalRecognised = 0;
+  const completedSchedules: CompletedScheduleInfo[] = [];
 
   for (const entry of dueEntries) {
     // Resolve account codes
@@ -506,8 +513,8 @@ export const processRevenueRecognition = async (
     );
 
     // Check if schedule is now complete
-    const schedule = await db.get<{ amount_remaining: number }>(
-      "SELECT amount_remaining FROM revenue_schedules WHERE id = ?",
+    const schedule = await db.get<{ amount_remaining: number; total_amount: number; customer_name: string | null; description: string | null }>(
+      "SELECT amount_remaining, total_amount, customer_name, description FROM revenue_schedules WHERE id = ?",
       [entry.schedule_id],
     );
     if (schedule && Number(schedule.amount_remaining) <= 0) {
@@ -515,13 +522,19 @@ export const processRevenueRecognition = async (
         "UPDATE revenue_schedules SET status = 'completed', updated_at = ? WHERE id = ?",
         [now, entry.schedule_id],
       );
+      completedSchedules.push({
+        scheduleId: entry.schedule_id,
+        customerName: schedule.customer_name ?? "Unknown",
+        totalAmount: Number(schedule.total_amount),
+        description: schedule.description,
+      });
     }
 
     processed++;
     totalRecognised += entry.amount;
   }
 
-  return { processed, totalRecognised };
+  return { processed, totalRecognised, completedSchedules };
 };
 
 // ---------------------------------------------------------------------------
@@ -760,6 +773,69 @@ export const processAllPendingRecognition = async (
     try {
       const result = await processRevenueRecognition(db, engine, ledger_id);
       totalProcessed += result.processed;
+
+      // Emit notifications if any entries were processed
+      if (result.processed > 0) {
+        // Find ledger owner for notifications
+        const owner = await db.get<{ owner_id: string }>(
+          "SELECT owner_id FROM ledgers WHERE id = ?",
+          [ledger_id],
+        );
+
+        if (owner) {
+          // Monthly recognition summary
+          const today = todayUtc();
+          const monthStr = today.slice(0, 7);
+          const deferredRow = await db.get<{ total: number | null }>(
+            "SELECT SUM(amount_remaining) AS total FROM revenue_schedules WHERE ledger_id = ? AND status IN ('active', 'paused')",
+            [ledger_id],
+          );
+          const totalDeferred = Number(deferredRow?.total ?? 0);
+
+          const summaryData: MonthlyRecognitionSummaryData = {
+            period: monthStr,
+            schedulesProcessed: result.processed,
+            totalRecognised: result.totalRecognised,
+            totalDeferred,
+          };
+          const rendered = renderMonthlyRecognitionSummary(summaryData);
+
+          try {
+            await engine.createNotification({
+              ledgerId: ledger_id,
+              userId: owner.owner_id,
+              type: "monthly_recognition_summary",
+              severity: "info",
+              title: rendered.title,
+              body: rendered.body,
+              data: summaryData as unknown as Record<string, unknown>,
+            });
+          } catch { /* notification creation is best-effort */ }
+
+          // Schedule completion notifications
+          for (const completed of result.completedSchedules) {
+            const completionData: ScheduleCompletionData = {
+              scheduleId: completed.scheduleId,
+              customerName: completed.customerName,
+              totalAmount: completed.totalAmount,
+              description: completed.description,
+            };
+            const completionRendered = renderScheduleCompletion(completionData);
+
+            try {
+              await engine.createNotification({
+                ledgerId: ledger_id,
+                userId: owner.owner_id,
+                type: "schedule_completion",
+                severity: "info",
+                title: completionRendered.title,
+                body: completionRendered.body,
+                data: completionData as unknown as Record<string, unknown>,
+              });
+            } catch { /* notification creation is best-effort */ }
+          }
+        }
+      }
     } catch (err) {
       console.error(`Revenue recognition failed for ledger ${ledger_id}:`, err);
       totalFailed++;

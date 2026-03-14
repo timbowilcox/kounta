@@ -25,6 +25,9 @@ const typeLabels: Record<NotificationType, string> = {
   sync_complete: "Sync Complete",
   reconciliation_needed: "Reconciliation",
   receipt_prompt: "Receipt Prompt",
+  monthly_recognition_summary: "Revenue Recognition",
+  schedule_completion: "Schedule Complete",
+  large_deferred_balance: "Deferred Revenue",
   system: "System",
 };
 
@@ -37,6 +40,9 @@ function typeIcon(type: NotificationType): string {
     case "sync_complete": return "✅";
     case "reconciliation_needed": return "🔄";
     case "receipt_prompt": return "🧾";
+    case "monthly_recognition_summary": return "📈";
+    case "schedule_completion": return "✓";
+    case "large_deferred_balance": return "📋";
     case "system": return "🔔";
   }
 }

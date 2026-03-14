@@ -35,6 +35,12 @@ export interface EmailActionToken {
   createdAt: string;
 }
 
+export interface RevenueRecognitionDigest {
+  recognisedThisWeek: number;
+  deferredBalance: number;
+  activeScheduleCount: number;
+}
+
 export interface WeeklyDigestData {
   userName: string;
   revenue: number;
@@ -44,6 +50,7 @@ export interface WeeklyDigestData {
   pendingClassifications: PendingClassification[];
   currency: string;
   baseUrl: string;
+  revenueRecognition?: RevenueRecognitionDigest;
 }
 
 export interface PendingClassification {

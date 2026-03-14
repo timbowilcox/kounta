@@ -287,6 +287,7 @@ export interface StatementResponse {
   readonly sections: readonly StatementSection[];
   readonly totals: Record<string, number>;
   readonly warnings: readonly string[];
+  readonly notes: readonly string[];
   readonly plainLanguageSummary: string;
 }
 

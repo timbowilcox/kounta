@@ -41,7 +41,7 @@ const classificationItem = (item: PendingClassification & { token: string }, bas
 };
 
 export const generateWeeklyDigest = (data: WeeklyDigestData & { tokens: Record<string, string> }): string => {
-  const { userName, revenue, expenses, net, cashBalance, pendingClassifications, currency, baseUrl, tokens } = data;
+  const { userName, revenue, expenses, net, cashBalance, pendingClassifications, currency, baseUrl, tokens, revenueRecognition } = data;
 
   const greeting = `<p style="font-size:15px;margin-bottom:24px;">Hey ${escapeHtml(userName)},</p>
     <p style="color:#666666;margin-bottom:24px;">Here's your week at a glance:</p>`;
@@ -66,6 +66,27 @@ export const generateWeeklyDigest = (data: WeeklyDigestData & { tokens: Record<s
       </tr>
     </table>`;
 
+  let revenueSection = "";
+  if (revenueRecognition && revenueRecognition.activeScheduleCount > 0) {
+    revenueSection = `
+      <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
+      <h2 style="font-size:15px;font-weight:600;color:#0A0A0A;margin:0 0 16px;">Revenue Recognition</h2>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+        <tr>
+          <td style="padding:8px 0;font-size:14px;color:#666666;">Recognised this week</td>
+          <td style="padding:8px 0;font-size:14px;font-weight:600;color:#0A0A0A;text-align:right;font-variant-numeric:tabular-nums;">${formatAmountShort(revenueRecognition.recognisedThisWeek, currency)}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;font-size:14px;color:#666666;">Deferred revenue balance</td>
+          <td style="padding:8px 0;font-size:14px;font-weight:600;color:#0A0A0A;text-align:right;font-variant-numeric:tabular-nums;">${formatAmountShort(revenueRecognition.deferredBalance, currency)}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;font-size:14px;color:#666666;">Active schedules</td>
+          <td style="padding:8px 0;font-size:14px;font-weight:600;color:#0A0A0A;text-align:right;font-variant-numeric:tabular-nums;">${revenueRecognition.activeScheduleCount}</td>
+        </tr>
+      </table>`;
+  }
+
   let classificationSection = "";
   if (pendingClassifications.length > 0) {
     const items = pendingClassifications
@@ -86,7 +107,7 @@ export const generateWeeklyDigest = (data: WeeklyDigestData & { tokens: Record<s
     <p style="color:#666666;">Have a great week.<br>— Ledge</p>`;
 
   const unsubscribeUrl = `${baseUrl}/api/email-action?action=unsubscribe&type=weekly_digest&token=`;
-  return emailLayout(greeting + stats + classificationSection + signoff, unsubscribeUrl);
+  return emailLayout(greeting + stats + revenueSection + classificationSection + signoff, unsubscribeUrl);
 };
 
 const escapeHtml = (str: string): string =>

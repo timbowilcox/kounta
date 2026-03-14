@@ -19,7 +19,7 @@ import { generateMonthlyClose } from "./templates/monthly-close.js";
 import { generateUrgentAlert } from "./templates/urgent-alert.js";
 import { generateWelcomeEmail, generateClassifyPrompt, generateFirstSnapshot } from "./templates/onboarding.js";
 import { formatAmountShort } from "./templates/layout.js";
-import type { UrgentAlertType, UrgentAlertData, WeeklyDigestData, MonthlyCloseData, OnboardingSummary, PendingClassification } from "./types.js";
+import type { UrgentAlertType, UrgentAlertData, WeeklyDigestData, MonthlyCloseData, OnboardingSummary, PendingClassification, RevenueRecognitionDigest } from "./types.js";
 
 const BASE_URL = process.env["LEDGE_BASE_URL"] ?? "https://useledge.ai";
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -324,7 +324,7 @@ const buildDigestData = async (
   db: Database,
   _engine: LedgerEngine,
   userId: string,
-  _ledgerId: string,
+  ledgerId: string,
   currency: string,
   userName: string,
 ): Promise<(WeeklyDigestData & { tokens: Record<string, string> }) | null> => {
@@ -353,6 +353,35 @@ const buildDigestData = async (
     suggestedCategories: [], // Would be populated by classification engine suggestions
   }));
 
+  // Revenue recognition data (if active schedules exist)
+  let revenueRecognition: RevenueRecognitionDigest | undefined;
+  try {
+    const activeCount = await db.get<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM revenue_schedules WHERE ledger_id = ? AND status = 'active'",
+      [ledgerId],
+    );
+    if (activeCount && Number(activeCount.count) > 0) {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const recognisedRow = await db.get<{ total: number | null }>(
+        `SELECT SUM(e.amount) AS total FROM revenue_schedule_entries e
+         WHERE e.ledger_id = ? AND e.status = 'posted' AND e.posted_at >= ?`,
+        [ledgerId, weekAgo],
+      );
+      const deferredRow = await db.get<{ total: number | null }>(
+        "SELECT SUM(amount_remaining) AS total FROM revenue_schedules WHERE ledger_id = ? AND status IN ('active', 'paused')",
+        [ledgerId],
+      );
+
+      revenueRecognition = {
+        recognisedThisWeek: Number(recognisedRow?.total ?? 0),
+        deferredBalance: Number(deferredRow?.total ?? 0),
+        activeScheduleCount: Number(activeCount.count),
+      };
+    }
+  } catch {
+    // revenue_schedules table may not exist yet — skip silently
+  }
+
   return {
     userName,
     revenue: 0,
@@ -363,5 +392,6 @@ const buildDigestData = async (
     currency,
     baseUrl: BASE_URL,
     tokens: {},
+    revenueRecognition,
   };
 };

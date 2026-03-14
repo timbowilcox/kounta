@@ -8,6 +8,9 @@ import type {
   CashPositionData,
   AnomalyData,
   UnclassifiedData,
+  MonthlyRecognitionSummaryData,
+  ScheduleCompletionData,
+  LargeDeferredBalanceData,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,44 @@ export function renderAnomalies(anomalies: readonly AnomalyData[]): { title: str
   }
 
   return { title, body: lines.join("\n"), severity };
+}
+
+// ---------------------------------------------------------------------------
+// Monthly Recognition Summary
+// ---------------------------------------------------------------------------
+
+export function renderMonthlyRecognitionSummary(data: MonthlyRecognitionSummaryData): { title: string; body: string } {
+  const [, monthStr] = data.period.split("-");
+  const monthName = monthNames[parseInt(monthStr!, 10) - 1] ?? monthStr;
+
+  const title = `${monthName} revenue recognition complete`;
+  const body = `${formatAmount(data.totalRecognised)} recognised from ${data.schedulesProcessed} schedule${data.schedulesProcessed !== 1 ? "s" : ""}. ${formatAmount(data.totalDeferred)} still deferred.`;
+
+  return { title, body };
+}
+
+// ---------------------------------------------------------------------------
+// Schedule Completion
+// ---------------------------------------------------------------------------
+
+export function renderScheduleCompletion(data: ScheduleCompletionData): { title: string; body: string } {
+  const title = "Subscription fully recognised";
+  const customerLabel = data.customerName || "Unknown";
+  const desc = data.description ? ` (${data.description})` : "";
+  const body = `${desc ? data.description : "Revenue schedule"} from ${customerLabel} fully recognised. Total: ${formatAmount(data.totalAmount)}.`;
+
+  return { title, body };
+}
+
+// ---------------------------------------------------------------------------
+// Large Deferred Balance
+// ---------------------------------------------------------------------------
+
+export function renderLargeDeferredBalance(data: LargeDeferredBalanceData): { title: string; body: string } {
+  const title = "High deferred revenue balance";
+  const body = `Deferred revenue is ${formatAmount(data.deferredBalance)} — ${data.monthsOfDeferred} months of pre-paid revenue.`;
+
+  return { title, body };
 }
 
 // ---------------------------------------------------------------------------

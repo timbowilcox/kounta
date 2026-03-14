@@ -10,6 +10,9 @@ export type NotificationType =
   | "sync_complete"
   | "reconciliation_needed"
   | "receipt_prompt"
+  | "monthly_recognition_summary"
+  | "schedule_completion"
+  | "large_deferred_balance"
   | "system";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
@@ -78,6 +81,26 @@ export interface AnomalyData {
   readonly amount: number | null;
   readonly expectedRange: { min: number; max: number } | null;
   readonly description: string;
+}
+
+export interface MonthlyRecognitionSummaryData {
+  readonly period: string;
+  readonly schedulesProcessed: number;
+  readonly totalRecognised: number;
+  readonly totalDeferred: number;
+}
+
+export interface ScheduleCompletionData {
+  readonly scheduleId: string;
+  readonly customerName: string;
+  readonly totalAmount: number;
+  readonly description: string | null;
+}
+
+export interface LargeDeferredBalanceData {
+  readonly deferredBalance: number;
+  readonly monthlyRecognised: number;
+  readonly monthsOfDeferred: number;
 }
 
 export interface UnclassifiedData {

@@ -8,10 +8,14 @@ export {
   analyzeCashPosition,
   detectAnomalies,
   findUnclassifiedTransactions,
+  analyzeDeferredBalance,
 } from "./analyzer.js";
 export {
   renderMonthlySummary,
   renderCashPosition,
   renderAnomalies,
   renderUnclassified,
+  renderMonthlyRecognitionSummary,
+  renderScheduleCompletion,
+  renderLargeDeferredBalance,
 } from "./renderer.js";
