@@ -8,12 +8,14 @@ import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, create
 import type { StripeConnectStatus } from "@/lib/actions";
 import type { EmailPreferences, ClosedPeriodSummary } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
-import type { ApiKeySafe } from "@ledge/sdk";
-import type { BillingStatus } from "@/lib/actions";
+import type { ApiKeySafe, AccountWithBalance } from "@ledge/sdk";
+import type { BillingStatus, BankTransactionSummary } from "@/lib/actions";
+import { AccountsView } from "@/app/(dashboard)/accounts/accounts-view";
+import { BankFeedsView } from "@/app/(dashboard)/bank-feeds/bank-feeds-view";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SettingsTab = "general" | "currencies" | "api-keys" | "billing" | "email" | "recurring" | "connections";
+type SettingsTab = "general" | "accounts" | "bank-feeds" | "currencies" | "api-keys" | "billing" | "email" | "recurring" | "connections";
 
 interface Props {
   ledger: { name: string; currency: string; accountingBasis: string; templateId: string | null; createdAt: string };
@@ -24,23 +26,59 @@ interface Props {
   fiscalYearStart: number;
   closedThrough: string | null;
   closedPeriods: ClosedPeriodSummary[];
+  accounts: AccountWithBalance[];
+  bankConnections: unknown[];
+  bankError: string | null;
+  bankTxns: BankTransactionSummary[];
 }
+
+// ── Template display names ──────────────────────────────────────────────────
+
+const TEMPLATE_LABELS: Record<string, string> = {
+  tpl_saas: "SaaS Starter",
+  tpl_marketplace: "Marketplace",
+  tpl_agency: "Agency & Professional Services",
+  tpl_ecommerce: "Ecommerce Store",
+  tpl_creator: "Creator",
+  tpl_consulting: "Freelancer & Consultant",
+  tpl_property: "Property Management",
+  tpl_nonprofit: "Nonprofit Organisation",
+  // Fallback for slug-style references
+  saas: "SaaS Starter",
+  "saas-starter": "SaaS Starter",
+  marketplace: "Marketplace",
+  agency: "Agency & Professional Services",
+  ecommerce: "Ecommerce Store",
+  creator: "Creator",
+  consulting: "Freelancer & Consultant",
+  freelancer: "Freelancer & Consultant",
+  property: "Property Management",
+  nonprofit: "Nonprofit Organisation",
+  restaurant: "Restaurant & Hospitality",
+  general: "General Business",
+};
+
+const getTemplateName = (templateId: string | null): string => {
+  if (!templateId) return "Custom";
+  return TEMPLATE_LABELS[templateId] ?? TEMPLATE_LABELS[templateId.replace("tpl_", "")] ?? templateId;
+};
 
 // ── Tab config ─────────────────────────────────────────────────────────────
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: "general", label: "General" },
-  { key: "currencies", label: "Currencies" },
+  { key: "accounts", label: "Accounts" },
+  { key: "bank-feeds", label: "Bank Feeds" },
+  { key: "connections", label: "Connections" },
+  { key: "recurring", label: "Recurring" },
   { key: "api-keys", label: "API Keys" },
   { key: "billing", label: "Billing" },
   { key: "email", label: "Email" },
-  { key: "recurring", label: "Recurring" },
-  { key: "connections", label: "Connections" },
 ];
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates, fiscalYearStart, closedThrough, closedPeriods }: Props) {
+export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates, fiscalYearStart, closedThrough, closedPeriods, accounts, bankConnections, bankError, bankTxns }: Props) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as SettingsTab) || "general";
   const [activeTab, setActiveTab] = useState<SettingsTab>(TABS.some(t => t.key === initialTab) ? initialTab : "general");
@@ -92,6 +130,8 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
 
       {/* Tab content */}
       {activeTab === "general" && <GeneralTab ledger={ledger} fiscalYearStart={fiscalYearStart} closedThrough={closedThrough} closedPeriods={closedPeriods} />}
+      {activeTab === "accounts" && <AccountsView accounts={accounts} />}
+      {activeTab === "bank-feeds" && <BankFeedsView connections={bankConnections} error={bankError} initialBankTxns={bankTxns} />}
       {activeTab === "currencies" && <CurrenciesTab currencies={currencies} exchangeRates={exchangeRates} />}
       {activeTab === "api-keys" && <ApiKeysTab initialKeys={initialKeys} />}
       {activeTab === "billing" && <BillingTab billing={billing} />}
@@ -179,7 +219,7 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
         <div className="section-label" style={{ marginBottom: 16 }}>Ledger</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           <InfoRow label="Name" value={ledger.name} />
-          <InfoRow label="Template" value={ledger.templateId ?? "Custom"} />
+          <InfoRow label="Template" value={getTemplateName(ledger.templateId)} />
           <InfoRow label="Currency" value={ledger.currency} />
           <InfoRow label="Accounting Basis" value={ledger.accountingBasis} />
           <InfoRow label="Created" value={formatDate(ledger.createdAt)} />

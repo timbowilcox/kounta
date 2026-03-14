@@ -3,6 +3,8 @@ import { CommandBarProvider } from "@/components/command-bar-provider";
 import { CommandBar } from "@/components/command-bar";
 import { PostTransactionProvider } from "@/components/post-transaction-provider";
 import { PostTransactionModal } from "@/components/post-transaction-modal";
+import { NavigationProgress } from "@/components/navigation-progress";
+import { NameCaptureModal } from "@/components/name-capture-modal";
 
 export default function DashboardLayout({
   children,
@@ -12,6 +14,7 @@ export default function DashboardLayout({
   return (
     <CommandBarProvider>
       <PostTransactionProvider>
+        <NavigationProgress />
         <div className="flex min-h-screen">
           <Sidebar />
           <main
@@ -28,6 +31,7 @@ export default function DashboardLayout({
           </main>
           <CommandBar />
           <PostTransactionModal />
+          <NameCaptureModal />
         </div>
       </PostTransactionProvider>
     </CommandBarProvider>

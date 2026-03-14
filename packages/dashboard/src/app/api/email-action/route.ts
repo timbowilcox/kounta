@@ -161,7 +161,7 @@ export async function GET(request: Request) {
     }
 
     case "reconnect": {
-      return NextResponse.redirect(`${BASE_URL}/bank-feeds?reconnect=true`);
+      return NextResponse.redirect(`${BASE_URL}/settings?tab=bank-feeds&reconnect=true`);
     }
 
     case "unsubscribe": {

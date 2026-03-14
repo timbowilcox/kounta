@@ -850,3 +850,25 @@ export async function updateRevenueScheduleAction(
   return res.ok;
 }
 
+// --- User profile -----------------------------------------------------------
+
+export async function updateUserNameAction(name: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.userId) return false;
+
+  const apiUrl = process.env.LEDGE_API_URL;
+  const adminSecret = process.env.LEDGE_ADMIN_SECRET;
+  if (!apiUrl || !adminSecret) return false;
+
+  const res = await fetch(`${apiUrl}/v1/admin/update-name`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminSecret}`,
+    },
+    body: JSON.stringify({ userId: session.userId, name }),
+  });
+
+  return res.ok;
+}
+

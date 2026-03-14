@@ -20,17 +20,17 @@ const ITEM_CONFIG: Record<
   },
   chart_of_accounts: {
     label: "Chart of accounts created",
-    href: "/accounts",
+    href: "/settings?tab=accounts",
     description: "Your chart of accounts has been configured",
   },
   bank_connected: {
     label: "Bank account connected",
-    href: "/bank-feeds",
+    href: "/settings?tab=bank-feeds",
     description: "Connect a bank account to import transactions",
   },
   first_classified: {
     label: "First transactions classified",
-    href: "/bank-feeds",
+    href: "/settings?tab=bank-feeds",
     description: "Classify your imported transactions",
   },
   connect_stripe: {

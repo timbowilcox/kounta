@@ -145,3 +145,33 @@ provisionRoutes.post("/provision", adminAuth, async (c) => {
     isNew,
   });
 });
+
+/** PATCH /v1/admin/update-name — Update a user's display name */
+provisionRoutes.patch("/update-name", adminAuth, async (c) => {
+  const engine = c.get("engine");
+  const body = await c.req.json();
+
+  const { userId, name } = body;
+
+  if (!userId || !name || typeof name !== "string" || name.trim().length === 0) {
+    return c.json(
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "userId and name are required",
+          details: [
+            { field: "userId", suggestion: "The user ID to update" },
+            { field: "name", suggestion: "The new display name (non-empty string)" },
+          ],
+          requestId: c.get("requestId"),
+        },
+      },
+      400
+    );
+  }
+
+  const result = await engine.updateUserName(userId, name.trim());
+  if (!result.ok) return errorResponse(c, result.error);
+
+  return success(c, { user: result.value });
+});

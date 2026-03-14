@@ -543,7 +543,7 @@ function ConnectStep({ onSkip }: { onSkip: () => void }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 360, margin: "0 auto" }}>
         <button
-          onClick={() => (window.location.href = "/bank-feeds")}
+          onClick={() => (window.location.href = "/settings?tab=bank-feeds")}
           style={primaryButtonStyle}
         >
           Connect bank account &rarr;

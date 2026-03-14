@@ -2072,6 +2072,17 @@ export class LedgerEngine {
     return ok(toUser(row));
   }
 
+  async updateUserName(userId: string, name: string): Promise<Result<User>> {
+    const now = nowUtc();
+    await this.db.run(
+      "UPDATE users SET name = ?, updated_at = ? WHERE id = ?",
+      [name, now, userId]
+    );
+    const row = await this.db.get<UserRow>("SELECT * FROM users WHERE id = ?", [userId]);
+    if (!row) return err(createError(ErrorCode.INTERNAL_ERROR, "User not found after update"));
+    return ok(toUser(row));
+  }
+
   async findUserByStripeCustomer(stripeCustomerId: string): Promise<Result<User>> {
     const row = await this.db.get<UserRow>(
       "SELECT * FROM users WHERE stripe_customer_id = ?",

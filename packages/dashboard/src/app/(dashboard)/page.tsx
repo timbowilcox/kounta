@@ -136,7 +136,7 @@ export default async function OverviewPage() {
           <QuickAction
             icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0066FF" strokeWidth="1.5" strokeLinecap="round"><path d="M2 3h12M3 3v10M13 3v10M2 13h12M2 6.5h12" /></svg>}
             label="Connect bank account"
-            href="/bank-feeds"
+            href="/settings?tab=bank-feeds"
           />
         </div>
       </div>
