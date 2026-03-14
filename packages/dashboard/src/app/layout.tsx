@@ -5,7 +5,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Ledge — Accounting for Builders",
+  title: "Kounta — Accounting for Builders",
   description: "Programmable double-entry ledger and reporting engine",
 };
 

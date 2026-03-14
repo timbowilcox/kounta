@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createRevenueScheduleAction } from "@/lib/actions";
-import type { AccountWithBalance } from "@ledge/sdk";
+import type { AccountWithBalance } from "@kounta/sdk";
 
 interface Props {
   accounts: AccountWithBalance[];

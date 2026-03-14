@@ -786,7 +786,7 @@ export class LedgerEngine {
     if (!existingUser) {
       await this.db.run(
         "INSERT INTO users (id, email, name, auth_provider, auth_provider_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [params.ownerId, `user-${params.ownerId.substring(0, 8)}@ledge.internal`, "Auto-created User", "system", params.ownerId, now, now]
+        [params.ownerId, `user-${params.ownerId.substring(0, 8)}@kounta.internal`, "Auto-created User", "system", params.ownerId, now, now]
       );
     }
 
@@ -1335,11 +1335,11 @@ export class LedgerEngine {
       return err(ledgerNotFoundError(params.ledgerId));
     }
 
-    // Generate raw key: ledge_live_ + 24 random bytes (48 hex chars)
+    // Generate raw key: kounta_live_ + 24 random bytes (48 hex chars)
     const secret = randomBytes(24).toString("hex");
-    const rawKey = `ledge_live_${secret}`;
+    const rawKey = `kounta_live_${secret}`;
     const keyHash = hashApiKey(rawKey);
-    const prefix = `ledge_live_${secret.slice(0, 8)}`;
+    const prefix = `kounta_live_${secret.slice(0, 8)}`;
 
     const id = generateId();
     const now = nowUtc();
@@ -1349,7 +1349,7 @@ export class LedgerEngine {
     if (!existingUser) {
       await this.db.run(
         "INSERT INTO users (id, email, name, auth_provider, auth_provider_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [params.userId, `user-${params.userId.substring(0, 8)}@ledge.internal`, "Auto-created User", "system", params.userId, now, now]
+        [params.userId, `user-${params.userId.substring(0, 8)}@kounta.internal`, "Auto-created User", "system", params.userId, now, now]
       );
     }
 
@@ -1368,7 +1368,7 @@ export class LedgerEngine {
   }
 
   async validateApiKey(rawKey: string): Promise<Result<ApiKey>> {
-    if (!rawKey.startsWith("ledge_live_") && !rawKey.startsWith("ledge_test_")) {
+    if (!rawKey.startsWith("kounta_live_") && !rawKey.startsWith("kounta_test_")) {
       return err(createError(ErrorCode.UNAUTHORIZED, "Invalid API key format"));
     }
 

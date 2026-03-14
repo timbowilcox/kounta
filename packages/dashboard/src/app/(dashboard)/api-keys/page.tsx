@@ -1,5 +1,5 @@
-import { getSessionClient } from "@/lib/ledge";
-import type { ApiKeySafe } from "@ledge/sdk";
+import { getSessionClient } from "@/lib/kounta";
+import type { ApiKeySafe } from "@kounta/sdk";
 import { ApiKeysView } from "./api-keys-view";
 
 export const dynamic = "force-dynamic";

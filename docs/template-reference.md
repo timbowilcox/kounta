@@ -1,6 +1,6 @@
 # Template Reference
 
-Ledge ships with 8 business templates. Each template provides a pre-configured chart of accounts, default currency, and accounting basis.
+Kounta ships with 8 business templates. Each template provides a pre-configured chart of accounts, default currency, and accounting basis.
 
 ## How Templates Work
 
@@ -344,46 +344,46 @@ All templates follow the same numbering scheme:
 ### Via SDK
 
 ```typescript
-import { Ledge } from "@ledge/sdk";
+import { Kounta } from "@kounta/sdk";
 
-const ledge = new Ledge({
+const kounta = new Kounta({
   apiKey: "ldg_live_...",
   adminSecret: "sk_admin_...",
 });
 
 // List all templates
-const templates = await ledge.templates.list();
+const templates = await kounta.templates.list();
 
 // Get template details
-const saas = await ledge.templates.get("saas");
+const saas = await kounta.templates.get("saas");
 
 // Get recommendations
-const recs = await ledge.templates.recommend({
+const recs = await kounta.templates.recommend({
   description: "Online store selling handmade crafts",
   industry: "retail",
   businessModel: "direct-to-consumer",
 });
 
 // Apply template to a ledger
-await ledge.templates.apply("ldg_abc123", "ecommerce");
+await kounta.templates.apply("ldg_abc123", "ecommerce");
 ```
 
 ### Via REST API
 
 ```bash
 # List templates
-curl https://api.getledge.ai/v1/templates
+curl https://api.kounta.ai/v1/templates
 
 # Get a template
-curl https://api.getledge.ai/v1/templates/saas
+curl https://api.kounta.ai/v1/templates/saas
 
 # Get recommendations
-curl -X POST https://api.getledge.ai/v1/templates/recommend \
+curl -X POST https://api.kounta.ai/v1/templates/recommend \
   -H "Content-Type: application/json" \
   -d '{"description": "SaaS company", "industry": "software"}'
 
 # Apply template (admin auth required)
-curl -X POST https://api.getledge.ai/v1/templates/apply \
+curl -X POST https://api.kounta.ai/v1/templates/apply \
   -H "Authorization: Bearer $ADMIN_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"ledgerId": "ldg_...", "templateSlug": "saas"}'

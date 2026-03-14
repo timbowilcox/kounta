@@ -1,8 +1,8 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { fetchBillingStatus, fetchApiKeys, fetchClosedPeriods } from "@/lib/actions";
 import type { ClosedPeriodSummary } from "@/lib/actions";
 import { SettingsView } from "./settings-view";
-import type { ApiKeySafe, AccountWithBalance } from "@ledge/sdk";
+import type { ApiKeySafe, AccountWithBalance } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 

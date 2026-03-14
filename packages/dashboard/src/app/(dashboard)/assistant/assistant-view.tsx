@@ -8,7 +8,7 @@ import {
   TOOL_LABELS,
   type ChatMessage,
 } from "@/hooks/use-assistant-stream";
-import type { Conversation } from "@ledge/sdk";
+import type { Conversation } from "@kounta/sdk";
 
 interface Props {
   initialConversations: Conversation[];

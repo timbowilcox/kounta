@@ -24,12 +24,12 @@ export default function SignInPage() {
       >
         {/* Logo */}
         <div className="flex items-center justify-center" style={{ gap: 14, marginBottom: 36 }}>
-          <img src="/logo-icon.svg" alt="Ledge" width={38} height={38} />
+          <img src="/logo-icon.svg" alt="Kounta" width={38} height={38} />
           <span
             className="font-bold tracking-tight"
             style={{ fontSize: 26, color: "#0A0A0A", fontFamily: "var(--font-family-display)" }}
           >
-            Ledge
+            Kounta
           </span>
         </div>
 

@@ -20,12 +20,12 @@ import {
   handleEvent,
   ensureStripeAccounts,
   backfillAll,
-} from "@ledge/core";
+} from "@kounta/core";
 
 const STRIPE_CONNECT_CLIENT_ID = process.env["STRIPE_CONNECT_CLIENT_ID"];
 const STRIPE_SECRET_KEY = process.env["STRIPE_SECRET_KEY"];
-const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://useledge.ai";
-const API_BASE_URL = process.env["API_BASE_URL"] || "https://api.useledge.ai";
+const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://kounta.ai";
+const API_BASE_URL = process.env["API_BASE_URL"] || "https://api.kounta.ai";
 
 export const stripeConnectRoutes = new Hono<Env>();
 

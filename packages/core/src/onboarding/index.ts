@@ -1,4 +1,4 @@
-// @ledge/core — onboarding module
+// @kounta/core — onboarding module
 export * from "./types.js";
 export {
   getOnboardingState,

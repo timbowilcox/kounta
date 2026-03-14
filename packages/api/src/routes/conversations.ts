@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, success, created, paginated } from "../lib/responses.js";
-import type { ConversationMessage } from "@ledge/core";
+import type { ConversationMessage } from "@kounta/core";
 
 export const conversationRoutes = new Hono<Env>();
 

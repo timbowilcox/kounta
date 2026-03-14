@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// Hono context types for the Ledge API.
+// Hono context types for the Kounta API.
 // ---------------------------------------------------------------------------
 
-import type { LedgerEngine, AttachmentStorage } from "@ledge/core";
+import type { LedgerEngine, AttachmentStorage } from "@kounta/core";
 
 export type Env = {
   Variables: {
@@ -15,7 +15,7 @@ export type Env = {
     };
     /** Unique request ID for tracing */
     requestId: string;
-    /** Attachment file storage (optional — set if LEDGE_ATTACHMENTS_DIR is configured) */
+    /** Attachment file storage (optional — set if KOUNTA_ATTACHMENTS_DIR is configured) */
     storage?: AttachmentStorage;
   };
 };

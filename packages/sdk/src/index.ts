@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// @ledge/sdk — Typed client for the Ledge REST API.
+// @kounta/sdk — Typed client for the Kounta REST API.
 //
-// All types are re-exported from @ledge/core so consumers get full type
+// All types are re-exported from @kounta/core so consumers get full type
 // coverage without a separate import. Response envelopes ({ data: T }) are
 // unwrapped automatically — callers receive the inner payload directly.
 // ---------------------------------------------------------------------------
 
-// --- Re-exports from @ledge/core so consumers only need @ledge/sdk ---------
+// --- Re-exports from @kounta/core so consumers only need @kounta/sdk ---------
 
 export type {
   // Entity types
@@ -57,7 +57,7 @@ export type {
   PaginationParams,
 
   // Errors
-  LedgeError,
+  KountaError,
   ErrorDetail,
 
   // Bank feeds
@@ -126,7 +126,7 @@ export type {
   RevenueEntryStatus,
   RevenueFrequency,
 
-} from "@ledge/core";
+} from "@kounta/core";
 
 export type {
   // Schema-derived input types
@@ -134,13 +134,13 @@ export type {
   CreateAccountInput,
   CreateImportInput,
   ConfirmMatchesInput,
-} from "@ledge/core";
+} from "@kounta/core";
 
-export { ErrorCode } from "@ledge/core";
+export { ErrorCode } from "@kounta/core";
 
-export type { ConfirmAction } from "@ledge/core";
+export type { ConfirmAction } from "@kounta/core";
 
-export type { ClosedPeriod } from "@ledge/core";
+export type { ClosedPeriod } from "@kounta/core";
 
 // --- Internal type imports -------------------------------------------------
 
@@ -185,20 +185,20 @@ import type {
   RevenueMetrics,
   MrrHistoryEntry,
   ProcessingResult,
-} from "@ledge/core";
+} from "@kounta/core";
 
 import type {
   CreateLedgerInput,
   CreateAccountInput,
-} from "@ledge/core";
+} from "@kounta/core";
 
-import type { ConfirmAction } from "@ledge/core";
+import type { ConfirmAction } from "@kounta/core";
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-export interface LedgeConfig {
+export interface KountaConfig {
   /** API key (starts with `ldg_`). Required. */
   readonly apiKey: string;
 
@@ -209,7 +209,7 @@ export interface LedgeConfig {
    */
   readonly adminSecret?: string;
 
-  /** Base URL of the Ledge API. Defaults to `https://api.getledge.ai`. */
+  /** Base URL of the Kounta API. Defaults to `https://api.kounta.ai`. */
   readonly baseUrl?: string;
 
   /** Custom fetch implementation (useful for testing or edge runtimes). */
@@ -227,7 +227,7 @@ export interface ListOptions {
 // ---------------------------------------------------------------------------
 
 /** Structured error thrown for non-2xx API responses. */
-export class LedgeApiError extends Error {
+export class KountaApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: readonly unknown[];
@@ -238,7 +238,7 @@ export class LedgeApiError extends Error {
     body?: { code?: string; message?: string; details?: unknown[]; requestId?: string } | null,
   ) {
     super(body?.message ?? `API error (${status})`);
-    this.name = "LedgeApiError";
+    this.name = "KountaApiError";
     this.status = status;
     this.code = body?.code ?? "UNKNOWN";
     this.details = body?.details;
@@ -263,7 +263,7 @@ const buildQuery = (params: Record<string, string | number | boolean | undefined
 // Client
 // ---------------------------------------------------------------------------
 
-export class Ledge {
+export class Kounta {
   /** @internal */ readonly _apiKey: string;
   /** @internal */ readonly _adminSecret: string | undefined;
   /** @internal */ readonly _baseUrl: string;
@@ -288,10 +288,10 @@ export class Ledge {
   readonly stripeConnect: StripeConnectModule;
   readonly revenue: RevenueModule;
 
-  constructor(config: LedgeConfig) {
+  constructor(config: KountaConfig) {
     this._apiKey = config.apiKey;
     this._adminSecret = config.adminSecret;
-    this._baseUrl = (config.baseUrl ?? "https://api.getledge.ai").replace(/\/+$/, "");
+    this._baseUrl = (config.baseUrl ?? "https://api.kounta.ai").replace(/\/+$/, "");
     this._fetch = config.fetch ?? globalThis.fetch.bind(globalThis);
 
     this.ledgers = new LedgersModule(this);
@@ -343,7 +343,7 @@ export class Ledge {
       const errBody = (await res.json().catch(() => ({
         error: { code: "UNKNOWN", message: res.statusText },
       }))) as { error: { code: string; message: string; details?: unknown[]; requestId?: string } };
-      throw new LedgeApiError(res.status, errBody.error);
+      throw new KountaApiError(res.status, errBody.error);
     }
 
     // 204 No Content
@@ -371,7 +371,7 @@ export class Ledge {
       const errBody = (await res.json().catch(() => ({
         error: { code: "UNKNOWN", message: res.statusText },
       }))) as { error: { code: string; message: string; details?: unknown[]; requestId?: string } };
-      throw new LedgeApiError(res.status, errBody.error);
+      throw new KountaApiError(res.status, errBody.error);
     }
 
     return (await res.json()) as PaginatedResult<T>;
@@ -395,7 +395,7 @@ export class Ledge {
 // --- Ledgers ---------------------------------------------------------------
 
 class LedgersModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Create a new ledger. Requires admin auth. */
   async create(input: CreateLedgerInput & { ownerId: string }): Promise<Ledger> {
@@ -416,7 +416,7 @@ class LedgersModule {
 // --- Periods ---------------------------------------------------------------
 
 class PeriodsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Close a period through the given date. */
   async close(ledgerId: string, periodEnd: string): Promise<{ periodEnd: string; closedAt: string }> {
@@ -437,7 +437,7 @@ class PeriodsModule {
 // --- Accounts --------------------------------------------------------------
 
 class AccountsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Create an account in a ledger. */
   async create(
@@ -480,7 +480,7 @@ export interface PostTransactionParams {
 }
 
 class TransactionsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Post a balanced transaction to a ledger. */
   async post(ledgerId: string, input: PostTransactionParams): Promise<TransactionWithLines> {
@@ -520,7 +520,7 @@ class TransactionsModule {
 // --- Reports ---------------------------------------------------------------
 
 class ReportsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Generate an income statement (P&L) for a date range. */
   async incomeStatement(
@@ -552,7 +552,7 @@ class ReportsModule {
 // --- Audit -----------------------------------------------------------------
 
 class AuditModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List audit entries for a ledger (paginated). */
   async list(
@@ -573,7 +573,7 @@ export interface ImportResult {
 }
 
 class ImportsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Upload a CSV or OFX bank statement for parsing and matching. */
   async upload(
@@ -618,7 +618,7 @@ export interface TemplateRecommendation {
 }
 
 class TemplatesModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List all available chart-of-accounts templates. No auth required. */
   async list(): Promise<Template[]> {
@@ -702,7 +702,7 @@ export interface ProvisionResult {
 }
 
 class AdminModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Provision a user with a ledger and API key. Requires admin auth. */
   async provision(input: {
@@ -719,7 +719,7 @@ class AdminModule {
   }
 }
 class ApiKeysModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Create a new API key for a user and ledger. Requires admin auth. */
   async create(input: {
@@ -745,7 +745,7 @@ class ApiKeysModule {
 // --- Bank Feeds ------------------------------------------------------------
 
 class BankFeedsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List bank feed connections for a ledger. */
   async listConnections(ledgerId: string): Promise<BankConnection[]> {
@@ -827,7 +827,7 @@ class BankFeedsModule {
 // ---------------------------------------------------------------------------
 
 class NotificationsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List notifications for the authenticated user. */
   async list(
@@ -888,7 +888,7 @@ class NotificationsModule {
 // ---------------------------------------------------------------------------
 
 class CurrenciesModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List enabled currencies for a ledger. */
   async list(ledgerId: string): Promise<CurrencySetting[]> {
@@ -959,7 +959,7 @@ class CurrenciesModule {
 // ---------------------------------------------------------------------------
 
 class ConversationsModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List conversations for the authenticated user in a ledger. */
   async list(
@@ -1005,7 +1005,7 @@ class ConversationsModule {
 // ---------------------------------------------------------------------------
 
 class ClassificationModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List classification rules for a ledger. */
   async listRules(
@@ -1113,7 +1113,7 @@ class ClassificationModule {
 // ---------------------------------------------------------------------------
 
 class RecurringModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List all recurring entries for a ledger. */
   async list(ledgerId: string): Promise<RecurringEntry[]> {
@@ -1186,7 +1186,7 @@ export interface StripeConnectStatus {
 }
 
 class StripeConnectModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** Get the Stripe OAuth URL. The caller should redirect the user's browser to this URL. */
   async authorize(): Promise<{ url: string }> {
@@ -1214,7 +1214,7 @@ class StripeConnectModule {
 // ---------------------------------------------------------------------------
 
 class RevenueModule {
-  constructor(private readonly c: Ledge) {}
+  constructor(private readonly c: Kounta) {}
 
   /** List revenue recognition schedules. */
   async listSchedules(

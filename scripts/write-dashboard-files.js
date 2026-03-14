@@ -25,14 +25,14 @@ writeFile(`${DASH}/lib/actions.ts`, `"use server";
 // These run on the server and are called from client components.
 // ---------------------------------------------------------------------------
 
-import { getLedgeClient, getLedgerId } from "./ledge";
+import { getKountaClient, getLedgerId } from "./kounta";
 import type {
   TransactionWithLines,
   AccountWithBalance,
   StatementResponse,
   PaginatedResult,
-} from "@ledge/sdk";
-import type { ApiKeySafe, ApiKeyWithRaw } from "@ledge/sdk";
+} from "@kounta/sdk";
+import type { ApiKeySafe, ApiKeyWithRaw } from "@kounta/sdk";
 
 // --- Transactions (paginated) -----------------------------------------------
 
@@ -40,7 +40,7 @@ export async function fetchTransactions(
   cursor?: string,
   limit = 50,
 ): Promise<PaginatedResult<TransactionWithLines>> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.transactions.list(ledgerId, { cursor, limit });
 }
@@ -48,7 +48,7 @@ export async function fetchTransactions(
 // --- Accounts ---------------------------------------------------------------
 
 export async function fetchAccounts(): Promise<AccountWithBalance[]> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.accounts.list(ledgerId);
 }
@@ -59,7 +59,7 @@ export async function fetchIncomeStatement(
   startDate: string,
   endDate: string,
 ): Promise<StatementResponse> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.reports.incomeStatement(ledgerId, startDate, endDate);
 }
@@ -67,7 +67,7 @@ export async function fetchIncomeStatement(
 export async function fetchBalanceSheet(
   asOfDate: string,
 ): Promise<StatementResponse> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.reports.balanceSheet(ledgerId, asOfDate);
 }
@@ -76,7 +76,7 @@ export async function fetchCashFlow(
   startDate: string,
   endDate: string,
 ): Promise<StatementResponse> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.reports.cashFlow(ledgerId, startDate, endDate);
 }
@@ -84,13 +84,13 @@ export async function fetchCashFlow(
 // --- API Keys (admin) -------------------------------------------------------
 
 export async function fetchApiKeys(): Promise<ApiKeySafe[]> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   return client.apiKeys.list(ledgerId);
 }
 
 export async function createApiKey(name: string): Promise<ApiKeyWithRaw> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   // Use a system user ID for dashboard-created keys
   return client.apiKeys.create({
@@ -101,22 +101,22 @@ export async function createApiKey(name: string): Promise<ApiKeyWithRaw> {
 }
 
 export async function revokeApiKey(keyId: string): Promise<ApiKeySafe> {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   return client.apiKeys.revoke(keyId);
 }
 `);
 
 // ─── 2. Overview Page (server component) ─────────────────────────────────────
 
-writeFile(`${DASH}/app/(dashboard)/page.tsx`, `import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+writeFile(`${DASH}/app/(dashboard)/page.tsx`, `import { getKountaClient, getLedgerId } from "@/lib/kounta";
 import { formatCurrency, formatDate, formatNumber, truncateId } from "@/lib/format";
 import Link from "next/link";
-import type { TransactionWithLines, AccountWithBalance } from "@ledge/sdk";
+import type { TransactionWithLines, AccountWithBalance } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
 
   const [ledger, accountsList, txResult] = await Promise.all([
@@ -259,7 +259,7 @@ writeFile(`${DASH}/app/(dashboard)/accounts/accounts-view.tsx`, `"use client";
 
 import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
-import type { AccountWithBalance, AccountType } from "@ledge/sdk";
+import type { AccountWithBalance, AccountType } from "@kounta/sdk";
 
 const typeOrder: Record<string, number> = {
   asset: 0, liability: 1, equity: 2, revenue: 3, expense: 4,
@@ -417,13 +417,13 @@ function GroupRows({
 }
 `);
 
-writeFile(`${DASH}/app/(dashboard)/accounts/page.tsx`, `import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+writeFile(`${DASH}/app/(dashboard)/accounts/page.tsx`, `import { getKountaClient, getLedgerId } from "@/lib/kounta";
 import { AccountsView } from "./accounts-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   const accounts = await client.accounts.list(ledgerId);
 
@@ -438,7 +438,7 @@ writeFile(`${DASH}/app/(dashboard)/transactions/transactions-view.tsx`, `"use cl
 import { useState, useTransition } from "react";
 import { formatCurrency, formatDate, truncateId } from "@/lib/format";
 import { fetchTransactions } from "@/lib/actions";
-import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@ledge/sdk";
+import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@kounta/sdk";
 
 interface Props {
   initialData: PaginatedResult<TransactionWithLines>;
@@ -650,13 +650,13 @@ function TransactionRow({
 }
 `);
 
-writeFile(`${DASH}/app/(dashboard)/transactions/page.tsx`, `import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+writeFile(`${DASH}/app/(dashboard)/transactions/page.tsx`, `import { getKountaClient, getLedgerId } from "@/lib/kounta";
 import { TransactionsView } from "./transactions-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function TransactionsPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
 
   const [txResult, accounts] = await Promise.all([
@@ -685,7 +685,7 @@ import {
   fetchBalanceSheet,
   fetchCashFlow,
 } from "@/lib/actions";
-import type { StatementResponse } from "@ledge/sdk";
+import type { StatementResponse } from "@kounta/sdk";
 
 type Tab = "pnl" | "balance_sheet" | "cash_flow";
 
@@ -955,13 +955,13 @@ function formatTotalLabel(key: string): string {
 }
 `);
 
-writeFile(`${DASH}/app/(dashboard)/statements/page.tsx`, `import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+writeFile(`${DASH}/app/(dashboard)/statements/page.tsx`, `import { getKountaClient, getLedgerId } from "@/lib/kounta";
 import { StatementsView } from "./statements-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatementsPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
 
   // Default date range: start of year to today
@@ -995,7 +995,7 @@ import { useState, useTransition } from "react";
 import { formatDate } from "@/lib/format";
 import { createApiKey, revokeApiKey, fetchApiKeys } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
-import type { ApiKeySafe } from "@ledge/sdk";
+import type { ApiKeySafe } from "@kounta/sdk";
 
 export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
   const [keys, setKeys] = useState<ApiKeySafe[]>(initialKeys);
@@ -1027,7 +1027,7 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
   };
 
   const envSnippet = createdKey
-    ? "LEDGE_API_KEY=" + createdKey + "\\nLEDGE_API_URL=" + (process.env.NEXT_PUBLIC_LEDGE_API_URL ?? "http://localhost:3100")
+    ? "KOUNTA_API_KEY=" + createdKey + "\\nKOUNTA_API_URL=" + (process.env.NEXT_PUBLIC_KOUNTA_API_URL ?? "http://localhost:3100")
     : "";
 
   return (
@@ -1173,13 +1173,13 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
 }
 `);
 
-writeFile(`${DASH}/app/(dashboard)/api-keys/page.tsx`, `import { getLedgeClient, getLedgerId } from "@/lib/ledge";
+writeFile(`${DASH}/app/(dashboard)/api-keys/page.tsx`, `import { getKountaClient, getLedgerId } from "@/lib/kounta";
 import { ApiKeysView } from "./api-keys-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function ApiKeysPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const ledgerId = getLedgerId();
   const keys = await client.apiKeys.list(ledgerId);
 
@@ -1189,13 +1189,13 @@ export default async function ApiKeysPage() {
 
 // ─── 7. Templates ────────────────────────────────────────────────────────────
 
-writeFile(`${DASH}/app/templates/page.tsx`, `import { getLedgeClient } from "@/lib/ledge";
+writeFile(`${DASH}/app/templates/page.tsx`, `import { getKountaClient } from "@/lib/kounta";
 import { TemplatesGrid } from "./templates-grid";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
-  const client = getLedgeClient();
+  const client = getKountaClient();
   const templates = await client.templates.list();
 
   return <TemplatesGrid templates={templates} />;
@@ -1205,7 +1205,7 @@ export default async function TemplatesPage() {
 writeFile(`${DASH}/app/templates/templates-grid.tsx`, `"use client";
 
 import { useRouter } from "next/navigation";
-import type { Template } from "@ledge/sdk";
+import type { Template } from "@kounta/sdk";
 
 export function TemplatesGrid({ templates }: { templates: Template[] }) {
   const router = useRouter();

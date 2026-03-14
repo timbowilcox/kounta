@@ -2,13 +2,13 @@
 // Stripe webhook handler
 //
 // Listens for `invoice.payment_succeeded` events and posts a journal entry
-// to Ledge: debit Cash (1000), credit Subscription Revenue (4000).
+// to Kounta: debit Cash (1000), credit Subscription Revenue (4000).
 //
 // For production use, verify the Stripe signature with STRIPE_WEBHOOK_SECRET.
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from "next/server";
-import { ledge, LEDGER_ID } from "@/lib/ledge";
+import { kounta, LEDGER_ID } from "@/lib/kounta";
 
 interface StripeInvoice {
   id: string;
@@ -35,7 +35,7 @@ interface StripeEvent {
 export async function POST(req: NextRequest) {
   if (!LEDGER_ID) {
     return NextResponse.json(
-      { error: "LEDGE_LEDGER_ID not configured" },
+      { error: "KOUNTA_LEDGER_ID not configured" },
       { status: 500 },
     );
   }
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   const customerEmail = invoice.customer_email ?? "unknown";
 
   try {
-    const txn = await ledge.transactions.post(LEDGER_ID, {
+    const txn = await kounta.transactions.post(LEDGER_ID, {
       date: new Date().toISOString(),
       memo: `${description} — ${customerEmail}`,
       idempotencyKey: `stripe:${invoice.id}`,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to post transaction";
-    console.error("Ledge transaction failed:", message);
+    console.error("Kounta transaction failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

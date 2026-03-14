@@ -9,8 +9,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SqliteDatabase, PostgresDatabase, LedgerEngine } from "@ledge/core";
-import type { Database } from "@ledge/core";
+import { SqliteDatabase, PostgresDatabase, LedgerEngine } from "@kounta/core";
+import type { Database } from "@kounta/core";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 

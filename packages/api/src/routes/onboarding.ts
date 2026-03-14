@@ -20,8 +20,8 @@ import {
   executeSetup,
   autoCreateAccountForBankAccount,
   getUnclassifiedTransactionStats,
-} from "@ledge/core";
-import type { ChecklistItemKey } from "@ledge/core";
+} from "@kounta/core";
+import type { ChecklistItemKey } from "@kounta/core";
 
 export const onboardingRoutes = new Hono<Env>();
 

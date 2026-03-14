@@ -11,8 +11,8 @@ const configs: Record<Tool, { label: string; file: string; config: string; steps
     file: "claude_desktop_config.json",
     config: `{
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }`,
@@ -29,8 +29,8 @@ const configs: Record<Tool, { label: string; file: string; config: string; steps
     file: ".claude/settings.json",
     config: `{
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }`,
@@ -47,9 +47,9 @@ const configs: Record<Tool, { label: string; file: string; config: string; steps
     file: ".claude/settings.json",
     config: `{
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp", "--stdio"]
+      "args": ["@kounta/mcp", "--stdio"]
     }
   }
 }`,
@@ -66,8 +66,8 @@ const configs: Record<Tool, { label: string; file: string; config: string; steps
     file: ".cursor/mcp.json",
     config: `{
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }`,
@@ -84,9 +84,9 @@ const configs: Record<Tool, { label: string; file: string; config: string; steps
     file: ".cursor/mcp.json",
     config: `{
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp", "--stdio"]
+      "args": ["@kounta/mcp", "--stdio"]
     }
   }
 }`,
@@ -116,7 +116,7 @@ export default function McpPage() {
         MCP Connection Guide
       </h1>
       <p className="text-sm" style={{ color: "rgba(0,0,0,0.55)", marginBottom: 12, lineHeight: 1.6 }}>
-        Connect Ledge to your AI coding assistant. Your agent can then set up ledgers,
+        Connect Kounta to your AI coding assistant. Your agent can then set up ledgers,
         post transactions, generate financial statements, classify bank transactions,
         and more \u2014 all conversationally.
       </p>
@@ -140,7 +140,7 @@ export default function McpPage() {
             Hosted Endpoint
           </div>
           <code className="text-xs font-mono" style={{ color: "#3B82F6" }}>
-            https://mcp.useledge.ai
+            https://mcp.kounta.ai
           </code>
           <span className="text-xs" style={{ color: "rgba(0,0,0,0.36)", marginLeft: 8 }}>
             39 tools &middot; 4 resources &middot; 3 prompts
@@ -223,7 +223,7 @@ export default function McpPage() {
                   </div>
                 );
               }
-              if (line.includes('"ledge"') || line.includes('"mcpServers"')) {
+              if (line.includes('"kounta"') || line.includes('"mcpServers"')) {
                 return <div key={i} style={{ color: "#3B82F6" }}>{line}</div>;
               }
               return <div key={i}>{line}</div>;

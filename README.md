@@ -1,4 +1,4 @@
-# Ledge
+# Kounta
 
 **Accounting infrastructure for builders.** A programmable double-entry ledger and reporting engine, embeddable via API, SDK, and MCP.
 
@@ -40,11 +40,11 @@ Monorepo powered by Turborepo:
 
 ```
 packages/
-  core/       # @ledge/core — Double-entry engine, domain logic
-  api/        # @ledge/api — REST API (Hono, 80+ endpoints)
-  mcp/        # @ledge/mcp — MCP server (39 tools)
-  sdk/        # @ledge/sdk — TypeScript client SDK (17 modules)
-  dashboard/  # @ledge/dashboard — Next.js dashboard
+  core/       # @kounta/core — Double-entry engine, domain logic
+  api/        # @kounta/api — REST API (Hono, 80+ endpoints)
+  mcp/        # @kounta/mcp — MCP server (39 tools)
+  sdk/        # @kounta/sdk — TypeScript client SDK (17 modules)
+  dashboard/  # @kounta/dashboard — Next.js dashboard
 ```
 
 ## Tech Stack
@@ -61,20 +61,20 @@ packages/
 ### Use the hosted API
 
 ```typescript
-import { Ledge } from "@ledge/sdk";
+import { Kounta } from "@kounta/sdk";
 
-const ledge = new Ledge({
-  apiKey: "ledge_live_...",
-  baseUrl: "https://api.useledge.ai",
+const kounta = new Kounta({
+  apiKey: "kounta_live_...",
+  baseUrl: "https://api.kounta.ai",
 });
 
 // Create accounts
-await ledge.accounts.create(ledgerId, {
+await kounta.accounts.create(ledgerId, {
   code: "1000", name: "Cash", type: "asset",
 });
 
 // Post a transaction
-await ledge.transactions.post(ledgerId, {
+await kounta.transactions.post(ledgerId, {
   date: "2026-03-14",
   memo: "Monthly subscription",
   lines: [
@@ -84,7 +84,7 @@ await ledge.transactions.post(ledgerId, {
 });
 
 // Generate financial statements
-const pnl = await ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-03-31");
+const pnl = await kounta.reports.incomeStatement(ledgerId, "2026-01-01", "2026-03-31");
 ```
 
 ### Connect AI assistant via MCP
@@ -92,8 +92,8 @@ const pnl = await ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-03
 ```json
 {
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }
@@ -102,7 +102,7 @@ const pnl = await ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-03
 ### Self-host with Docker
 
 ```bash
-docker run -p 3001:3001 getledge/ledge
+docker run -p 3001:3001 kounta/kounta
 ```
 
 ## Development

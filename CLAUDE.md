@@ -1,4 +1,4 @@
-# Ledge
+# Kounta
 
 Accounting infrastructure for builders. A programmable double-entry ledger and reporting engine, embeddable via API, SDK, and MCP.
 
@@ -14,11 +14,11 @@ Accounting infrastructure for builders. A programmable double-entry ledger and r
 ## Monorepo Structure
 ```
 packages/
-  core/       # @ledge/core — double-entry engine, domain logic
-  api/        # @ledge/api — REST API (Hono)
-  mcp/        # @ledge/mcp — MCP server
-  sdk/        # @ledge/sdk — client SDK
-  dashboard/  # @ledge/dashboard — Next.js dashboard
+  core/       # @kounta/core — double-entry engine, domain logic
+  api/        # @kounta/api — REST API (Hono)
+  mcp/        # @kounta/mcp — MCP server
+  sdk/        # @kounta/sdk — client SDK
+  dashboard/  # @kounta/dashboard — Next.js dashboard
 ```
 
 ## Current Scope
@@ -41,7 +41,7 @@ Out of scope: bank feed APIs (Plaid, Basiq), notification layer, health dashboar
 
 - Do not use floating-point numbers for money. Ever.
 - Do not modify or delete posted transactions. Only reverse.
-- Do not put domain logic in @ledge/api or @ledge/mcp — it belongs in @ledge/core.
+- Do not put domain logic in @kounta/api or @kounta/mcp — it belongs in @kounta/core.
 - Do not build a full accounting UI in the dashboard. It is a viewer and credential manager only.
 - Do not add tax, multi-currency, multi-entity, or RBAC. These are out of scope.
 - Do not store API keys in cleartext. Store SHA-256 hashes. The key is shown once at creation.
@@ -63,7 +63,7 @@ Out of scope: bank feed APIs (Plaid, Basiq), notification layer, health dashboar
 
 ## API Keys
 
-- Format: `ledge_live_` prefix for production, `ledge_test_` for sandbox
+- Format: `kounta_live_` prefix for production, `kounta_test_` for sandbox
 - Shown once at creation, stored as SHA-256 hash
 - Scoped to a single ledger
 - A user can have multiple keys per ledger
@@ -71,7 +71,7 @@ Out of scope: bank feed APIs (Plaid, Basiq), notification layer, health dashboar
 ## Conventions
 
 - Validate all inputs at the boundary with Zod schemas.
-- Keep domain logic in `@ledge/core`; other packages import from core, never the reverse.
+- Keep domain logic in `@kounta/core`; other packages import from core, never the reverse.
 - Zod schemas are shared between API validation, SDK types, and MCP tool parameter definitions.
 - Database migrations live alongside the package that owns the schema.
 - Use explicit error types, not thrown strings. Prefer `Result<T, E>` patterns where practical.
@@ -83,7 +83,7 @@ Out of scope: bank feed APIs (Plaid, Basiq), notification layer, health dashboar
 
 - Prefer `const` over `let`. No `var`.
 - Use named exports, not default exports.
-- Colocate types with the code that uses them. Shared types go in `@ledge/core`.
+- Colocate types with the code that uses them. Shared types go in `@kounta/core`.
 - Keep functions small. If a function needs a comment explaining what it does, it should be split or renamed.
 - SQL: use snake_case for columns/tables. TypeScript: use camelCase for variables, PascalCase for types.
 

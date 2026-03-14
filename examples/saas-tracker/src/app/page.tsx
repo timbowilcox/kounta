@@ -1,9 +1,9 @@
-import { ledge, LEDGER_ID } from "@/lib/ledge";
+import { kounta, LEDGER_ID } from "@/lib/kounta";
 import { StatementTable } from "@/components/statement-table";
 import { RecentTransactions } from "@/components/recent-transactions";
 import { SimulatePayment } from "@/components/simulate-payment";
 import { formatCurrency } from "@/lib/format";
-import type { StatementResponse } from "@ledge/sdk";
+import type { StatementResponse } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ async function fetchStatements(): Promise<{
   error: string | null;
 }> {
   if (!LEDGER_ID) {
-    return { pnl: null, balanceSheet: null, error: "LEDGE_LEDGER_ID not set" };
+    return { pnl: null, balanceSheet: null, error: "KOUNTA_LEDGER_ID not set" };
   }
 
   try {
@@ -22,8 +22,8 @@ async function fetchStatements(): Promise<{
     const today = now.toISOString().slice(0, 10);
 
     const [pnl, balanceSheet] = await Promise.all([
-      ledge.reports.incomeStatement(LEDGER_ID, startOfYear, today),
-      ledge.reports.balanceSheet(LEDGER_ID, today),
+      kounta.reports.incomeStatement(LEDGER_ID, startOfYear, today),
+      kounta.reports.balanceSheet(LEDGER_ID, today),
     ]);
 
     return { pnl, balanceSheet, error: null };
@@ -37,7 +37,7 @@ async function fetchTransactions() {
   if (!LEDGER_ID) return [];
 
   try {
-    const result = await ledge.transactions.list(LEDGER_ID, { limit: 10 });
+    const result = await kounta.transactions.list(LEDGER_ID, { limit: 10 });
     return result.data;
   } catch {
     return [];
@@ -55,13 +55,13 @@ export default async function DashboardPage() {
       <div className="card text-center py-16">
         <h2 className="text-xl font-bold text-slate-50 mb-3">Setup Required</h2>
         <p className="text-sm mb-6" style={{ color: "#94a3b8" }}>
-          {error}. Follow the README to configure your Ledge connection.
+          {error}. Follow the README to configure your Kounta connection.
         </p>
         <div
           className="inline-block rounded-xl p-5 text-left font-mono text-sm"
           style={{ background: "#0a0f1a", color: "#5eead4" }}
         >
-          <p>1. Start Ledge API: <span style={{ color: "#94a3b8" }}>pnpm dev</span> (from repo root)</p>
+          <p>1. Start Kounta API: <span style={{ color: "#94a3b8" }}>pnpm dev</span> (from repo root)</p>
           <p>2. Copy <span style={{ color: "#94a3b8" }}>.env.example</span> to <span style={{ color: "#94a3b8" }}>.env.local</span></p>
           <p>3. Run seed: <span style={{ color: "#94a3b8" }}>pnpm seed</span></p>
           <p>4. Paste the output values into <span style={{ color: "#94a3b8" }}>.env.local</span></p>

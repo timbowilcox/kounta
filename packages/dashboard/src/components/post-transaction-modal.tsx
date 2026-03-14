@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { usePostTransaction } from "./post-transaction-provider";
 import { fetchAccounts, postTransaction } from "@/lib/actions";
 import { useRouter } from "next/navigation";
-import type { AccountWithBalance } from "@ledge/sdk";
+import type { AccountWithBalance } from "@kounta/sdk";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 

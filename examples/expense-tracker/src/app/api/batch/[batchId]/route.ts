@@ -1,4 +1,4 @@
-import { ledge } from "@/lib/ledge";
+import { kounta } from "@/lib/kounta";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { batchId } = await params;
-    const result = await ledge.imports.get(batchId);
+    const result = await kounta.imports.get(batchId);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

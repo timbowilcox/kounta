@@ -22,7 +22,7 @@ import {
   listAttachments,
   getAttachment,
   deleteAttachment,
-} from "@ledge/core";
+} from "@kounta/core";
 
 // ---------------------------------------------------------------------------
 // Transaction-scoped routes (mounted under /v1/ledgers/:ledgerId/transactions/:transactionId/attachments)
@@ -40,7 +40,7 @@ transactionAttachmentRoutes.post("/", async (c) => {
     return errorResponse(
       c,
       createError(ErrorCode.INTERNAL_ERROR, "Attachment storage is not configured", [
-        { field: "storage", suggestion: "Set LEDGE_ATTACHMENTS_DIR environment variable to enable attachments." },
+        { field: "storage", suggestion: "Set KOUNTA_ATTACHMENTS_DIR environment variable to enable attachments." },
       ])
     );
   }

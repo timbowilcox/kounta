@@ -4,7 +4,7 @@ import { useState, useTransition, useRef, useCallback } from "react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { fetchTransactions, fetchBankTransactions, markBankTransactionPersonal, fetchAttachments, uploadAttachment, deleteAttachmentAction } from "@/lib/actions";
 import type { BankTransactionSummary, AttachmentSummary } from "@/lib/actions";
-import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@ledge/sdk";
+import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@kounta/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 import { usePostTransaction } from "@/components/post-transaction-provider";
 

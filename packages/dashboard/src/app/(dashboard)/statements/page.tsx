@@ -1,5 +1,5 @@
-import { getSessionClient } from "@/lib/ledge";
-import type { StatementResponse } from "@ledge/sdk";
+import { getSessionClient } from "@/lib/kounta";
+import type { StatementResponse } from "@kounta/sdk";
 import { StatementsView } from "./statements-view";
 import { fetchClosedPeriods } from "@/lib/actions";
 import type { ClosedPeriodSummary } from "@/lib/actions";

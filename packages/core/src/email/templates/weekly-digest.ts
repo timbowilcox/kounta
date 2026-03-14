@@ -98,13 +98,13 @@ export const generateWeeklyDigest = (data: WeeklyDigestData & { tokens: Record<s
       <h2 style="font-size:15px;font-weight:600;color:#0A0A0A;margin:0 0 16px;">${pendingClassifications.length} transaction${pendingClassifications.length === 1 ? "" : "s"} need${pendingClassifications.length === 1 ? "s" : ""} your input</h2>
       ${items}
       <div style="text-align:center;margin-top:16px;">
-        <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Classify all in Ledge</a>
+        <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Classify all in Kounta</a>
       </div>`;
   }
 
   const signoff = `
     <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
-    <p style="color:#666666;">Have a great week.<br>— Ledge</p>`;
+    <p style="color:#666666;">Have a great week.<br>— Kounta</p>`;
 
   const unsubscribeUrl = `${baseUrl}/api/email-action?action=unsubscribe&type=weekly_digest&token=`;
   return emailLayout(greeting + stats + revenueSection + classificationSection + signoff, unsubscribeUrl);

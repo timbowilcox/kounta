@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @ledge/mcp integration tests
+// @kounta/mcp integration tests
 //
 // Uses InMemoryTransport + Client from the MCP SDK to test the full server
 // end-to-end, including tools, resources, and prompts.
@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { initDatabase } from "../src/lib/db.js";
 import { createMcpServer } from "../src/server.js";
-import type { LedgerEngine, Database } from "@ledge/core";
+import type { LedgerEngine, Database } from "@kounta/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 // ---------------------------------------------------------------------------

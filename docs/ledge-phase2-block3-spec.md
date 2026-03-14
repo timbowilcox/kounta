@@ -1,4 +1,4 @@
-# LEDGE — Phase 2 Block 3: Make It Effortless
+# KOUNTA — Phase 2 Block 3: Make It Effortless
 
 **Development Specification** | March 2026 | Confidential
 
@@ -8,14 +8,14 @@
 
 # Guiding Principle
 
-Ledge should never add a burden. The founder should forget Ledge exists most weeks. The system runs in the background, classifies transactions, tracks revenue, and only reaches out when it genuinely needs human input — and even then, the founder should be able to resolve it from their inbox without logging in.
+Kounta should never add a burden. The founder should forget Kounta exists most weeks. The system runs in the background, classifies transactions, tracks revenue, and only reaches out when it genuinely needs human input — and even then, the founder should be able to resolve it from their inbox without logging in.
 
 The cadence is:
-- **Real-time:** Ledge processes everything silently
+- **Real-time:** Kounta processes everything silently
 - **Weekly:** One email digest with a summary and any pending actions
 - **Monthly:** Close prompt with one-click confirmation
 - **Quarterly:** Tax prep summary
-- **On-demand:** The founder opens Ledge when they want to understand their finances, not because they have to
+- **On-demand:** The founder opens Kounta when they want to understand their finances, not because they have to
 
 ---
 
@@ -77,19 +77,19 @@ Migration 008 deployed. 19 classification tests passing. 5 MCP tools, SDK module
 
 ## The Problem
 
-Ledge only communicates through the dashboard. Notifications and classification requests sit in the UI waiting for the user to log in. A SaaS founder heads-down building won't log into Ledge daily. Pending items accumulate, books get stale, and the product feels broken when they finally check.
+Kounta only communicates through the dashboard. Notifications and classification requests sit in the UI waiting for the user to log in. A SaaS founder heads-down building won't log into Kounta daily. Pending items accumulate, books get stale, and the product feels broken when they finally check.
 
 ## The Solution: Email-First, Action-From-Inbox
 
-Every communication Ledge sends should be resolvable without logging in. The email itself contains the action. The founder taps a button in the email and the thing is done.
+Every communication Kounta sends should be resolvable without logging in. The email itself contains the action. The founder taps a button in the email and the thing is done.
 
 ### Email Infrastructure
 
-Use Resend for transactional email. Create a Ledge-branded email template system.
+Use Resend for transactional email. Create a Kounta-branded email template system.
 
-- **Sender:** notifications@useledge.ai (configure Resend domain verification for useledge.ai)
+- **Sender:** notifications@kounta.ai (configure Resend domain verification for kounta.ai)
 - **Reply-to:** No reply (actions are via links, not email replies)
-- **Style:** Clean, monochrome, white background, #0A0A0A text, minimal colour. Blue (#0066FF) buttons for primary actions. Ledge logo at top. Unsubscribe link at bottom. Mobile-responsive (max-width 600px, single column). Geist-like aesthetic.
+- **Style:** Clean, monochrome, white background, #0A0A0A text, minimal colour. Blue (#0066FF) buttons for primary actions. Kounta logo at top. Unsubscribe link at bottom. Mobile-responsive (max-width 600px, single column). Geist-like aesthetic.
 
 ### Email Types
 
@@ -121,7 +121,7 @@ $129.00 — HETZNER ONLINE (Mar 9)
 $19.99 — NETFLIX.COM (Mar 10)
 [Personal]  [Entertainment]  [Other →]
 
-[Classify all in Ledge →]
+[Classify all in Kounta →]
 
 ---
 
@@ -130,10 +130,10 @@ Insights:
 • You've received 3 Stripe payouts this week totalling $2,450
 
 Have a great week.
-— Ledge
+— Kounta
 ```
 
-**Classification buttons are real action links.** Each button is a signed URL: `https://useledge.ai/api/email-action?action=classify&txn=UUID&category=CATEGORY&token=SIGNED_TOKEN`. Clicking classifies the transaction immediately and shows a confirmation page: "✓ Classified as Software Tools. [Undo]". No login required.
+**Classification buttons are real action links.** Each button is a signed URL: `https://kounta.ai/api/email-action?action=classify&txn=UUID&category=CATEGORY&token=SIGNED_TOKEN`. Clicking classifies the transaction immediately and shows a confirmation page: "✓ Classified as Software Tools. [Undo]". No login required.
 
 The signed token contains: transaction ID, ledger ID, user ID, selected category, and expiry (7 days). Verified server-side. Single-use — can't be replayed.
 
@@ -161,7 +161,7 @@ Content: Revenue, deductible expenses by category, estimated tax liability (if c
 
 #### 5. Onboarding Sequence (days 1, 3, 7 after signup)
 
-- Day 1 (immediate): "Welcome to Ledge — connect your bank to get started" (only if they didn't connect during onboarding)
+- Day 1 (immediate): "Welcome to Kounta — connect your bank to get started" (only if they didn't connect during onboarding)
 - Day 3: "Your first transactions are ready to classify" (only if bank connected but items unclassified)
 - Day 7: "Here's your first weekly financial snapshot" (first weekly digest, even if it's not Monday)
 
@@ -217,7 +217,7 @@ GET /api/email-action
   - unsubscribe: update email_preferences
 
   Returns minimal HTML confirmation page: "✓ Done" with Undo link
-  Invalid/expired token: error page with "Open Ledge" link
+  Invalid/expired token: error page with "Open Kounta" link
 ```
 
 ### Email Scheduling
@@ -260,12 +260,12 @@ Problems: cold template choice with no context, empty dashboard with no guidance
 
 ### Route: /onboarding
 
-After OAuth sign-in, if user has no ledger, redirect to /onboarding instead of the dashboard. Full-width page, no sidebar, clean. Ledge logo top-left, progress indicator top-right.
+After OAuth sign-in, if user has no ledger, redirect to /onboarding instead of the dashboard. Full-width page, no sidebar, clean. Kounta logo top-left, progress indicator top-right.
 
 ### Step 1: Business Type (1 click)
 
 ```
-Welcome to Ledge.
+Welcome to Kounta.
 Let's set up your books in about 3 minutes.
 What kind of business are you running?
 
@@ -341,7 +341,7 @@ After completion: financial snapshot (revenue, expenses, net income, cash) + "Go
 Persistent (but dismissible) progress bar on overview page:
 
 ```
-Getting started with Ledge              4/6 complete
+Getting started with Kounta              4/6 complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 67%
 
 ✓ Business profile configured
@@ -356,15 +356,15 @@ Each incomplete item is actionable. Disappears after all complete, or after 30 d
 
 ### Auto-Create Accounts for Bank Connections
 
-When a user connects a bank account via Basiq, automatically create the corresponding Ledge account:
+When a user connects a bank account via Basiq, automatically create the corresponding Kounta account:
 
-| Basiq Account Type | Ledge Account Type | Code Range |
+| Basiq Account Type | Kounta Account Type | Code Range |
 |--------------------|--------------------|------------|
 | Transaction/Savings | Asset | 1000-series |
 | Credit card | Liability | 2100-series |
 | Loan | Liability | 2200-series |
 
-Use the account name from Basiq: "CBA Everyday Account" → "1001 CBA Everyday Account (Asset)". Auto-assign next available code in the appropriate range. Map the bank_account to this new Ledge account automatically.
+Use the account name from Basiq: "CBA Everyday Account" → "1001 CBA Everyday Account (Asset)". Auto-assign next available code in the appropriate range. Map the bank_account to this new Kounta account automatically.
 
 ### Data Model
 
@@ -488,8 +488,8 @@ Bank feeds show Stripe payouts as lump sums: "$4,200 from STRIPE." A native Stri
 ## Architecture
 
 ```
-Stripe → OAuth → Ledge stores access token + subscribes to webhooks
-Stripe events → Ledge webhook → Individual ledger transactions
+Stripe → OAuth → Kounta stores access token + subscribes to webhooks
+Stripe events → Kounta webhook → Individual ledger transactions
                               → Reconciles against bank feed payout
 ```
 
@@ -632,11 +632,11 @@ Connected accounts are auto-created during onboarding/bank connection. The SaaS 
 
 # Audit Readiness (US / IRS)
 
-**What Ledge captures automatically:** payee, amount, date, proof of payment (bank feeds), customer and charge details (Stripe), expense category (classification engine), immutable audit trail (reversals only, never deletions).
+**What Kounta captures automatically:** payee, amount, date, proof of payment (bank feeds), customer and charge details (Stripe), expense category (classification engine), immutable audit trail (reversals only, never deletions).
 
 **What requires user input:** receipt attachments for expenses (especially >$75), business purpose notes for travel/entertainment, asset tracking for large purchases (>$500).
 
-**Retention:** All data retained minimum 7 years. Ledge never auto-deletes financial data.
+**Retention:** All data retained minimum 7 years. Kounta never auto-deletes financial data.
 
 **Export (Block 4):** Year-end tax pack — categorised transactions, receipts, P&L, balance sheet, depreciation schedules — packaged for accountant handoff.
 
@@ -678,7 +678,7 @@ Connected accounts are auto-created during onboarding/bank connection. The SaaS 
 Block 3 is complete when:
 
 - A SaaS founder signs up, answers 4 questions, and has books configured automatically — no template picker, no chart of accounts
-- Connected bank accounts auto-create corresponding Ledge accounts (checking = asset, credit card = liability)
+- Connected bank accounts auto-create corresponding Kounta accounts (checking = asset, credit card = liability)
 - Bank transactions auto-classified with <5/week needing manual input after 60 days
 - Weekly email digest with financial summary and email-based classification (no login required)
 - Monthly close is one click from email

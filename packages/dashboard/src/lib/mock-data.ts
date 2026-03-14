@@ -286,7 +286,7 @@ export const apiKeys: readonly MockApiKey[] = [
   {
     id: "k1",
     name: "Production",
-    prefix: "ledge_live_7f3a",
+    prefix: "kounta_live_7f3a",
     createdAt: "2026-01-15T09:30:00Z",
     lastUsedAt: "2026-03-10T08:12:00Z",
     status: "active",
@@ -294,7 +294,7 @@ export const apiKeys: readonly MockApiKey[] = [
   {
     id: "k2",
     name: "CI / Staging",
-    prefix: "ledge_live_2b8c",
+    prefix: "kounta_live_2b8c",
     createdAt: "2026-02-01T14:00:00Z",
     lastUsedAt: "2026-03-09T22:45:00Z",
     status: "active",
@@ -302,7 +302,7 @@ export const apiKeys: readonly MockApiKey[] = [
   {
     id: "k3",
     name: "Old integration",
-    prefix: "ledge_live_9d1e",
+    prefix: "kounta_live_9d1e",
     createdAt: "2026-01-20T11:00:00Z",
     lastUsedAt: "2026-02-15T16:30:00Z",
     status: "revoked",

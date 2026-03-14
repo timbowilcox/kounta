@@ -13,8 +13,8 @@ import {
   createError,
   ErrorCode,
   createBankFeedProvider,
-} from "@ledge/core";
-import type { ProviderName, ProviderConfig, BankFeedProvider } from "@ledge/core";
+} from "@kounta/core";
+import type { ProviderName, ProviderConfig, BankFeedProvider } from "@kounta/core";
 
 export const bankFeedRoutes = new Hono<Env>();
 

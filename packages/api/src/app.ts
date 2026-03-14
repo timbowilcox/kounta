@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Hono app factory — creates a configured Ledge API application.
+// Hono app factory — creates a configured Kounta API application.
 //
 // Separated from the server entry point for testability:
 //   - Tests create an in-memory DB and call createApp(engine)
@@ -7,8 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from "hono";
-import { generateId } from "@ledge/core";
-import type { LedgerEngine, AttachmentStorage } from "@ledge/core";
+import { generateId } from "@kounta/core";
+import type { LedgerEngine, AttachmentStorage } from "@kounta/core";
 import type { Env } from "./lib/context.js";
 import { ledgerRoutes } from "./routes/ledgers.js";
 import { accountRoutes } from "./routes/accounts.js";

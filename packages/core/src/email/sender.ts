@@ -11,7 +11,7 @@ import { generateId, nowUtc } from "../engine/id.js";
 import type { Database } from "../db/database.js";
 import type { EmailActionToken, EmailLog, EmailPreferences } from "./types.js";
 
-const SENDER = "Ledge <notifications@useledge.ai>";
+const SENDER = "Kounta <notifications@kounta.ai>";
 
 let resendClient: Resend | null = null;
 

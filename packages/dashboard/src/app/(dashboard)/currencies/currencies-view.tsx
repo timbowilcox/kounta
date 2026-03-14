@@ -1,6 +1,6 @@
 "use client";
 
-import type { CurrencySetting, ExchangeRate } from "@ledge/sdk";
+import type { CurrencySetting, ExchangeRate } from "@kounta/sdk";
 
 interface CurrenciesViewProps {
   currencies: readonly unknown[];

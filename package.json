@@ -1,5 +1,5 @@
 {
-  "name": "ledge",
+  "name": "kounta",
   "private": true,
   "packageManager": "pnpm@10.31.0",
   "scripts": {
@@ -9,7 +9,7 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean",
-    "db:migrate": "turbo db:migrate --filter=@ledge/core"
+    "db:migrate": "turbo db:migrate --filter=@kounta/core"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "sharp", "better-sqlite3"]

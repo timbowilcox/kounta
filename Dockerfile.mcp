@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Ledge MCP Server — HTTP/SSE deployment image
+# Kounta MCP Server — HTTP/SSE deployment image
 #
 # Connects to the same PostgreSQL database as the API.
 # Deploy as a separate Railway service at mcp.useledge.ai.
@@ -7,7 +7,7 @@
 # Required env vars:
 #   DATABASE_URL          — PostgreSQL connection string (same as API)
 #   PORT                  — HTTP port (default: 3005)
-#   LEDGE_MCP_TRANSPORT   — Must be "http" for deployed mode
+#   KOUNTA_MCP_TRANSPORT   — Must be "http" for deployed mode
 #
 # Optional env vars:
 #   BASIQ_API_KEY         — Basiq bank feed provider key
@@ -53,8 +53,8 @@ RUN pnpm install --frozen-lockfile --prod --filter=@ledge/core --filter=@ledge/m
 # ---- Stage 3: Runtime ----------------------------------------------------------
 FROM node:20-slim AS runtime
 
-LABEL org.opencontainers.image.title="Ledge MCP Server" \
-      org.opencontainers.image.description="MCP server with SSE transport for Ledge accounting engine" \
+LABEL org.opencontainers.image.title="Kounta MCP Server" \
+      org.opencontainers.image.description="MCP server with SSE transport for Kounta accounting engine" \
       org.opencontainers.image.vendor="getledge" \
       org.opencontainers.image.url="https://getledge.dev"
 
@@ -79,7 +79,7 @@ USER ledge
 
 ENV NODE_ENV=production \
     PORT=3005 \
-    LEDGE_MCP_TRANSPORT=http
+    KOUNTA_MCP_TRANSPORT=http
 
 EXPOSE 3005
 

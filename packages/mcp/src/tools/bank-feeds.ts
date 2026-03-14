@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { LedgerEngine, BankFeedProvider } from "@ledge/core";
+import type { LedgerEngine, BankFeedProvider } from "@kounta/core";
 import { handleResult, toolErr } from "../lib/helpers.js";
 
 export function registerBankFeedTools(

@@ -1,6 +1,6 @@
-import { ledge } from "@/lib/ledge";
+import { kounta } from "@/lib/kounta";
 import { NextResponse } from "next/server";
-import type { ConfirmAction } from "@ledge/sdk";
+import type { ConfirmAction } from "@kounta/sdk";
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await ledge.imports.confirmMatches(batchId, actions);
+    const result = await kounta.imports.confirmMatches(batchId, actions);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

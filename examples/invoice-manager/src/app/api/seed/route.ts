@@ -1,11 +1,11 @@
 // POST /api/seed — Convenience endpoint to create a sample invoice entry
 import { NextRequest, NextResponse } from "next/server";
-import { ledge, ledgerId } from "@/lib/ledge";
+import { kounta, ledgerId } from "@/lib/kounta";
 
 export async function POST(req: NextRequest) {
   if (!ledgerId) {
     return NextResponse.json(
-      { error: "LEDGE_LEDGER_ID not configured" },
+      { error: "KOUNTA_LEDGER_ID not configured" },
       { status: 500 },
     );
   }
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const description = body.description ?? "Consulting services";
 
   try {
-    const txn = await ledge.transactions.post(ledgerId, {
+    const txn = await kounta.transactions.post(ledgerId, {
       date: new Date().toISOString().slice(0, 10),
       memo: `Invoice — ${description} (${client})`,
       sourceType: "api",

@@ -15,7 +15,7 @@ import {
   verifyActionToken,
   markTokenUsed,
   checkAndSendDigests,
-} from "@ledge/core";
+} from "@kounta/core";
 
 export const emailRoutes = new Hono<Env>();
 

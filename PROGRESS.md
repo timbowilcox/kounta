@@ -1,8 +1,8 @@
-# Ledge — Build Progress
+# Kounta — Build Progress
 
 ## Project Overview
 
-Ledge is a programmable double-entry ledger and reporting engine, embeddable via API, SDK, and MCP.
+Kounta is a programmable double-entry ledger and reporting engine, embeddable via API, SDK, and MCP.
 Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 235 tests passing.
 
 ## Tech Stack
@@ -13,7 +13,7 @@ Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 235 tests pass
 
 ## Repository
 
-- **GitHub**: https://github.com/timbowilcox/ledge
+- **GitHub**: https://github.com/timbowilcox/kounta
 - **Branch**: main
 - **Deployed**: Vercel (all three example apps)
 
@@ -21,11 +21,11 @@ Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 235 tests pass
 
 ```
 packages/
-  core/       # @ledge/core — double-entry engine, domain logic
-  api/        # @ledge/api — REST API via Hono
-  mcp/        # @ledge/mcp — MCP server (27 tools)
-  sdk/        # @ledge/sdk — TypeScript client SDK (12 modules)
-  dashboard/  # @ledge/dashboard — Next.js dashboard (14 pages)
+  core/       # @kounta/core — double-entry engine, domain logic
+  api/        # @kounta/api — REST API via Hono
+  mcp/        # @kounta/mcp — MCP server (27 tools)
+  sdk/        # @kounta/sdk — TypeScript client SDK (12 modules)
+  dashboard/  # @kounta/dashboard — Next.js dashboard (14 pages)
 examples/
   saas-tracker/        # SaaS subscription revenue tracker
   invoice-manager/     # Freelancer invoice manager
@@ -89,10 +89,10 @@ examples/
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| @ledge/core | 129 | ✅ passing |
-| @ledge/mcp | 36 | ✅ passing |
-| @ledge/api | 35 (31 integration + 4 benchmark) | ✅ passing |
-| @ledge/sdk | 35 | ✅ passing |
+| @kounta/core | 129 | ✅ passing |
+| @kounta/mcp | 36 | ✅ passing |
+| @kounta/api | 35 (31 integration + 4 benchmark) | ✅ passing |
+| @kounta/sdk | 35 | ✅ passing |
 | **Total** | **235** | **all passing** |
 
 ### Database Migrations
@@ -127,9 +127,9 @@ Health, Ledgers (CRUD), Accounts (CRUD), Transactions (post/list/get/reverse), R
 | Variable | Default | Description |
 |----------|---------|-------------|
 | PORT | 3001 | HTTP port |
-| LEDGE_DATA_DIR | (in-memory) | Directory for persistent SQLite file |
-| LEDGE_ADMIN_SECRET | (auto-generated) | Admin secret for bootstrap operations |
-| LEDGE_API_URL | - | API URL for dashboard/SDK |
+| KOUNTA_DATA_DIR | (in-memory) | Directory for persistent SQLite file |
+| KOUNTA_ADMIN_SECRET | (auto-generated) | Admin secret for bootstrap operations |
+| KOUNTA_API_URL | - | API URL for dashboard/SDK |
 | STRIPE_SECRET_KEY | - | Stripe API key for billing |
 | AUTH_GITHUB_ID/SECRET | - | GitHub OAuth for dashboard |
 | AUTH_GOOGLE_ID/SECRET | - | Google OAuth for dashboard |

@@ -8,10 +8,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SqliteDatabase, LedgerEngine } from "@ledge/core";
-import type { Database } from "@ledge/core";
+import { SqliteDatabase, LedgerEngine } from "@kounta/core";
+import type { Database } from "@kounta/core";
 import { createApp } from "../../api/src/app.js";
-import { Ledge, LedgeApiError, ErrorCode } from "../src/index.js";
+import { Kounta, KountaApiError, ErrorCode } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -75,16 +75,16 @@ const createLocalFetch = (app: ReturnType<typeof createApp>): typeof globalThis.
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe("@ledge/sdk", () => {
+describe("@kounta/sdk", () => {
   let db: Database;
   let userId: string;
-  let client: Ledge;
+  let client: Kounta;
   let ledgerId: string;
   let apiKeyRaw: string;
 
   beforeAll(async () => {
     // Set admin secret so the adminAuth middleware recognises our token
-    process.env["LEDGE_ADMIN_SECRET"] = ADMIN_SECRET;
+    process.env["KOUNTA_ADMIN_SECRET"] = ADMIN_SECRET;
 
     db = await createTestDb();
     const engine = new LedgerEngine(db);
@@ -93,7 +93,7 @@ describe("@ledge/sdk", () => {
     // Use admin client first to bootstrap a ledger and API key
     userId = createSystemUser(db);
 
-    const adminClient = new Ledge({
+    const adminClient = new Kounta({
       apiKey: "unused",
       adminSecret: ADMIN_SECRET,
       baseUrl: "http://localhost",
@@ -116,7 +116,7 @@ describe("@ledge/sdk", () => {
     apiKeyRaw = keyResult.rawKey;
 
     // Now create the primary client using the API key
-    client = new Ledge({
+    client = new Kounta({
       apiKey: apiKeyRaw,
       adminSecret: ADMIN_SECRET,
       baseUrl: "http://localhost",
@@ -147,14 +147,14 @@ describe("@ledge/sdk", () => {
       expect(ledger.currency).toBe("EUR");
     });
 
-    it("throws LedgeApiError for inaccessible ledger", async () => {
+    it("throws KountaApiError for inaccessible ledger", async () => {
       try {
         // API key is scoped to our test ledger, so accessing another ID → 403
         await client.ledgers.get("00000000-0000-7000-8000-000000000099");
         expect.unreachable("should have thrown");
       } catch (e) {
-        expect(e).toBeInstanceOf(LedgeApiError);
-        const err = e as LedgeApiError;
+        expect(e).toBeInstanceOf(KountaApiError);
+        const err = e as KountaApiError;
         expect(err.status).toBe(403);
       }
     });
@@ -214,8 +214,8 @@ describe("@ledge/sdk", () => {
         });
         expect.unreachable("should have thrown");
       } catch (e) {
-        expect(e).toBeInstanceOf(LedgeApiError);
-        expect((e as LedgeApiError).code).toBe(ErrorCode.DUPLICATE_ACCOUNT_CODE);
+        expect(e).toBeInstanceOf(KountaApiError);
+        expect((e as KountaApiError).code).toBe(ErrorCode.DUPLICATE_ACCOUNT_CODE);
       }
     });
   });
@@ -303,8 +303,8 @@ describe("@ledge/sdk", () => {
         });
         expect.unreachable("should have thrown");
       } catch (e) {
-        expect(e).toBeInstanceOf(LedgeApiError);
-        expect((e as LedgeApiError).code).toBe(ErrorCode.UNBALANCED_TRANSACTION);
+        expect(e).toBeInstanceOf(KountaApiError);
+        expect((e as KountaApiError).code).toBe(ErrorCode.UNBALANCED_TRANSACTION);
       }
     });
   });
@@ -435,8 +435,8 @@ describe("@ledge/sdk", () => {
         });
         expect.unreachable("should have thrown");
       } catch (e) {
-        expect(e).toBeInstanceOf(LedgeApiError);
-        expect((e as LedgeApiError).code).toBe(ErrorCode.IMPORT_PARSE_ERROR);
+        expect(e).toBeInstanceOf(KountaApiError);
+        expect((e as KountaApiError).code).toBe(ErrorCode.IMPORT_PARSE_ERROR);
       }
     });
   });
@@ -527,7 +527,7 @@ describe("@ledge/sdk", () => {
   // -------------------------------------------------------------------------
 
   describe("error handling", () => {
-    it("LedgeApiError has structured fields", async () => {
+    it("KountaApiError has structured fields", async () => {
       try {
         await client.transactions.post(ledgerId, {
           date: "2024-01-01",
@@ -539,8 +539,8 @@ describe("@ledge/sdk", () => {
         });
         expect.unreachable("should have thrown");
       } catch (e) {
-        const err = e as LedgeApiError;
-        expect(err.name).toBe("LedgeApiError");
+        const err = e as KountaApiError;
+        expect(err.name).toBe("KountaApiError");
         expect(err.status).toBe(400);
         expect(err.code).toBe(ErrorCode.UNBALANCED_TRANSACTION);
         expect(err.message).toBeTruthy();
@@ -549,7 +549,7 @@ describe("@ledge/sdk", () => {
     });
 
     it("adminSecret is required for admin operations", async () => {
-      const noAdmin = new Ledge({
+      const noAdmin = new Kounta({
         apiKey: apiKeyRaw,
         baseUrl: "http://localhost",
         fetch: async () => new Response("", { status: 200 }),
@@ -567,7 +567,7 @@ describe("@ledge/sdk", () => {
 
   describe("configuration", () => {
     it("strips trailing slashes from baseUrl", () => {
-      const c = new Ledge({
+      const c = new Kounta({
         apiKey: "ldg_test",
         baseUrl: "https://api.example.com///",
       });
@@ -575,12 +575,12 @@ describe("@ledge/sdk", () => {
     });
 
     it("defaults baseUrl to production", () => {
-      const c = new Ledge({ apiKey: "ldg_test" });
-      expect(c._baseUrl).toBe("https://api.getledge.ai");
+      const c = new Kounta({ apiKey: "ldg_test" });
+      expect(c._baseUrl).toBe("https://api.kounta.ai");
     });
 
     it("exposes all modules", () => {
-      const c = new Ledge({ apiKey: "ldg_test" });
+      const c = new Kounta({ apiKey: "ldg_test" });
       expect(c.ledgers).toBeDefined();
       expect(c.accounts).toBeDefined();
       expect(c.transactions).toBeDefined();

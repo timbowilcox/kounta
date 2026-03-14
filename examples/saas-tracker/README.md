@@ -1,12 +1,12 @@
 # SaaS Subscription Tracker
 
-A Next.js example app that uses **@ledge/sdk** to track SaaS subscription revenue with proper double-entry accounting. When a Stripe webhook fires for a payment event, it posts a journal entry to Ledge (debit Cash, credit Subscription Revenue). The app renders a live **Income Statement (P&L)** and **Balance Sheet** by calling the Ledge SDK.
+A Next.js example app that uses **@kounta/sdk** to track SaaS subscription revenue with proper double-entry accounting. When a Stripe webhook fires for a payment event, it posts a journal entry to Kounta (debit Cash, credit Subscription Revenue). The app renders a live **Income Statement (P&L)** and **Balance Sheet** by calling the Kounta SDK.
 
 ## What This Example Shows
 
 - **Stripe webhook integration** — receives `invoice.payment_succeeded` events and records them as balanced journal entries
 - **Live financial statements** — P&L and Balance Sheet rendered server-side on every page load using `ledge.reports.incomeStatement()` and `ledge.reports.balanceSheet()`
-- **SaaS template** — uses Ledge's built-in SaaS chart of accounts (18 accounts including Subscription Revenue, Deferred Revenue, Hosting & Infrastructure, etc.)
+- **SaaS template** — uses Kounta's built-in SaaS chart of accounts (18 accounts including Subscription Revenue, Deferred Revenue, Hosting & Infrastructure, etc.)
 - **Idempotent transaction posting** — Stripe invoice IDs used as idempotency keys prevent duplicate entries
 - **Simulate payments** — click a button to simulate payments without needing a real Stripe account
 
@@ -14,7 +14,7 @@ A Next.js example app that uses **@ledge/sdk** to track SaaS subscription revenu
 
 ```
 ┌─────────────┐     webhook      ┌───────────────────┐      SDK       ┌──────────────┐
-│   Stripe     │ ──────────────> │  Next.js App       │ ────────────> │  Ledge API   │
+│   Stripe     │ ──────────────> │  Next.js App       │ ────────────> │  Kounta API   │
 │   (payments) │                 │  /api/webhooks/    │               │  :3001       │
 └─────────────┘                 │  stripe            │               └──────────────┘
                                  │                     │                       │
@@ -29,7 +29,7 @@ When a payment succeeds in Stripe, the webhook handler:
 
 1. Receives the `invoice.payment_succeeded` event
 2. Extracts the amount, customer email, and invoice ID
-3. Posts a journal entry via the Ledge SDK:
+3. Posts a journal entry via the Kounta SDK:
    - **Debit** Cash (account 1000) — money received
    - **Credit** Subscription Revenue (account 4000) — revenue earned
 4. Uses the Stripe invoice ID as an idempotency key for safe retries
@@ -37,12 +37,12 @@ When a payment succeeds in Stripe, the webhook handler:
 ## Prerequisites
 
 - **Node.js** 18+
-- **pnpm** (the Ledge monorepo package manager)
-- The Ledge API running locally (port 3001)
+- **pnpm** (the Kounta monorepo package manager)
+- The Kounta API running locally (port 3001)
 
 ## Quick Start
 
-### 1. Start the Ledge API
+### 1. Start the Kounta API
 
 From the **repository root**:
 
@@ -51,7 +51,7 @@ pnpm install
 pnpm dev
 ```
 
-This starts the Ledge API on `http://localhost:3001`. Note the admin secret printed in the console output.
+This starts the Kounta API on `http://localhost:3001`. Note the admin secret printed in the console output.
 
 ### 2. Install example dependencies
 
@@ -66,21 +66,21 @@ pnpm install
 cp .env.example .env.local
 ```
 
-Edit `.env.local` and set `LEDGE_ADMIN_SECRET` to the value from step 1.
+Edit `.env.local` and set `KOUNTA_ADMIN_SECRET` to the value from step 1.
 
 ### 4. Seed sample data
 
 ```bash
-LEDGE_ADMIN_SECRET=your-secret pnpm seed
+KOUNTA_ADMIN_SECRET=your-secret pnpm seed
 ```
 
 This creates a ledger with the SaaS template, generates an API key, and posts 12 sample transactions. Copy the output values into `.env.local`:
 
 ```
-LEDGE_BASE_URL=http://localhost:3001
-LEDGE_ADMIN_SECRET=your-admin-secret
-LEDGE_API_KEY=ldg_xxxxxxxx
-LEDGE_LEDGER_ID=01234567-89ab-cdef-...
+KOUNTA_BASE_URL=http://localhost:3001
+KOUNTA_ADMIN_SECRET=your-admin-secret
+KOUNTA_API_KEY=ldg_xxxxxxxx
+KOUNTA_LEDGER_ID=01234567-89ab-cdef-...
 ```
 
 ### 5. Start the example app
@@ -142,7 +142,7 @@ examples/saas-tracker/
 │   │   ├── recent-transactions.tsx # Transaction list table
 │   │   └── simulate-payment.tsx    # Payment simulation button
 │   └── lib/
-│       ├── ledge.ts                # Ledge SDK client singleton
+│       ├── ledge.ts                # Kounta SDK client singleton
 │       ├── format.ts               # Currency/date formatters
 │       └── seed.ts                 # CLI seed script
 ├── .env.example                    # Environment template
@@ -157,7 +157,7 @@ examples/saas-tracker/
 ### Posting a transaction (webhook handler)
 
 ```typescript
-const txn = await ledge.transactions.post(LEDGER_ID, {
+const txn = await kounta.transactions.post(LEDGER_ID, {
   date: new Date().toISOString(),
   memo: `${description} — ${customerEmail}`,
   idempotencyKey: `stripe:${invoice.id}`,
@@ -171,8 +171,8 @@ const txn = await ledge.transactions.post(LEDGER_ID, {
 ### Fetching financial statements (dashboard)
 
 ```typescript
-const pnl = await ledge.reports.incomeStatement(LEDGER_ID, startDate, today);
-const balanceSheet = await ledge.reports.balanceSheet(LEDGER_ID, today);
+const pnl = await kounta.reports.incomeStatement(LEDGER_ID, startDate, today);
+const balanceSheet = await kounta.reports.balanceSheet(LEDGER_ID, today);
 ```
 
 ### SaaS Chart of Accounts
@@ -203,4 +203,4 @@ const balanceSheet = await ledge.reports.balanceSheet(LEDGER_ID, today);
 - **Add more Stripe events** — handle `charge.refunded` to post reversal entries
 - **Track deferred revenue** — when a customer prepays annually, debit Cash / credit Deferred Revenue, then recognize monthly
 - **Add usage-based billing** — post metered usage from your billing system to account 4200
-- **Connect your bank** — use `ledge.imports.upload()` to reconcile bank statements against Ledge entries
+- **Connect your bank** — use `ledge.imports.upload()` to reconcile bank statements against Kounta entries

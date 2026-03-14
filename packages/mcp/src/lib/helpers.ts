@@ -2,7 +2,7 @@
 // MCP response helpers — convert engine Result<T> into MCP tool/resource shapes.
 // ---------------------------------------------------------------------------
 
-import type { Result, LedgeError } from "@ledge/core";
+import type { Result, KountaError } from "@kounta/core";
 
 /** Successful tool response. */
 export function toolOk(data: unknown): {
@@ -25,7 +25,7 @@ export function toolErr(error: unknown): {
 }
 
 /** Convert an engine Result<T> to an MCP tool response. */
-export function handleResult(result: Result<unknown, LedgeError>): {
+export function handleResult(result: Result<unknown, KountaError>): {
   content: { type: "text"; text: string }[];
   isError?: true;
 } {

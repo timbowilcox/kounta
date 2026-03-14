@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 
 import type { Context } from "hono";
-import { ErrorCode } from "@ledge/core";
-import type { LedgeError } from "@ledge/core";
+import { ErrorCode } from "@kounta/core";
+import type { KountaError } from "@kounta/core";
 import type { Env } from "./context.js";
 
 /** Map error codes to HTTP status codes */
@@ -40,8 +40,8 @@ const httpStatusForCode: Record<string, number> = {
   [ErrorCode.INTERNAL_ERROR]: 500,
 };
 
-/** Return a JSON error response for a LedgeError */
-export const errorResponse = (c: Context<Env>, error: LedgeError) => {
+/** Return a JSON error response for a KountaError */
+export const errorResponse = (c: Context<Env>, error: KountaError) => {
   const status = httpStatusForCode[error.code] ?? 500;
   return c.json(
     {

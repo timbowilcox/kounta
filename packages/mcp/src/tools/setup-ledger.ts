@@ -15,7 +15,7 @@ import {
   getTemplates,
   getTemplate,
   recommendTemplate,
-} from "@ledge/core";
+} from "@kounta/core";
 import { toolOk, toolErr, handleResult } from "../lib/helpers.js";
 
 const HIGH_CONFIDENCE_THRESHOLD = 6;

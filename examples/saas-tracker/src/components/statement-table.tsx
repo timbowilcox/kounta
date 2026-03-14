@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/format";
-import type { StatementResponse } from "@ledge/sdk";
+import type { StatementResponse } from "@kounta/sdk";
 
 export function StatementTable({
   title,

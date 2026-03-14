@@ -22,7 +22,7 @@ export const generateUrgentAlert = (type: UrgentAlertType, data: UrgentAlertData
           <div style="font-size:13px;color:#666666;">${escapeHtml(data.transactionDescription ?? "Unknown")} &mdash; ${data.transactionDate ?? ""}</div>
         </div>
         <p style="color:#666666;margin-bottom:24px;">This is significantly larger than your typical transactions. Is this expected?</p>
-        <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Review in Ledge</a>`;
+        <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Review in Kounta</a>`;
       break;
     }
     case "failed_connection": {
@@ -30,7 +30,7 @@ export const generateUrgentAlert = (type: UrgentAlertType, data: UrgentAlertData
         <h1 style="font-size:18px;font-weight:600;color:#DC2626;margin:0 0 16px;">Bank connection stopped syncing</h1>
         <p style="color:#666666;margin-bottom:24px;">
           Your <strong>${escapeHtml(data.bankName ?? "bank")}</strong> connection hasn't synced in ${data.daysSinceSync ?? 2} days.
-          This means new transactions aren't being pulled into Ledge.
+          This means new transactions aren't being pulled into Kounta.
         </p>
         <a href="${baseUrl}/bank-feeds?reconnect=true" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Reconnect now</a>`;
       break;
@@ -54,7 +54,7 @@ export const generateUrgentAlert = (type: UrgentAlertType, data: UrgentAlertData
             <td style="padding:8px 0;font-size:14px;font-weight:600;color:#D97706;text-align:right;">${(data.monthsRunway ?? 0).toFixed(1)} months</td>
           </tr>
         </table>
-        <a href="${baseUrl}/" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">View details in Ledge</a>`;
+        <a href="${baseUrl}/" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">View details in Kounta</a>`;
       break;
     }
     case "plan_limit": {
@@ -72,7 +72,7 @@ export const generateUrgentAlert = (type: UrgentAlertType, data: UrgentAlertData
   }
 
   const greeting = `<p style="font-size:15px;margin-bottom:24px;">Hey ${escapeHtml(userName)},</p>`;
-  const signoff = `<hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;"><p style="color:#666666;">— Ledge</p>`;
+  const signoff = `<hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;"><p style="color:#666666;">— Kounta</p>`;
   const unsubscribeUrl = `${baseUrl}/api/email-action?action=unsubscribe&type=urgent_alerts&token=`;
 
   return emailLayout(greeting + content + signoff, unsubscribeUrl);

@@ -1,4 +1,4 @@
-import { ledge, ledgerId } from "@/lib/ledge";
+import { kounta, ledgerId } from "@/lib/kounta";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const txn = await ledge.transactions.post(ledgerId, {
+    const txn = await kounta.transactions.post(ledgerId, {
       date: new Date().toISOString().slice(0, 10),
       memo: description,
       lines: [

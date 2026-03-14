@@ -1,4 +1,4 @@
-// @ledge/core — double-entry ledger engine
+// @kounta/core — double-entry ledger engine
 // No HTTP or MCP dependencies. Pure domain logic.
 
 export * from "./types/index.js";

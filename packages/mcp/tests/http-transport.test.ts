@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @ledge/mcp HTTP/SSE transport integration tests
+// @kounta/mcp HTTP/SSE transport integration tests
 //
 // Starts the MCP HTTP server, authenticates with an API key, connects via
 // SSE, and verifies that tool calls work end-to-end over the network.
@@ -10,8 +10,8 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { SqliteDatabase, LedgerEngine } from "@ledge/core";
-import type { Database } from "@ledge/core";
+import { SqliteDatabase, LedgerEngine } from "@kounta/core";
+import type { Database } from "@kounta/core";
 import { createMcpServer } from "../src/server.js";
 import { initDatabase } from "../src/lib/db.js";
 
@@ -52,7 +52,7 @@ beforeAll(async () => {
 
   // Create an API key
   const crypto = await import("node:crypto");
-  testApiKey = "ledge_live_httptest1234567890abcdef";
+  testApiKey = "kounta_live_httptest1234567890abcdef";
   const keyHash = crypto.createHash("sha256").update(testApiKey).digest("hex");
   const keyId = "00000000-0000-7000-8000-000000000003";
   await db.run(
@@ -177,7 +177,7 @@ describe("HTTP/SSE transport", () => {
 
   it("rejects SSE connection with invalid API key", async () => {
     const res = await fetch(`http://127.0.0.1:${serverPort}/sse`, {
-      headers: { Authorization: "Bearer ledge_live_invalidkey000000000000" },
+      headers: { Authorization: "Bearer kounta_live_invalidkey000000000000" },
     });
     expect(res.status).toBe(401);
   });

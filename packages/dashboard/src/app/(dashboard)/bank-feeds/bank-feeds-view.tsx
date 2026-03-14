@@ -1,6 +1,6 @@
 "use client";
 
-import type { BankConnection } from "@ledge/sdk";
+import type { BankConnection } from "@kounta/sdk";
 import { useState, useTransition } from "react";
 import { fetchBankTransactions, markBankTransactionPersonal } from "@/lib/actions";
 import type { BankTransactionSummary } from "@/lib/actions";
@@ -501,7 +501,7 @@ const steps = [
   },
   {
     title: "Sync",
-    description: "Trigger a sync to pull transactions from the bank. Ledge automatically matches them against existing entries.",
+    description: "Trigger a sync to pull transactions from the bank. Kounta automatically matches them against existing entries.",
   },
   {
     title: "Confirm",

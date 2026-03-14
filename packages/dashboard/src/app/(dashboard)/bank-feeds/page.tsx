@@ -1,4 +1,4 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { BankFeedsView } from "./bank-feeds-view";
 import { fetchBankTransactions } from "@/lib/actions";
 import type { BankTransactionSummary } from "@/lib/actions";

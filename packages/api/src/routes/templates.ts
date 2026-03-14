@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { adminAuth } from "../middleware/auth.js";
 import { errorResponse, success } from "../lib/responses.js";
-import { getTemplates, getTemplate, recommendTemplate } from "@ledge/core";
+import { getTemplates, getTemplate, recommendTemplate } from "@kounta/core";
 
 export const templateRoutes = new Hono<Env>();
 

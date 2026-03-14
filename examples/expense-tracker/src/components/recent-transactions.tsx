@@ -1,5 +1,5 @@
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { TransactionWithLines } from "@ledge/sdk";
+import type { TransactionWithLines } from "@kounta/sdk";
 
 export function RecentTransactions({
   transactions,

@@ -333,7 +333,7 @@ export async function executeSetup(
 }
 
 // ---------------------------------------------------------------------------
-// Auto-create Ledge accounts for bank connections
+// Auto-create Kounta accounts for bank connections
 // ---------------------------------------------------------------------------
 
 export interface AutoAccountResult {

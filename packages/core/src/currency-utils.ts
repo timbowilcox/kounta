@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Currency utilities — decimal handling, conversion, formatting.
 //
-// All financial amounts in Ledge are integers in the smallest currency unit.
+// All financial amounts in Kounta are integers in the smallest currency unit.
 // Different currencies have different decimal places (USD=2, JPY=0, BHD=3).
 // This module centralises the conversion logic so parsers and the engine
 // never hardcode `* 100`.

@@ -22,14 +22,14 @@ export function NameCaptureModal() {
   const currentName = session.user.name ?? "";
   const isFallbackName =
     !currentName ||
-    currentName === "Ledge User" ||
+    currentName === "Kounta User" ||
     currentName === session.user.email?.split("@")[0];
 
   if (!isFallbackName) return null;
 
   // Check localStorage to not re-show after dismiss
   if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("ledge_name_captured");
+    const stored = localStorage.getItem("kounta_name_captured");
     if (stored) return null;
   }
 
@@ -43,7 +43,7 @@ export function NameCaptureModal() {
         // Update the client session with the new name
         await update({ name: fullName });
         if (typeof window !== "undefined") {
-          localStorage.setItem("ledge_name_captured", "true");
+          localStorage.setItem("kounta_name_captured", "true");
         }
         setDismissed(true);
         // Reload to refresh server components with the new name
@@ -54,7 +54,7 @@ export function NameCaptureModal() {
 
   const handleSkip = () => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("ledge_name_captured", "true");
+      localStorage.setItem("kounta_name_captured", "true");
     }
     setDismissed(true);
   };
@@ -91,7 +91,7 @@ export function NameCaptureModal() {
             marginBottom: 4,
           }}
         >
-          Welcome to Ledge!
+          Welcome to Kounta!
         </h2>
         <p
           style={{

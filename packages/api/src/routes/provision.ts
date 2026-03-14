@@ -9,8 +9,8 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { adminAuth } from "../middleware/auth.js";
 import { errorResponse, success } from "../lib/responses.js";
-import type { Ledger } from "@ledge/core";
-import { createDefaultEmailPreferences, createOnboardingState, getOnboardingState } from "@ledge/core";
+import type { Ledger } from "@kounta/core";
+import { createDefaultEmailPreferences, createOnboardingState, getOnboardingState } from "@kounta/core";
 
 export const provisionRoutes = new Hono<Env>();
 

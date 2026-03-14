@@ -1,4 +1,4 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { NotificationsView } from "./notifications-view";
 
 export const dynamic = "force-dynamic";

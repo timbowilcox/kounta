@@ -1,10 +1,10 @@
-import { Ledge } from "@ledge/sdk";
+import { Kounta } from "@kounta/sdk";
 
 async function seed() {
-  const baseUrl = process.env.LEDGE_BASE_URL ?? "http://localhost:3100";
-  const adminSecret = process.env.LEDGE_ADMIN_SECRET ?? "dev-admin-secret";
+  const baseUrl = process.env.KOUNTA_BASE_URL ?? "http://localhost:3100";
+  const adminSecret = process.env.KOUNTA_ADMIN_SECRET ?? "dev-admin-secret";
 
-  const admin = new Ledge({ apiKey: "admin-bootstrap", adminSecret, baseUrl });
+  const admin = new Kounta({ apiKey: "admin-bootstrap", adminSecret, baseUrl });
 
   // 1. Create ledger
   const ledger = await admin.ledgers.create({
@@ -29,7 +29,7 @@ async function seed() {
   console.log("API Key:", key.rawKey);
 
   // 4. Post sample expenses (these will be matched against the sample CSV)
-  const sdk = new Ledge({ baseUrl, apiKey: key.rawKey });
+  const sdk = new Kounta({ baseUrl, apiKey: key.rawKey });
 
   // These expenses intentionally overlap with sample-bank-statement.csv rows
   await sdk.transactions.post(ledger.id, {
@@ -125,8 +125,8 @@ async function seed() {
 
   console.log("\nSample transactions posted!");
   console.log("\nAdd these to your .env:");
-  console.log("LEDGE_LEDGER_ID=" + ledger.id);
-  console.log("LEDGE_API_KEY=" + key.rawKey);
+  console.log("KOUNTA_LEDGER_ID=" + ledger.id);
+  console.log("KOUNTA_API_KEY=" + key.rawKey);
 }
 
 seed().catch((err) => {

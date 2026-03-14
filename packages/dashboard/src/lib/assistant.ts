@@ -1,15 +1,15 @@
 // ---------------------------------------------------------------------------
 // AI Financial Assistant — server-side Anthropic integration.
 //
-// Connects to the Anthropic API with tool_use to call Ledge SDK methods.
+// Connects to the Anthropic API with tool_use to call Kounta SDK methods.
 // Model is tiered by plan: Free → Haiku, Builder+ → Sonnet.
 // Write operations (post/reverse) return confirmation_required instead of
 // executing immediately.
 // ---------------------------------------------------------------------------
 
 import Anthropic from "@anthropic-ai/sdk";
-import { Ledge } from "@ledge/sdk";
-import type { ConversationMessage, ToolCallRecord } from "@ledge/core";
+import { Kounta } from "@kounta/sdk";
+import type { ConversationMessage, ToolCallRecord } from "@kounta/core";
 
 // ---------------------------------------------------------------------------
 // Anthropic client (singleton)
@@ -41,7 +41,7 @@ export function selectModel(plan: string): string {
 // System prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are Ledge's financial assistant. You help users understand their accounting data, generate reports, and manage transactions through natural conversation.
+const SYSTEM_PROMPT = `You are Kounta's financial assistant. You help users understand their accounting data, generate reports, and manage transactions through natural conversation.
 
 You have access to a double-entry accounting ledger via tools. All monetary amounts are integers in the smallest currency unit (e.g., cents). When displaying amounts to the user, divide by 100 and format with the appropriate currency symbol.
 
@@ -255,7 +255,7 @@ interface ToolExecResult {
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
-  client: Ledge,
+  client: Kounta,
   ledgerId: string,
 ): Promise<ToolExecResult> {
   switch (toolName) {
@@ -370,7 +370,7 @@ async function executeTool(
 export async function executeConfirmedWrite(
   toolName: string,
   input: Record<string, unknown>,
-  client: Ledge,
+  client: Kounta,
   ledgerId: string,
 ): Promise<unknown> {
   switch (toolName) {
@@ -477,8 +477,8 @@ export async function chatWithAssistant(opts: {
   const anthropic = getAnthropicClient();
   const model = selectModel(plan);
 
-  const client = new Ledge({
-    baseUrl: process.env.LEDGE_API_URL ?? "https://api.getledge.ai",
+  const client = new Kounta({
+    baseUrl: process.env.KOUNTA_API_URL ?? "https://api.kounta.ai",
     apiKey,
   });
 

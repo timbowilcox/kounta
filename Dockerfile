@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Ledge — self-hosted single-container image
+# Kounta — self-hosted single-container image
 #
 # Bundles the REST API with embedded SQLite (sql.js WASM).
 # Start with:   docker run -p 3001:3001 getledge/ledge
@@ -46,7 +46,7 @@ RUN pnpm install --frozen-lockfile --prod --filter=@ledge/core --filter=@ledge/a
 # ---- Stage 3: Runtime ----------------------------------------------------------
 FROM node:20-slim AS runtime
 
-LABEL org.opencontainers.image.title="Ledge" \
+LABEL org.opencontainers.image.title="Kounta" \
       org.opencontainers.image.description="Double-entry ledger API with embedded SQLite" \
       org.opencontainers.image.vendor="getledge" \
       org.opencontainers.image.url="https://getledge.dev"
@@ -82,8 +82,8 @@ USER ledge
 
 ENV NODE_ENV=production \
     PORT=3001 \
-    LEDGE_DATA_DIR=/data \
-    LEDGE_ADMIN_SECRET=""
+    KOUNTA_DATA_DIR=/data \
+    KOUNTA_ADMIN_SECRET=""
 
 EXPOSE 3001
 

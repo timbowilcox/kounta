@@ -1,6 +1,6 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { AssistantView } from "./assistant-view";
-import type { Conversation } from "@ledge/sdk";
+import type { Conversation } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 

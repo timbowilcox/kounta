@@ -14,7 +14,7 @@ const userAutoCreate = `    // Ensure the user exists (auto-create for admin/sys
     if (!existingUser) {
       await this.db.run(
         "INSERT INTO users (id, email, name, auth_provider, auth_provider_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [params.userId, \`user-\${params.userId.substring(0, 8)}@ledge.internal\`, "Auto-created User", "system", params.userId, now, now]
+        [params.userId, \`user-\${params.userId.substring(0, 8)}@kounta.internal\`, "Auto-created User", "system", params.userId, now, now]
       );
     }
 

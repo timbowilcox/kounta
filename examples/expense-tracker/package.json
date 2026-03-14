@@ -1,5 +1,5 @@
 {
-  "name": "@ledge/example-expense-tracker",
+  "name": "@kounta/example-expense-tracker",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -9,7 +9,7 @@
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
-    "@ledge/sdk": "workspace:*",
+    "@kounta/sdk": "workspace:*",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

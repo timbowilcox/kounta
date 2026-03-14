@@ -1,11 +1,11 @@
 # Expense Tracker with CSV Import
 
-A Next.js app using **@ledge/sdk** that demonstrates Ledge's import and reconciliation engine. Record expenses manually, import a bank statement CSV, and let the matching engine automatically reconcile imported rows against your recorded transactions — complete with confidence scores and a confirm/reject workflow.
+A Next.js app using **@kounta/sdk** that demonstrates Kounta's import and reconciliation engine. Record expenses manually, import a bank statement CSV, and let the matching engine automatically reconcile imported rows against your recorded transactions — complete with confidence scores and a confirm/reject workflow.
 
 ## Features
 
 - **Record Expenses** — Categorize expenses across 7 account types (COGS, Shipping, Marketing, Salaries, Platform Fees, G&A, Packaging)
-- **CSV Import** — Upload a bank statement CSV; Ledge parses and matches rows automatically
+- **CSV Import** — Upload a bank statement CSV; Kounta parses and matches rows automatically
 - **Reconciliation Engine** — Confidence scoring (0–100%) based on date proximity, amount match, and text similarity
 - **Match Review** — Visual confidence bars, status badges (matched/suggested/unmatched), and per-row confirm/reject toggles
 - **Financial Statements** — Live Income Statement (P&L) and Balance Sheet
@@ -28,7 +28,7 @@ A Next.js app using **@ledge/sdk** that demonstrates Ledge's import and reconcil
         │          │               │
         ▼          ▼               ▼
    ┌──────────────────────────────────────┐
-   │           @ledge/sdk                  │
+   │           @kounta/sdk                  │
    │                                       │
    │  transactions.post()                  │
    │  imports.upload()                     │
@@ -38,7 +38,7 @@ A Next.js app using **@ledge/sdk** that demonstrates Ledge's import and reconcil
    └──────────────────────────────────────┘
                     │
                     ▼
-            Ledge API Server
+            Kounta API Server
 ```
 
 ## Reconciliation Flow
@@ -57,10 +57,10 @@ A Next.js app using **@ledge/sdk** that demonstrates Ledge's import and reconcil
 
 ### Prerequisites
 
-- Ledge API server running on `http://localhost:3001`
+- Kounta API server running on `http://localhost:3001`
 - Node.js 18+ and pnpm
 
-### 1. Start the Ledge API
+### 1. Start the Kounta API
 
 ```bash
 # From the repo root
@@ -72,10 +72,10 @@ pnpm dev
 ```bash
 cd examples/expense-tracker
 cp .env.example .env.local
-# Edit .env.local — set LEDGE_ADMIN_SECRET from the API server output
+# Edit .env.local — set KOUNTA_ADMIN_SECRET from the API server output
 
 pnpm seed
-# Outputs: LEDGE_API_KEY and LEDGE_LEDGER_ID — paste these into .env.local
+# Outputs: KOUNTA_API_KEY and KOUNTA_LEDGER_ID — paste these into .env.local
 ```
 
 ### 3. Start the App
@@ -112,7 +112,7 @@ The seed script creates 10 transactions using the **E-commerce** template:
 
 The `sample-bank-statement.csv` has 12 rows — 10 that overlap with these transactions (producing high confidence matches) plus 2 new ones (Uber $45.60, Adobe $54.99) that won't match.
 
-## Ledge SDK Methods Used
+## Kounta SDK Methods Used
 
 | Method | Purpose |
 |--------|---------|

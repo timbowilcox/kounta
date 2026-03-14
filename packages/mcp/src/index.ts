@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // ---------------------------------------------------------------------------
-// @ledge/mcp — Entry point
+// @kounta/mcp — Entry point
 //
 // Supports two transport modes:
 //   1. stdio  — local dev, Claude Code, Cursor (default when --stdio flag)
-//   2. http   — deployed SSE endpoint (default when LEDGE_MCP_TRANSPORT=http)
+//   2. http   — deployed SSE endpoint (default when KOUNTA_MCP_TRANSPORT=http)
 //
 // Transport selection:
-//   --stdio flag or LEDGE_MCP_TRANSPORT=stdio → stdio
-//   LEDGE_MCP_TRANSPORT=http                  → HTTP/SSE
+//   --stdio flag or KOUNTA_MCP_TRANSPORT=stdio → stdio
+//   KOUNTA_MCP_TRANSPORT=http                  → HTTP/SSE
 //   No flag and no env var                    → stdio (backwards-compatible)
 // ---------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@ import { createMcpServer } from "./server.js";
 
 function resolveTransport(): "stdio" | "http" {
   if (process.argv.includes("--stdio")) return "stdio";
-  const env = process.env["LEDGE_MCP_TRANSPORT"]?.toLowerCase();
+  const env = process.env["KOUNTA_MCP_TRANSPORT"]?.toLowerCase();
   if (env === "http") return "http";
   return "stdio";
 }
@@ -38,9 +38,9 @@ async function main(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function startStdio(
-  engine: import("@ledge/core").LedgerEngine,
+  engine: import("@kounta/core").LedgerEngine,
   systemUserId: string,
-  db: import("@ledge/core").Database,
+  db: import("@kounta/core").Database,
 ): Promise<void> {
   const { StdioServerTransport } = await import(
     "@modelcontextprotocol/sdk/server/stdio.js"
@@ -56,9 +56,9 @@ async function startStdio(
 // ---------------------------------------------------------------------------
 
 async function startHttp(
-  engine: import("@ledge/core").LedgerEngine,
+  engine: import("@kounta/core").LedgerEngine,
   _systemUserId: string,
-  db: import("@ledge/core").Database,
+  db: import("@kounta/core").Database,
 ): Promise<void> {
   const http = await import("node:http");
   const { SSEServerTransport } = await import(
@@ -204,6 +204,6 @@ function extractApiKey(
 }
 
 main().catch((err) => {
-  console.error("Fatal error starting ledge-mcp:", err);
+  console.error("Fatal error starting kounta-mcp:", err);
   process.exit(1);
 });

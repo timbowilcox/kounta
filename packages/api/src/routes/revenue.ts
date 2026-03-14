@@ -18,8 +18,8 @@ import {
   getRevenueMetrics,
   getMrrHistory,
   ensureRevenueAccounts,
-} from "@ledge/core";
-import type { CreateScheduleInput, UpdateScheduleInput } from "@ledge/core";
+} from "@kounta/core";
+import type { CreateScheduleInput, UpdateScheduleInput } from "@kounta/core";
 
 export const revenueRoutes = new Hono<Env>();
 

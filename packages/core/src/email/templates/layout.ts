@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Shared email layout — Ledge branding wrapper for all emails.
+// Shared email layout — Kounta branding wrapper for all emails.
 // Clean, monochrome, white bg, #0A0A0A text, mobile-responsive (600px).
 // ---------------------------------------------------------------------------
 
@@ -9,7 +9,7 @@ export const emailLayout = (content: string, unsubscribeUrl?: string): string =>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ledge</title>
+  <title>Kounta</title>
   <style>
     body { margin: 0; padding: 0; background-color: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
     .wrapper { max-width: 600px; margin: 0 auto; background-color: #FFFFFF; }
@@ -40,13 +40,13 @@ export const emailLayout = (content: string, unsubscribeUrl?: string): string =>
   <div style="background-color: #F5F5F5; padding: 32px 16px;">
     <div class="wrapper" style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border-radius: 8px; overflow: hidden; border: 1px solid #E5E5E5;">
       <div class="header" style="padding: 32px 40px 24px; border-bottom: 1px solid #E5E5E5;">
-        <a href="https://useledge.ai" class="logo" style="font-size: 18px; font-weight: 700; color: #0A0A0A; letter-spacing: -0.02em; text-decoration: none;">Ledge</a>
+        <a href="https://kounta.ai" class="logo" style="font-size: 18px; font-weight: 700; color: #0A0A0A; letter-spacing: -0.02em; text-decoration: none;">Kounta</a>
       </div>
       <div class="content" style="padding: 32px 40px; color: #0A0A0A; font-size: 14px; line-height: 1.6;">
         ${content}
       </div>
       <div class="footer" style="padding: 24px 40px; border-top: 1px solid #E5E5E5; text-align: center;">
-        <p style="font-size: 12px; color: #999999; margin: 4px 0;">Ledge &mdash; Accounting infrastructure for builders</p>
+        <p style="font-size: 12px; color: #999999; margin: 4px 0;">Kounta &mdash; Accounting infrastructure for builders</p>
         ${unsubscribeUrl ? `<p style="font-size: 12px; color: #999999; margin: 4px 0;"><a href="${unsubscribeUrl}" style="color: #999999; text-decoration: underline;">Unsubscribe from these emails</a></p>` : ""}
       </div>
     </div>

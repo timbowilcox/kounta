@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Notification, NotificationSeverity, NotificationStatus, NotificationType } from "@ledge/sdk";
+import type { Notification, NotificationSeverity, NotificationStatus, NotificationType } from "@kounta/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 
 interface NotificationsViewProps {
@@ -140,7 +140,7 @@ export function NotificationsView({ notifications, error }: NotificationsViewPro
             No Notifications Yet
           </h2>
           <p className="text-sm" style={{ color: "rgba(0,0,0,0.55)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>
-            Ledge generates financial insights automatically as you use the ledger. Post transactions,
+            Kounta generates financial insights automatically as you use the ledger. Post transactions,
             connect bank feeds, and insights will appear here — monthly summaries, cash position
             alerts, anomaly detection, and more.
           </p>
@@ -333,7 +333,7 @@ function PageHeader({ unreadCount }: { unreadCount: number }) {
       </div>
       <p className="text-sm" style={{ color: "rgba(0,0,0,0.55)", marginBottom: 32, lineHeight: 1.6 }}>
         Automated financial insights and alerts generated from your ledger activity.
-        Ledge analyzes your transactions to surface summaries, anomalies, and action items.
+        Kounta analyzes your transactions to surface summaries, anomalies, and action items.
       </p>
     </>
   );

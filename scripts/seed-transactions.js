@@ -1,7 +1,7 @@
 // Seed sample transactions on the live Railway API
 const LEDGER_ID = "019cdb37-32cf-7c7f-8391-3ca9c0172e2d";
-const API_KEY = "ledge_live_ac30de8e5f170a7e87b508bb6e54df6278b62997e539694a";
-const BASE_URL = "https://api.useledge.ai";
+const API_KEY = "kounta_live_ac30de8e5f170a7e87b508bb6e54df6278b62997e539694a";
+const BASE_URL = "https://api.kounta.ai";
 
 async function main() {
   const transactions = [

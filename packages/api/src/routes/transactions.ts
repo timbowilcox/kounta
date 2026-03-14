@@ -7,7 +7,7 @@ import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, accepted, success, paginated } from "../lib/responses.js";
 import { enforcePlanLimit, UPGRADE_URL } from "../middleware/plan.js";
-import { planLimitExceededError } from "@ledge/core";
+import { planLimitExceededError } from "@kounta/core";
 
 export const transactionRoutes = new Hono<Env>();
 
@@ -35,7 +35,7 @@ transactionRoutes.post("/", async (c) => {
 
   if (!enforcement.allowed) {
     const nextReset = enforcement.nextResetDate ?? "next month";
-    c.header("X-Ledge-Usage", String(enforcement.count ?? 0) + "/" + String(enforcement.limit ?? 500));
+    c.header("X-Kounta-Usage", String(enforcement.count ?? 0) + "/" + String(enforcement.limit ?? 500));
     return errorResponse(c, planLimitExceededError(
       enforcement.count ?? 0,
       enforcement.limit ?? 500,
@@ -100,7 +100,7 @@ transactionRoutes.post("/", async (c) => {
 
   // Add usage header
   const newCount = (enforcement.count ?? 0) + 1;
-  c.header("X-Ledge-Usage", String(newCount) + "/" + String(enforcement.limit ?? 500));
+  c.header("X-Kounta-Usage", String(newCount) + "/" + String(enforcement.limit ?? 500));
 
   if (statusOverride === "pending") {
     return accepted(c, {
@@ -133,7 +133,7 @@ transactionRoutes.get("/", async (c) => {
   try {
     const usageInfo = await enforcePlanLimit(engine, ledgerId!);
     if (usageInfo.count !== undefined && usageInfo.limit !== undefined) {
-      c.header("X-Ledge-Usage", String(usageInfo.count) + "/" + String(usageInfo.limit));
+      c.header("X-Kounta-Usage", String(usageInfo.count) + "/" + String(usageInfo.limit));
     }
   } catch { /* ignore — billing migration may not be applied */ }
 

@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Database } from "@ledge/core";
+import type { Database } from "@kounta/core";
 import { toolOk, toolErr } from "../lib/helpers.js";
 
 export function registerUsageTool(

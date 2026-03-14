@@ -21,7 +21,7 @@ import { generateWelcomeEmail, generateClassifyPrompt, generateFirstSnapshot } f
 import { formatAmountShort } from "./templates/layout.js";
 import type { UrgentAlertType, UrgentAlertData, WeeklyDigestData, MonthlyCloseData, OnboardingSummary, PendingClassification, RevenueRecognitionDigest } from "./types.js";
 
-const BASE_URL = process.env["LEDGE_BASE_URL"] ?? "https://useledge.ai";
+const BASE_URL = process.env["KOUNTA_BASE_URL"] ?? "https://kounta.ai";
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 /** Get the current hour (0-23) in a given timezone. */
@@ -266,7 +266,7 @@ export const checkOnboardingSequence = async (engine: LedgerEngine): Promise<num
       const sent = await wasEmailSentRecently(db, user.id, "onboarding_welcome", user.created_at);
       if (!sent) {
         const html = generateWelcomeEmail(user.name, BASE_URL);
-        await sendEmail(db, user.id, user.email, "Welcome to Ledge \u2014 connect your bank to get started", html, "onboarding_welcome");
+        await sendEmail(db, user.id, user.email, "Welcome to Kounta \u2014 connect your bank to get started", html, "onboarding_welcome");
         sentCount++;
       }
     }

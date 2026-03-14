@@ -9,7 +9,7 @@ import {
   closePeriodAction,
 } from "@/lib/actions";
 import type { ClosedPeriodSummary } from "@/lib/actions";
-import type { StatementResponse } from "@ledge/sdk";
+import type { StatementResponse } from "@kounta/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 
 type Tab = "pnl" | "balance_sheet" | "cash_flow";

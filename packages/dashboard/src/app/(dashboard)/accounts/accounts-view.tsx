@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
-import type { AccountWithBalance } from "@ledge/sdk";
+import type { AccountWithBalance } from "@kounta/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 
 const typeOrder: Record<string, number> = {

@@ -1,4 +1,4 @@
-# Ledge — Onboarding & Operational Intelligence
+# Kounta — Onboarding & Operational Intelligence
 ## For Solo SaaS Founders
 
 ---
@@ -31,11 +31,11 @@ Before designing the solution, we need to understand the person we're building f
 
 ## Current Onboarding Flow
 
-Today, when someone signs up at useledge.ai:
+Today, when someone signs up at kounta.ai:
 
 ```
 1. Click "Sign in with GitHub" or "Sign in with Google"
-2. OAuth redirects back to Ledge
+2. OAuth redirects back to Kounta
 3. Provision endpoint creates a user + ledger
 4. Template picker appears (8 templates: SaaS, Freelancer, 
    Ecommerce, Restaurant, Nonprofit, Agency, Property, General)
@@ -58,7 +58,7 @@ Today, when someone signs up at useledge.ai:
 
 ## Redesigned Onboarding: The AI-Guided Setup
 
-The onboarding should be delivered by Ledge's own assistant, not the user's external AI agent. The user's MCP-connected agent (Claude Code, Cursor) is for building integrations later. The onboarding assistant is Ledge's product experience — it knows the product, knows the user's context, and guides them through setup conversationally.
+The onboarding should be delivered by Kounta's own assistant, not the user's external AI agent. The user's MCP-connected agent (Claude Code, Cursor) is for building integrations later. The onboarding assistant is Kounta's product experience — it knows the product, knows the user's context, and guides them through setup conversationally.
 
 ### Flow: First 5 Minutes
 
@@ -67,7 +67,7 @@ The onboarding should be delivered by Ledge's own assistant, not the user's exte
 After OAuth, instead of a template picker, the user lands on a single-purpose onboarding screen. Full width, clean, no dashboard chrome yet. The assistant greets them:
 
 ```
-"Welcome to Ledge. I'm going to set up your books in about 
+"Welcome to Kounta. I'm going to set up your books in about 
 3 minutes. I just need to understand your business.
 
 What kind of business are you running?"
@@ -276,7 +276,7 @@ Layer 3 — AI classification: For truly unknown transactions, the assistant ana
 
 This means the P&L shows real revenue numbers, not Stripe payout totals. And the founder can see "Customer X is on the $49/month plan" in their books.
 
-**Implementation:** Stripe OAuth → webhook subscription → on each charge.succeeded / refund.created / payout.paid event, post a Ledge transaction automatically. No user intervention after initial connection.
+**Implementation:** Stripe OAuth → webhook subscription → on each charge.succeeded / refund.created / payout.paid event, post a Kounta transaction automatically. No user intervention after initial connection.
 
 ### Recurring Entries → Auto-posting
 
@@ -284,7 +284,7 @@ This means the P&L shows real revenue numbers, not Stripe payout totals. And the
 
 **Solution:** Recurring transaction templates.
 
-The user (or assistant) creates a template once: "Post $100 depreciation on computer equipment on the 1st of every month." Ledge posts it automatically. The monthly close notification includes: "3 recurring entries were posted this month" with a one-click review.
+The user (or assistant) creates a template once: "Post $100 depreciation on computer equipment on the 1st of every month." Kounta posts it automatically. The monthly close notification includes: "3 recurring entries were posted this month" with a one-click review.
 
 ### Personal/Business Splitting → Smart Detection
 
@@ -315,11 +315,11 @@ The accountant gets a clean PDF or CSV, not a raw data dump.
 
 ## The Agentic Onboarding Architecture
 
-### Why Ledge's Assistant, Not the User's Agent
+### Why Kounta's Assistant, Not the User's Agent
 
-The onboarding is delivered by Ledge's built-in assistant because:
+The onboarding is delivered by Kounta's built-in assistant because:
 
-1. **It knows the product.** The Ledge assistant understands the chart of accounts, the template system, the bank feed setup flow, and the classification engine. A user's Claude Code session doesn't.
+1. **It knows the product.** The Kounta assistant understands the chart of accounts, the template system, the bank feed setup flow, and the classification engine. A user's Claude Code session doesn't.
 
 2. **It has product context.** It knows what step the user is on, what they've connected, what's missing. It can guide them through a multi-step process that spans days.
 
@@ -331,12 +331,12 @@ The onboarding is delivered by Ledge's built-in assistant because:
 
 The MCP server and external AI agents serve a different purpose: **building integrations.** Once the founder's books are set up and data is flowing, they use Claude Code or Cursor to:
 
-- Build a Stripe webhook handler that posts transactions to Ledge
+- Build a Stripe webhook handler that posts transactions to Kounta
 - Create a custom dashboard in their own app using the SDK
 - Automate invoice generation when a customer subscribes
 - Build a financial reporting page in their admin panel
 
-This is the builder-tier value proposition: Ledge is infrastructure that AI coding assistants can program against. But the onboarding and daily accounting happen through Ledge's own assistant.
+This is the builder-tier value proposition: Kounta is infrastructure that AI coding assistants can program against. But the onboarding and daily accounting happen through Kounta's own assistant.
 
 ---
 
@@ -345,7 +345,7 @@ This is the builder-tier value proposition: Ledge is infrastructure that AI codi
 The assistant tracks progress and shows a completion indicator (not a wizard — a persistent, gentle progress bar):
 
 ```
-Getting started with Ledge              4/6 complete
+Getting started with Kounta              4/6 complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 67%
 
 ✓ Business profile configured

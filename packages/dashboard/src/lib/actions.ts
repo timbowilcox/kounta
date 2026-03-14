@@ -5,8 +5,8 @@
 // These run on the server and are called from client components.
 // ---------------------------------------------------------------------------
 
-import { getSessionClient } from "./ledge";
-import { getLedgeClient } from "./ledge";
+import { getSessionClient } from "./kounta";
+import { getKountaClient } from "./kounta";
 import { auth } from "./auth";
 import type {
   TransactionWithLines,
@@ -15,8 +15,8 @@ import type {
   PaginatedResult,
   Conversation,
   PostTransactionParams,
-} from "@ledge/sdk";
-import type { ApiKeySafe, ApiKeyWithRaw } from "@ledge/sdk";
+} from "@kounta/sdk";
+import type { ApiKeySafe, ApiKeyWithRaw } from "@kounta/sdk";
 
 // --- Transactions (paginated) ----------------------------------------------
 
@@ -129,7 +129,7 @@ export async function postTransaction(
 
 export async function applyTemplateAction(templateSlug: string): Promise<void> {
   const { ledgerId } = await getSessionClient();
-  const adminClient = getLedgeClient();
+  const adminClient = getKountaClient();
   await adminClient.templates.apply(ledgerId, templateSlug);
 }
 
@@ -146,8 +146,8 @@ export interface BillingStatus {
 
 async function billingFetch(path: string, method = "GET"): Promise<Response> {
   const session = await auth();
-  const apiUrl = process.env.LEDGE_API_URL;
-  if (!apiUrl) throw new Error("LEDGE_API_URL not configured");
+  const apiUrl = process.env.KOUNTA_API_URL;
+  if (!apiUrl) throw new Error("KOUNTA_API_URL not configured");
   if (!session?.apiKey) throw new Error("No authenticated session");
 
   return fetch(`${apiUrl}${path}`, {
@@ -182,8 +182,8 @@ export async function fetchBillingStatus(): Promise<BillingStatus> {
 
 export async function createCheckoutSession(priceId = "price_1T9ttSCyIk44TybLLuV2rf1e"): Promise<string> {
   const session = await auth();
-  const apiUrl = process.env.LEDGE_API_URL;
-  if (!apiUrl) throw new Error("LEDGE_API_URL not configured");
+  const apiUrl = process.env.KOUNTA_API_URL;
+  if (!apiUrl) throw new Error("KOUNTA_API_URL not configured");
   if (!session?.apiKey) throw new Error("No authenticated session");
 
   const res = await fetch(`${apiUrl}/v1/billing/checkout`, {
@@ -237,7 +237,7 @@ export async function fetchEmailPreferences(): Promise<EmailPreferences | null> 
   const session = await auth();
   if (!session?.apiKey) return null;
 
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
   const res = await fetch(`${apiUrl}/v1/email/preferences`, {
     headers: { Authorization: `Bearer ${session.apiKey}` },
     cache: "no-store",
@@ -282,7 +282,7 @@ export interface SetupResult {
 
 async function onboardingFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
   const session = await auth();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
   if (!session?.apiKey) throw new Error("No authenticated session");
 
   const headers: Record<string, string> = {
@@ -352,7 +352,7 @@ export async function updateEmailPreferences(updates: Partial<Omit<EmailPreferen
   const session = await auth();
   if (!session?.apiKey) return null;
 
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
   const res = await fetch(`${apiUrl}/v1/email/preferences`, {
     method: "PUT",
     headers: {
@@ -395,7 +395,7 @@ export async function fetchBankTransactions(
   if (!session?.apiKey) return [];
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const params = new URLSearchParams();
   if (filter === "business") params.set("isPersonal", "false");
@@ -418,7 +418,7 @@ export async function markBankTransactionPersonal(bankTxnId: string): Promise<bo
   if (!session?.apiKey) return false;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(
     `${apiUrl}/v1/ledgers/${ledgerId}/bank-feeds/transactions/${bankTxnId}/mark-personal`,
@@ -453,7 +453,7 @@ export async function fetchAttachments(transactionId: string): Promise<Attachmen
   if (!session?.apiKey) return [];
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(
     `${apiUrl}/v1/ledgers/${ledgerId}/transactions/${transactionId}/attachments`,
@@ -474,7 +474,7 @@ export async function uploadAttachment(transactionId: string, formData: FormData
   if (!session?.apiKey) return null;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(
     `${apiUrl}/v1/ledgers/${ledgerId}/transactions/${transactionId}/attachments`,
@@ -496,7 +496,7 @@ export async function deleteAttachmentAction(attachmentId: string): Promise<bool
   const session = await auth();
   if (!session?.apiKey) return false;
 
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/attachments/${attachmentId}`, {
     method: "DELETE",
@@ -529,7 +529,7 @@ export async function fetchRecurringEntries(): Promise<RecurringEntrySummary[]> 
   if (!session?.apiKey) return [];
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring`, {
     headers: { Authorization: `Bearer ${session.apiKey}` },
@@ -546,7 +546,7 @@ export async function deleteRecurringEntryAction(entryId: string): Promise<boole
   if (!session?.apiKey) return false;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}`, {
     method: "DELETE",
@@ -562,7 +562,7 @@ export async function pauseRecurringEntryAction(entryId: string): Promise<boolea
   if (!session?.apiKey) return false;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}/pause`, {
     method: "POST",
@@ -578,7 +578,7 @@ export async function resumeRecurringEntryAction(entryId: string): Promise<boole
   if (!session?.apiKey) return false;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/recurring/${entryId}/resume`, {
     method: "POST",
@@ -607,7 +607,7 @@ export async function fetchClosedPeriods(): Promise<ClosedPeriodSummary[]> {
   if (!session?.apiKey) return [];
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/closed`, {
     headers: { Authorization: `Bearer ${session.apiKey}` },
@@ -624,7 +624,7 @@ export async function closePeriodAction(periodEnd: string): Promise<ClosedPeriod
   if (!session?.apiKey) return null;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/close`, {
     method: "POST",
@@ -646,7 +646,7 @@ export async function reopenPeriodAction(periodEnd: string): Promise<ClosedPerio
   if (!session?.apiKey) return null;
 
   const { ledgerId } = await getSessionClient();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
 
   const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/periods/reopen`, {
     method: "POST",
@@ -779,7 +779,7 @@ export interface RevenueScheduleDetail extends RevenueScheduleSummary {
 
 async function revenueFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
   const session = await auth();
-  const apiUrl = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
   if (!session?.apiKey) throw new Error("No authenticated session");
 
   const headers: Record<string, string> = {
@@ -856,8 +856,8 @@ export async function updateUserNameAction(name: string): Promise<boolean> {
   const session = await auth();
   if (!session?.userId) return false;
 
-  const apiUrl = process.env.LEDGE_API_URL;
-  const adminSecret = process.env.LEDGE_ADMIN_SECRET;
+  const apiUrl = process.env.KOUNTA_API_URL;
+  const adminSecret = process.env.KOUNTA_ADMIN_SECRET;
   if (!apiUrl || !adminSecret) return false;
 
   const res = await fetch(`${apiUrl}/v1/admin/update-name`, {

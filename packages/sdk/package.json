@@ -1,5 +1,5 @@
 {
-  "name": "@ledge/sdk",
+  "name": "@kounta/sdk",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -17,10 +17,10 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@ledge/core": "workspace:*"
+    "@kounta/core": "workspace:*"
   },
   "devDependencies": {
-    "@ledge/api": "workspace:*",
+    "@kounta/api": "workspace:*",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
     "@types/node": "^22.0.0"

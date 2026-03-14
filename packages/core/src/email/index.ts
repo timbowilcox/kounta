@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @ledge/core email module — public API surface
+// @kounta/core email module — public API surface
 // ---------------------------------------------------------------------------
 
 export {

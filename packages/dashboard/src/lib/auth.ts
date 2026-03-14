@@ -32,11 +32,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, account, profile }) {
-      // On initial sign-in, provision the user in the Ledge API
+      // On initial sign-in, provision the user in the Kounta API
       if (account && profile) {
         const provider = account.provider;
         const providerId = String(account.providerAccountId);
-        const email = token.email ?? `${provider}-${providerId}@ledge.internal`;
+        const email = token.email ?? `${provider}-${providerId}@kounta.internal`;
 
         // Capture the real display name from OAuth profile
         // GitHub: profile.name (can be null), fallback to profile.login
@@ -46,7 +46,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           (profileAny.name as string) ??
           (profileAny.login as string) ??
           email.split("@")[0];
-        const name = oauthName || "Ledge User";
+        const name = oauthName || "Kounta User";
         token.name = name;
 
         try {

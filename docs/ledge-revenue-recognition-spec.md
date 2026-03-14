@@ -1,4 +1,4 @@
-# LEDGE — Revenue Recognition Specification
+# KOUNTA — Revenue Recognition Specification
 
 **Development Specification** | March 2026 | Confidential
 
@@ -10,9 +10,9 @@ Revenue recognition is the single biggest accounting complexity for SaaS founder
 
 Get this wrong and your financials are meaningless. Your P&L shows a revenue spike in January (when annual renewals hit) and a trough in February. Your burn rate looks wildly different month to month. Investors see through this immediately.
 
-Today, Ledge's Stripe connector posts `charge.succeeded` as a single revenue entry on the charge date. This is cash-basis revenue — correct for cash accounting, but wrong for accrual. A SaaS founder on accrual basis (which the onboarding defaults to) gets misleading financials from day one.
+Today, Kounta's Stripe connector posts `charge.succeeded` as a single revenue entry on the charge date. This is cash-basis revenue — correct for cash accounting, but wrong for accrual. A SaaS founder on accrual basis (which the onboarding defaults to) gets misleading financials from day one.
 
-Puzzle handles this automatically. Ledge needs to as well.
+Puzzle handles this automatically. Kounta needs to as well.
 
 ---
 
@@ -59,7 +59,7 @@ Customer upgrades from $600/year to $1,200/year at month 6. $300 of the original
 
 ---
 
-# What Ledge Needs to Build
+# What Kounta Needs to Build
 
 ## 1. Revenue Schedules
 
@@ -363,4 +363,4 @@ For US SaaS companies, revenue recognition follows **ASC 606** (Revenue from Con
 
 For a simple SaaS subscription with one product and no usage-based components, this simplifies to: spread the payment evenly over the service period. That's what this implementation does.
 
-Ledge does NOT need to handle complex multi-element arrangements, variable consideration, or contract modifications beyond simple upgrades/downgrades. Those are enterprise accounting concerns that our target user (solo SaaS founder) won't encounter.
+Kounta does NOT need to handle complex multi-element arrangements, variable consideration, or contract modifications beyond simple upgrades/downgrades. Those are enterprise accounting concerns that our target user (solo SaaS founder) won't encounter.

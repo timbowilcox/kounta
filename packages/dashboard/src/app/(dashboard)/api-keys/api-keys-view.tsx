@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { formatDate } from "@/lib/format";
 import { createApiKey, revokeApiKey, fetchApiKeys } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
-import type { ApiKeySafe } from "@ledge/sdk";
+import type { ApiKeySafe } from "@kounta/sdk";
 
 export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
   const [keys, setKeys] = useState<ApiKeySafe[]>(initialKeys);
@@ -36,7 +36,7 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
   };
 
   const envSnippet = createdKey
-    ? "LEDGE_API_KEY=" + createdKey + "\nLEDGE_API_URL=" + (process.env.NEXT_PUBLIC_LEDGE_API_URL ?? "http://localhost:3100")
+    ? "KOUNTA_API_KEY=" + createdKey + "\nKOUNTA_API_URL=" + (process.env.NEXT_PUBLIC_KOUNTA_API_URL ?? "http://localhost:3100")
     : "";
 
   return (

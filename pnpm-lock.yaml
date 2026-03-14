@@ -17,7 +17,7 @@ importers:
 
   examples/expense-tracker:
     dependencies:
-      '@ledge/sdk':
+      '@kounta/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       next:
@@ -45,7 +45,7 @@ importers:
 
   examples/invoice-manager:
     dependencies:
-      '@ledge/sdk':
+      '@kounta/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       next:
@@ -73,7 +73,7 @@ importers:
 
   examples/saas-tracker:
     dependencies:
-      '@ledge/sdk':
+      '@kounta/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       next:
@@ -110,7 +110,7 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.11(hono@4.12.5)
-      '@ledge/core':
+      '@kounta/core':
         specifier: workspace:*
         version: link:../core
       hono:
@@ -172,10 +172,10 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.78.0
         version: 0.78.0(zod@3.25.76)
-      '@ledge/core':
+      '@kounta/core':
         specifier: workspace:*
         version: link:../core
-      '@ledge/sdk':
+      '@kounta/sdk':
         specifier: workspace:*
         version: link:../sdk
       geist:
@@ -215,7 +215,7 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@ledge/core':
+      '@kounta/core':
         specifier: workspace:*
         version: link:../core
       '@modelcontextprotocol/sdk':
@@ -240,11 +240,11 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@ledge/core':
+      '@kounta/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@ledge/api':
+      '@kounta/api':
         specifier: workspace:*
         version: link:../api
       '@types/node':

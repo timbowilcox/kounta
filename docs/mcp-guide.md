@@ -1,14 +1,14 @@
 # MCP Server Guide
 
 ## Overview
-The Ledge MCP server exposes 39 tools, 4 resources, and 3 prompt templates for AI-powered accounting. Two transport modes:
-- **Hosted (SSE)**: Connect to `https://mcp.useledge.ai` with your API key
-- **Local (stdio)**: Run locally with `npx @ledge/mcp` for development
+The Kounta MCP server exposes 39 tools, 4 resources, and 3 prompt templates for AI-powered accounting. Two transport modes:
+- **Hosted (SSE)**: Connect to `https://mcp.kounta.ai` with your API key
+- **Local (stdio)**: Run locally with `npx @kounta/mcp` for development
 
 ## Hosted Endpoint
-URL: `https://mcp.useledge.ai`
+URL: `https://mcp.kounta.ai`
 Auth: API key via `Authorization: Bearer <key>`, `X-Api-Key: <key>`, or `?key=<key>` query param.
-Health check: GET `https://mcp.useledge.ai/health`
+Health check: GET `https://mcp.kounta.ai/health`
 
 ## Connection Configs
 
@@ -16,8 +16,8 @@ Health check: GET `https://mcp.useledge.ai/health`
 ```json
 {
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }
@@ -28,9 +28,9 @@ Health check: GET `https://mcp.useledge.ai/health`
 ```json
 {
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp", "--stdio"]
+      "args": ["@kounta/mcp", "--stdio"]
     }
   }
 }
@@ -41,8 +41,8 @@ Health check: GET `https://mcp.useledge.ai/health`
 ```json
 {
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }
@@ -53,9 +53,9 @@ Health check: GET `https://mcp.useledge.ai/health`
 ```json
 {
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp", "--stdio"]
+      "args": ["@kounta/mcp", "--stdio"]
     }
   }
 }
@@ -66,8 +66,8 @@ Health check: GET `https://mcp.useledge.ai/health`
 ```json
 {
   "mcpServers": {
-    "ledge": {
-      "url": "https://mcp.useledge.ai/sse?key=YOUR_API_KEY"
+    "kounta": {
+      "url": "https://mcp.kounta.ai/sse?key=YOUR_API_KEY"
     }
   }
 }

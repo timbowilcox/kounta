@@ -9,8 +9,8 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, success } from "../lib/responses.js";
-import { createError, ErrorCode } from "@ledge/core";
-import type { RuleType, RuleField } from "@ledge/core";
+import { createError, ErrorCode } from "@kounta/core";
+import type { RuleType, RuleField } from "@kounta/core";
 
 export const classificationRoutes = new Hono<Env>();
 

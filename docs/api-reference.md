@@ -1,9 +1,9 @@
-# Ledge API Reference
+# Kounta API Reference
 
-Complete reference for the Ledge REST API.
+Complete reference for the Kounta REST API.
 
 **Base URL:**
-- Production: `https://api.useledge.ai`
+- Production: `https://api.kounta.ai`
 - Local development: `http://localhost:3001`
 
 **Conventions:**
@@ -49,7 +49,7 @@ Complete reference for the Ledge REST API.
 
 ## Authentication
 
-Ledge uses two authentication modes:
+Kounta uses two authentication modes:
 
 ### API Key Auth
 
@@ -58,27 +58,27 @@ For ledger operations (accounts, transactions, reports, imports, etc.). API keys
 Provide the key in either header:
 
 ```
-Authorization: Bearer ledge_live_xxxxxxxxxxxxxxxx
+Authorization: Bearer kounta_live_xxxxxxxxxxxxxxxx
 ```
 
 or:
 
 ```
-X-Api-Key: ledge_live_xxxxxxxxxxxxxxxx
+X-Api-Key: kounta_live_xxxxxxxxxxxxxxxx
 ```
 
 API keys are created via `POST /v1/api-keys` and shown only once at creation time. Keys are stored as SHA-256 hashes.
 
 Key prefixes:
-- `ledge_live_` for production
-- `ledge_test_` for sandbox
+- `kounta_live_` for production
+- `kounta_test_` for sandbox
 
 ### Admin Auth
 
-For bootstrap operations (creating ledgers, managing API keys, applying templates, provisioning). Uses the `LEDGE_ADMIN_SECRET` environment variable.
+For bootstrap operations (creating ledgers, managing API keys, applying templates, provisioning). Uses the `KOUNTA_ADMIN_SECRET` environment variable.
 
 ```
-Authorization: Bearer <LEDGE_ADMIN_SECRET>
+Authorization: Bearer <KOUNTA_ADMIN_SECRET>
 ```
 
 ### No Auth
@@ -597,7 +597,7 @@ Create a new API key. The key value is returned only in this response.
 {
   "data": {
     "id": "0192b3a4-...",
-    "key": "ledge_live_xxxxxxxxxxxxxxxx",
+    "key": "kounta_live_xxxxxxxxxxxxxxxx",
     "prefix": "xxxxxxxx",
     "name": "Production Key",
     "ledgerId": "0192b3a4-...",

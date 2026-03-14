@@ -1,21 +1,21 @@
 // ---------------------------------------------------------------------------
-// Seed script — bootstraps a Ledge instance with the SaaS template and
+// Seed script — bootstraps a Kounta instance with the SaaS template and
 // sample transactions so the dashboard has data to display.
 //
-// Usage: pnpm seed   (requires LEDGE_ADMIN_SECRET and LEDGE_BASE_URL)
+// Usage: pnpm seed   (requires KOUNTA_ADMIN_SECRET and KOUNTA_BASE_URL)
 // ---------------------------------------------------------------------------
 
-import { Ledge } from "@ledge/sdk";
+import { Kounta } from "@kounta/sdk";
 
-const adminSecret = process.env.LEDGE_ADMIN_SECRET;
-const baseUrl = process.env.LEDGE_BASE_URL ?? "http://localhost:3001";
+const adminSecret = process.env.KOUNTA_ADMIN_SECRET;
+const baseUrl = process.env.KOUNTA_BASE_URL ?? "http://localhost:3001";
 
 if (!adminSecret) {
-  console.error("LEDGE_ADMIN_SECRET is required. Set it in .env.local");
+  console.error("KOUNTA_ADMIN_SECRET is required. Set it in .env.local");
   process.exit(1);
 }
 
-const admin = new Ledge({
+const admin = new Kounta({
   apiKey: "placeholder",
   adminSecret,
   baseUrl,
@@ -44,7 +44,7 @@ async function seed() {
   });
   console.log(`  API key: ${key.rawKey}`);
 
-  const client = new Ledge({ apiKey: key.rawKey, baseUrl });
+  const client = new Kounta({ apiKey: key.rawKey, baseUrl });
 
   console.log("Posting sample transactions...");
 
@@ -162,10 +162,10 @@ async function seed() {
 
   console.log("\n--- Setup Complete ---");
   console.log("Add the following to your .env.local:\n");
-  console.log(`LEDGE_BASE_URL=${baseUrl}`);
-  console.log(`LEDGE_ADMIN_SECRET=${adminSecret}`);
-  console.log(`LEDGE_API_KEY=${key.rawKey}`);
-  console.log(`LEDGE_LEDGER_ID=${ledger.id}`);
+  console.log(`KOUNTA_BASE_URL=${baseUrl}`);
+  console.log(`KOUNTA_ADMIN_SECRET=${adminSecret}`);
+  console.log(`KOUNTA_API_KEY=${key.rawKey}`);
+  console.log(`KOUNTA_LEDGER_ID=${ledger.id}`);
 }
 
 seed().catch((err) => {

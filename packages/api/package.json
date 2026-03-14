@@ -1,5 +1,5 @@
 {
-  "name": "@ledge/api",
+  "name": "@kounta/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@ledge/core": "workspace:*",
+    "@kounta/core": "workspace:*",
     "hono": "^4.7.0",
     "stripe": "^17.7.0",
     "zod": "^3.24.0"

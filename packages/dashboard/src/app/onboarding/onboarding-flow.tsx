@@ -204,7 +204,7 @@ export function OnboardingFlow() {
             <rect width="24" height="24" rx="6" fill="#0066FF" />
             <path d="M7 8h10M7 12h7M7 16h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span style={{ fontSize: 16, fontWeight: 600, color: "#0A0A0A" }}>Ledge</span>
+          <span style={{ fontSize: 16, fontWeight: 600, color: "#0A0A0A" }}>Kounta</span>
         </div>
         {/* Progress indicator */}
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -269,7 +269,7 @@ function BusinessTypeStep({ onSelect }: { onSelect: (type: string) => void }) {
           lineHeight: 1.3,
         }}
       >
-        Welcome to Ledge.
+        Welcome to Kounta.
       </h1>
       <p style={{ fontSize: 16, color: "#666666", marginBottom: 8 }}>
         Let&apos;s set up your books in about 3 minutes.

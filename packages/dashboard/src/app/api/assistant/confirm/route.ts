@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { auth } from "@/lib/auth";
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { executeConfirmedWrite } from "@/lib/assistant";
 
 export const runtime = "nodejs";

@@ -1,5 +1,5 @@
 {
-  "name": "@ledge/dashboard",
+  "name": "@kounta/dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@ledge/core": "workspace:*",
-    "@ledge/sdk": "workspace:*",
+    "@kounta/core": "workspace:*",
+    "@kounta/sdk": "workspace:*",
     "next": "^15.2.0",
     "next-auth": "5.0.0-beta.30",
     "react": "^19.0.0",

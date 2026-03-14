@@ -10,29 +10,29 @@ import { emailLayout, formatAmountShort } from "./layout.js";
 import type { OnboardingSummary } from "../types.js";
 
 /** Day 1 — Welcome email with connect bank CTA. */
-export const generateWelcomeEmail = (name: string, baseUrl: string = "https://useledge.ai"): string => {
+export const generateWelcomeEmail = (name: string, baseUrl: string = "https://kounta.ai"): string => {
   const content = `
-    <h1 style="font-size:20px;font-weight:600;color:#0A0A0A;margin:0 0 16px;">Welcome to Ledge</h1>
+    <h1 style="font-size:20px;font-weight:600;color:#0A0A0A;margin:0 0 16px;">Welcome to Kounta</h1>
     <p style="font-size:15px;margin-bottom:24px;">Hey ${escapeHtml(name)},</p>
     <p style="color:#666666;margin-bottom:24px;">
-      Ledge handles your books so you don't have to think about them.
+      Kounta handles your books so you don't have to think about them.
       Connect your bank account and we'll start classifying transactions automatically.
     </p>
     <div style="text-align:center;margin:32px 0;">
       <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:12px 32px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Connect your bank account</a>
     </div>
     <p style="color:#999999;font-size:13px;">
-      Most founders are set up in under 3 minutes. Ledge auto-classifies the majority of transactions
+      Most founders are set up in under 3 minutes. Kounta auto-classifies the majority of transactions
       and only asks for your input on the few it can't figure out.
     </p>
     <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
-    <p style="color:#666666;">Welcome aboard.<br>— Ledge</p>`;
+    <p style="color:#666666;">Welcome aboard.<br>— Kounta</p>`;
 
   return emailLayout(content);
 };
 
 /** Day 3 — Prompt to classify first transactions. */
-export const generateClassifyPrompt = (name: string, count: number, baseUrl: string = "https://useledge.ai"): string => {
+export const generateClassifyPrompt = (name: string, count: number, baseUrl: string = "https://kounta.ai"): string => {
   const content = `
     <h1 style="font-size:18px;font-weight:600;color:#0A0A0A;margin:0 0 16px;">Your first transactions are ready</h1>
     <p style="font-size:15px;margin-bottom:24px;">Hey ${escapeHtml(name)},</p>
@@ -44,16 +44,16 @@ export const generateClassifyPrompt = (name: string, count: number, baseUrl: str
       <a href="${baseUrl}/bank-feeds" style="display:inline-block;padding:12px 32px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Classify ${count} transaction${count === 1 ? "" : "s"}</a>
     </div>
     <p style="color:#999999;font-size:13px;">
-      After you classify a merchant once or twice, Ledge remembers and does it automatically next time.
+      After you classify a merchant once or twice, Kounta remembers and does it automatically next time.
     </p>
     <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
-    <p style="color:#666666;">— Ledge</p>`;
+    <p style="color:#666666;">— Kounta</p>`;
 
   return emailLayout(content);
 };
 
 /** Day 7 — First financial snapshot. */
-export const generateFirstSnapshot = (name: string, summary: OnboardingSummary, baseUrl: string = "https://useledge.ai"): string => {
+export const generateFirstSnapshot = (name: string, summary: OnboardingSummary, baseUrl: string = "https://kounta.ai"): string => {
   const { revenue, expenses, netIncome, cashBalance, currency } = summary;
 
   const content = `
@@ -83,10 +83,10 @@ export const generateFirstSnapshot = (name: string, summary: OnboardingSummary, 
       Most weeks, it takes less than a minute.
     </p>
     <div style="text-align:center;margin:24px 0;">
-      <a href="${baseUrl}/" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open Ledge</a>
+      <a href="${baseUrl}/" style="display:inline-block;padding:10px 24px;background-color:#0066FF;color:#FFFFFF;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open Kounta</a>
     </div>
     <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
-    <p style="color:#666666;">— Ledge</p>`;
+    <p style="color:#666666;">— Kounta</p>`;
 
   return emailLayout(content);
 };

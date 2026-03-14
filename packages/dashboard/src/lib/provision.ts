@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Server-side provision helper — calls the Ledge API provision endpoint
+// Server-side provision helper — calls the Kounta API provision endpoint
 // to find-or-create a user, ledger, and API key in a single round-trip.
 // ---------------------------------------------------------------------------
 
@@ -20,11 +20,11 @@ interface ProvisionResult {
 }
 
 export async function provisionUser(input: ProvisionInput): Promise<ProvisionResult> {
-  const apiUrl = process.env.LEDGE_API_URL;
-  const adminSecret = process.env.LEDGE_ADMIN_SECRET;
+  const apiUrl = process.env.KOUNTA_API_URL;
+  const adminSecret = process.env.KOUNTA_ADMIN_SECRET;
 
   if (!apiUrl || !adminSecret) {
-    throw new Error("Missing LEDGE_API_URL or LEDGE_ADMIN_SECRET environment variables");
+    throw new Error("Missing KOUNTA_API_URL or KOUNTA_ADMIN_SECRET environment variables");
   }
 
   const res = await fetch(`${apiUrl}/v1/admin/provision`, {

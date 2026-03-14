@@ -1,4 +1,4 @@
-# LEDGE — Phase 2 Block 2: Make It Useful
+# KOUNTA — Phase 2 Block 2: Make It Useful
 
 **Development Specification** | March 2026 | Confidential
 
@@ -13,8 +13,8 @@ Block 1 made the product real — a builder can sign up, pick a template, get AP
 The build order is fixed by dependency:
 
 1. **Bank feeds** — automatic transaction import from real bank accounts. Without this, builders upload CSVs manually. This is the single biggest friction point.
-2. **Intelligence layer** — the notification system that tells builders what their finances mean in plain language. Without this, the dashboard is a data viewer. This is what makes the builder open Ledge every day.
-3. **Multi-currency** — support for transactions and reporting in multiple currencies. Without this, any builder with international customers can't use Ledge properly. This unlocks the global market.
+2. **Intelligence layer** — the notification system that tells builders what their finances mean in plain language. Without this, the dashboard is a data viewer. This is what makes the builder open Kounta every day.
+3. **Multi-currency** — support for transactions and reporting in multiple currencies. Without this, any builder with international customers can't use Kounta properly. This unlocks the global market.
 
 ## What Changes for Each Tier
 
@@ -107,12 +107,12 @@ Basiq is the dominant open banking aggregator in Australia and New Zealand. It c
 
 ### Connection Flow
 
-1. Builder clicks "Connect bank account" in the Ledge dashboard
-2. Ledge calls Basiq's API to create a consent session
+1. Builder clicks "Connect bank account" in the Kounta dashboard
+2. Kounta calls Basiq's API to create a consent session
 3. Builder is redirected to Basiq's hosted consent UI (or embedded widget)
 4. Builder selects their bank, authenticates with their bank credentials
-5. Basiq establishes the connection and redirects back to Ledge
-6. Ledge stores the connection ID and fetches initial transaction history
+5. Basiq establishes the connection and redirects back to Kounta
+6. Kounta stores the connection ID and fetches initial transaction history
 7. Subsequent syncs happen automatically via webhook or scheduled poll
 
 ### Basiq API Endpoints Used
@@ -179,7 +179,7 @@ CREATE TABLE bank_accounts (
   currency TEXT NOT NULL DEFAULT 'AUD',
   current_balance BIGINT,
   available_balance BIGINT,
-  -- Link to the Ledge account this bank account maps to
+  -- Link to the Kounta account this bank account maps to
   mapped_account_id UUID REFERENCES accounts(id),
   metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -233,11 +233,11 @@ Write as `004_bank_feeds.sql` (PostgreSQL) and `004_bank_feeds.sqlite.sql` (SQLi
 When bank transactions arrive (via sync or webhook), the reconciliation engine runs automatically:
 
 1. **Deduplication** — skip any bank transaction whose `provider_transaction_id` already exists for this bank account
-2. **Matching** — run the existing matching engine (from Phase 1 import system) against the bank transaction. Score against existing Ledge transactions using date proximity, amount match, and description similarity
-3. **Auto-match** — confidence >= 95% → set `match_status = 'matched'`, link to the Ledge transaction
-4. **Suggested match** — confidence 60-94% → set `match_status = 'suggested'`, store the suggested Ledge transaction ID and confidence score
+2. **Matching** — run the existing matching engine (from Phase 1 import system) against the bank transaction. Score against existing Kounta transactions using date proximity, amount match, and description similarity
+3. **Auto-match** — confidence >= 95% → set `match_status = 'matched'`, link to the Kounta transaction
+4. **Suggested match** — confidence 60-94% → set `match_status = 'suggested'`, store the suggested Kounta transaction ID and confidence score
 5. **Unmatched** — confidence < 60% → set `match_status = 'unmatched'`. These appear in the dashboard for the builder to classify manually
-6. **Auto-create** — for unmatched bank transactions that look like clear income or expenses (based on amount sign and category), optionally auto-create a Ledge transaction. This is a Builder-tier feature and can be toggled per connection.
+6. **Auto-create** — for unmatched bank transactions that look like clear income or expenses (based on amount sign and category), optionally auto-create a Kounta transaction. This is a Builder-tier feature and can be toggled per connection.
 
 The matching engine already exists in `packages/core/src/import/matcher.ts`. Extend it to work with `BankTransaction` objects in addition to `ParsedRow` objects.
 
@@ -252,7 +252,7 @@ POST   /v1/bank-feeds/sync/:id        → Trigger a manual sync for a connection
 GET    /v1/bank-feeds/transactions     → List bank transactions (filterable by status, account, date)
 POST   /v1/bank-feeds/transactions/:id/match    → Confirm a suggested match
 POST   /v1/bank-feeds/transactions/:id/ignore   → Mark a bank transaction as ignored
-POST   /v1/bank-feeds/transactions/:id/create   → Create a Ledge transaction from a bank transaction
+POST   /v1/bank-feeds/transactions/:id/create   → Create a Kounta transaction from a bank transaction
 POST   /v1/bank-feeds/webhook/basiq   → Basiq webhook handler (public, signature verified)
 POST   /v1/bank-feeds/webhook/plaid   → Plaid webhook handler (future, public)
 ```
@@ -272,13 +272,13 @@ New screen at `/bank-feeds` in the dashboard sidebar:
 ### Transaction Feed View
 - Tabs: All | Matched | Suggested | Unmatched
 - Each row shows: date, description, amount, bank account name, match status badge, confidence score (for suggested), and action buttons
-- Suggested matches show the proposed Ledge transaction alongside the bank transaction with a "Confirm" or "Reject" button
+- Suggested matches show the proposed Kounta transaction alongside the bank transaction with a "Confirm" or "Reject" button
 - Unmatched transactions show a "Create transaction" button that opens a form pre-filled with the bank transaction data, asking only for the target account (expense category)
 - Bulk actions: "Confirm all suggested" (above 90% confidence), "Ignore all below $X"
 
 ### Account Mapping
-- Each bank account can be mapped to a Ledge account (e.g. bank account "Everyday Account" maps to Ledge account "1000 Cash")
-- This mapping determines which Ledge account is debited/credited when auto-creating transactions from bank data
+- Each bank account can be mapped to a Kounta account (e.g. bank account "Everyday Account" maps to Kounta account "1000 Cash")
+- This mapping determines which Kounta account is debited/credited when auto-creating transactions from bank data
 
 ## MCP Tools
 
@@ -295,7 +295,7 @@ match_bank_transaction → Confirm or reject a suggested match
 ## Plan Enforcement
 
 Bank feeds are Builder-tier only. When a free tier user calls any bank feed endpoint:
-- Return 403 with `{ error: { code: "PLAN_REQUIRED", message: "Bank feeds require the Builder plan", upgrade_url: "https://useledge.ai/billing" } }`
+- Return 403 with `{ error: { code: "PLAN_REQUIRED", message: "Bank feeds require the Builder plan", upgrade_url: "https://kounta.ai/billing" } }`
 - The dashboard shows the bank feeds screen but with an overlay: "Connect your bank account automatically. Upgrade to Builder to unlock bank feeds." with an upgrade button.
 
 ---
@@ -304,9 +304,9 @@ Bank feeds are Builder-tier only. When a free tier user calls any bank feed endp
 
 ## What It Is
 
-The intelligence layer is a notification and insight system that tells builders what their finances mean in plain language. Instead of the builder having to read financial statements and interpret numbers, Ledge proactively surfaces insights, alerts, and decision prompts.
+The intelligence layer is a notification and insight system that tells builders what their finances mean in plain language. Instead of the builder having to read financial statements and interpret numbers, Kounta proactively surfaces insights, alerts, and decision prompts.
 
-The builder should spend 2 minutes in Ledge, not 30. They open the dashboard and see: "You made $14,200 more than you spent this month. Your biggest expense was hosting at $3,200. Two invoices totalling $8,500 are overdue."
+The builder should spend 2 minutes in Kounta, not 30. They open the dashboard and see: "You made $14,200 more than you spent this month. Your biggest expense was hosting at $3,200. Two invoices totalling $8,500 are overdue."
 
 ## Notification Types
 
@@ -602,7 +602,7 @@ interface PostLineInput {
   // New fields for multi-currency
   currency?: string;     // ISO 4217, omit for ledger currency
   originalAmount?: number; // amount in transaction currency
-  exchangeRate?: number;  // if omitted, Ledge fetches the rate for the date
+  exchangeRate?: number;  // if omitted, Kounta fetches the rate for the date
 }
 ```
 
@@ -665,7 +665,7 @@ Multi-currency is Pro-tier ($49/month). When a free or Builder user tries to pos
 
 - Connection flow: create session, verify URL returned
 - Transaction fetch: mock Basiq API responses, verify parsing and dedup
-- Auto-reconciliation: feed bank transactions, verify matching against existing Ledge transactions
+- Auto-reconciliation: feed bank transactions, verify matching against existing Kounta transactions
 - Plan enforcement: free tier user gets 403 on bank feed endpoints
 - Webhook handling: verify Basiq webhook signature validation and event processing
 
@@ -726,8 +726,8 @@ The three features can be built in focused sessions, each independent of the oth
 
 Block 2 is complete when:
 
-- A Builder-tier user can connect their Australian bank account via Basiq and see transactions flowing into Ledge automatically
-- Bank transactions are automatically matched against existing Ledge transactions with confidence scores
+- A Builder-tier user can connect their Australian bank account via Basiq and see transactions flowing into Kounta automatically
+- Bank transactions are automatically matched against existing Kounta transactions with confidence scores
 - The dashboard shows a notification bell with unread count, and the overview page displays recent financial insights
 - Monthly summaries, cash alerts, and anomaly detection generate plain-language notifications
 - A Pro-tier user can post transactions in foreign currencies with automatic exchange rate lookup

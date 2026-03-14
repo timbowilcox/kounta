@@ -1,35 +1,35 @@
-import { ledge, ledgerId } from "@/lib/ledge";
+import { kounta, ledgerId } from "@/lib/kounta";
 import { RecordExpense } from "@/components/record-expense";
 import { ImportCSV } from "@/components/import-csv";
 import { RecentTransactions } from "@/components/recent-transactions";
 import { StatementTable } from "@/components/statement-table";
 import { MatchReviewWrapper } from "@/components/match-review-wrapper";
-import type { StatementResponse } from "@ledge/sdk";
+import type { StatementResponse } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 
 async function fetchData(): Promise<{
-  accounts: Awaited<ReturnType<typeof ledge.accounts.list>> | null;
-  txnResult: Awaited<ReturnType<typeof ledge.transactions.list>> | null;
+  accounts: Awaited<ReturnType<typeof kounta.accounts.list>> | null;
+  txnResult: Awaited<ReturnType<typeof kounta.transactions.list>> | null;
   pnl: StatementResponse | null;
   balanceSheet: StatementResponse | null;
   error: string | null;
 }> {
   if (!ledgerId) {
-    return { accounts: null, txnResult: null, pnl: null, balanceSheet: null, error: "LEDGE_LEDGER_ID not set" };
+    return { accounts: null, txnResult: null, pnl: null, balanceSheet: null, error: "KOUNTA_LEDGER_ID not set" };
   }
 
   try {
     const [accounts, txnResult, pnl, balanceSheet] = await Promise.all([
-      ledge.accounts.list(ledgerId),
-      ledge.transactions.list(ledgerId, { limit: 20 }),
-      ledge.reports.incomeStatement(ledgerId, "2026-01-01", "2026-12-31"),
-      ledge.reports.balanceSheet(ledgerId, "2026-12-31"),
+      kounta.accounts.list(ledgerId),
+      kounta.transactions.list(ledgerId, { limit: 20 }),
+      kounta.reports.incomeStatement(ledgerId, "2026-01-01", "2026-12-31"),
+      kounta.reports.balanceSheet(ledgerId, "2026-12-31"),
     ]);
 
     return { accounts, txnResult, pnl, balanceSheet, error: null };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to connect to Ledge API";
+    const message = err instanceof Error ? err.message : "Failed to connect to Kounta API";
     return { accounts: null, txnResult: null, pnl: null, balanceSheet: null, error: message };
   }
 }
@@ -42,13 +42,13 @@ export default async function Home() {
       <div className="card text-center py-16">
         <h2 className="text-xl font-bold text-slate-50 mb-3">Setup Required</h2>
         <p className="text-sm mb-6" style={{ color: "#94a3b8" }}>
-          {error ?? "Could not load data"}. Follow the README to configure your Ledge connection.
+          {error ?? "Could not load data"}. Follow the README to configure your Kounta connection.
         </p>
         <div
           className="inline-block rounded-xl p-5 text-left font-mono text-sm"
           style={{ background: "#0a0f1a", color: "#5eead4" }}
         >
-          <p>1. Start Ledge API: <span style={{ color: "#94a3b8" }}>pnpm dev</span> (from repo root)</p>
+          <p>1. Start Kounta API: <span style={{ color: "#94a3b8" }}>pnpm dev</span> (from repo root)</p>
           <p>2. Copy <span style={{ color: "#94a3b8" }}>.env.example</span> to <span style={{ color: "#94a3b8" }}>.env.local</span></p>
           <p>3. Run seed: <span style={{ color: "#94a3b8" }}>pnpm seed</span></p>
           <p>4. Paste the output values into <span style={{ color: "#94a3b8" }}>.env.local</span></p>

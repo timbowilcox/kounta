@@ -9,9 +9,9 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { success, errorResponse } from "../lib/responses.js";
-import { createError, ErrorCode } from "@ledge/core";
+import { createError, ErrorCode } from "@kounta/core";
 
-const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://useledge.ai";
+const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://kounta.ai";
 const STRIPE_SECRET_KEY = process.env["STRIPE_SECRET_KEY"];
 const STRIPE_WEBHOOK_SECRET = process.env["STRIPE_WEBHOOK_SECRET"];
 
@@ -66,7 +66,7 @@ billingRoutes.post("/webhook", async (c) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as import("stripe").default.Checkout.Session;
-      const userId = session.metadata?.ledge_user_id;
+      const userId = session.metadata?.kounta_user_id;
       if (userId) {
         // Determine plan from the subscription's price
         let plan = "builder";
@@ -214,7 +214,7 @@ billingRoutes.post("/checkout", apiKeyAuth, async (c) => {
     const customer = await stripe.customers.create({
       email: user.email,
       name: user.name,
-      metadata: { ledge_user_id: user.id },
+      metadata: { kounta_user_id: user.id },
     });
     customerId = customer.id;
     await engine.updateUserPlan(user.id, user.plan, customerId);
@@ -226,7 +226,7 @@ billingRoutes.post("/checkout", apiKeyAuth, async (c) => {
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: DASHBOARD_URL + "/billing?success=true",
     cancel_url: DASHBOARD_URL + "/billing?canceled=true",
-    metadata: { ledge_user_id: user.id },
+    metadata: { kounta_user_id: user.id },
   });
 
   return success(c, { url: session.url });

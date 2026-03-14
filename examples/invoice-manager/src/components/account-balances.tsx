@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/format";
-import type { AccountWithBalance } from "@ledge/sdk";
+import type { AccountWithBalance } from "@kounta/sdk";
 
 export function AccountBalances({
   accounts,

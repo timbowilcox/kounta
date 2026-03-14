@@ -4,9 +4,9 @@
 // ---------------------------------------------------------------------------
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { LedgerEngine, Database, BankFeedProvider } from "@ledge/core";
-import { createBankFeedProvider } from "@ledge/core";
-import type { ProviderConfig } from "@ledge/core";
+import type { LedgerEngine, Database, BankFeedProvider } from "@kounta/core";
+import { createBankFeedProvider } from "@kounta/core";
+import type { ProviderConfig } from "@kounta/core";
 
 import { registerSetupTools } from "./tools/setup-ledger.js";
 import { registerTransactionTools } from "./tools/transactions.js";
@@ -30,7 +30,7 @@ export function createMcpServer(
   db: Database,
 ): McpServer {
   const server = new McpServer({
-    name: "ledge-mcp",
+    name: "kounta-mcp",
     version: "0.1.0",
   });
 

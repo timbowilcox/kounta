@@ -35,8 +35,8 @@ export function Sidebar() {
             borderRadius: 6,
             fontSize: 13,
             fontWeight: isActive ? 600 : 500,
-            color: isActive ? "#0066FF" : "#666666",
-            backgroundColor: isActive ? "#F0F6FF" : "transparent",
+            color: isActive ? "#0a0a0a" : "#5c564e",
+            backgroundColor: isActive ? "#d4ccc4" : "transparent",
           }}
         >
           {isActive && (
@@ -46,7 +46,7 @@ export function Sidebar() {
                 width: 2,
                 height: 16,
                 borderRadius: 1,
-                backgroundColor: "#0066FF",
+                backgroundColor: "#2d2a26",
               }}
             />
           )}
@@ -62,8 +62,8 @@ export function Sidebar() {
       className="fixed left-0 top-0 h-screen flex flex-col"
       style={{
         width: 240,
-        backgroundColor: "#FFFFFF",
-        borderRight: "1px solid #E5E5E5",
+        backgroundColor: "#ebe4dc",
+        borderRight: "1px solid #d4ccc4",
         paddingTop: 24,
         paddingBottom: 20,
       }}
@@ -71,7 +71,7 @@ export function Sidebar() {
       {/* Logo */}
       <div style={{ paddingLeft: 20, paddingRight: 20, marginBottom: 32 }}>
         <Link href="/" className="flex items-center gap-3">
-          <img src="/logo-icon.svg" alt="Ledge" style={{ width: 28, height: 28 }} />
+          <img src="/logo-icon.svg" alt="Kounta" style={{ width: 28, height: 28 }} />
           <span
             style={{
               fontSize: 16,
@@ -80,7 +80,7 @@ export function Sidebar() {
               letterSpacing: "-0.01em",
             }}
           >
-            Ledge
+            Kounta
           </span>
         </Link>
       </div>
@@ -95,7 +95,7 @@ export function Sidebar() {
         </ul>
 
         {/* Separator */}
-        <div style={{ margin: "12px 12px", borderTop: "1px solid #E5E5E5" }} />
+        <div style={{ margin: "12px 12px", borderTop: "1px solid #d4ccc4" }} />
 
         {/* Settings */}
         <ul style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -105,7 +105,7 @@ export function Sidebar() {
 
       {/* Assistant — pinned above footer */}
       <div style={{ paddingLeft: 12, paddingRight: 12, paddingBottom: 4 }}>
-        <div style={{ borderTop: "1px solid #E5E5E5", paddingTop: 8 }}>
+        <div style={{ borderTop: "1px solid #d4ccc4", paddingTop: 8 }}>
           {(() => {
             const isAssistantActive = pathname.startsWith("/assistant");
             return (
@@ -118,17 +118,17 @@ export function Sidebar() {
                   borderRadius: 6,
                   fontSize: 13,
                   fontWeight: isAssistantActive ? 600 : 500,
-                  color: isAssistantActive ? "#0066FF" : "#666666",
+                  color: isAssistantActive ? "#0a0a0a" : "#5c564e",
                   background: isAssistantActive
-                    ? "linear-gradient(135deg, #F0F6FF 0%, #F5F0FF 100%)"
-                    : "linear-gradient(135deg, #FAFBFF 0%, #F8F5FF 100%)",
+                    ? "#d4ccc4"
+                    : "transparent",
                   transition: "all 150ms ease",
                 }}
               >
                 {isAssistantActive && (
                   <span
                     className="absolute left-0 top-1/2 -translate-y-1/2"
-                    style={{ width: 2, height: 16, borderRadius: 1, backgroundColor: "#0066FF" }}
+                    style={{ width: 2, height: 16, borderRadius: 1, backgroundColor: "#2d2a26" }}
                   />
                 )}
                 <AssistantIcon active={isAssistantActive} />
@@ -145,12 +145,12 @@ export function Sidebar() {
           paddingLeft: 12,
           paddingRight: 12,
           paddingTop: 12,
-          borderTop: "1px solid #E5E5E5",
+          borderTop: "1px solid #d4ccc4",
         }}
       >
         {session?.user && <UserProfileMenu session={session} />}
         <div style={{ fontSize: 11, color: "#999999", paddingLeft: 12 }}>
-          Ledge v0.1.0
+          Kounta v0.1.0
         </div>
       </div>
     </aside>
@@ -192,12 +192,12 @@ function UserProfileMenu({ session }: { session: NonNullable<ReturnType<typeof u
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 500, color: "#0A0A0A", marginBottom: 2 }}>
-            {session.user?.name ?? "Ledge User"}
+            {session.user?.name ?? "Kounta User"}
           </div>
           <div style={{ fontSize: 12, color: "#999999", marginBottom: 12 }}>
             {session.user?.email}
           </div>
-          <div style={{ borderTop: "1px solid #E5E5E5", paddingTop: 8 }}>
+          <div style={{ borderTop: "1px solid #d4ccc4", paddingTop: 8 }}>
             <button
               onClick={() => signOut({ callbackUrl: "/signin" })}
               className="flex items-center gap-2 w-full text-left"
@@ -257,7 +257,7 @@ function UserProfileMenu({ session }: { session: NonNullable<ReturnType<typeof u
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="truncate" style={{ fontSize: 13, fontWeight: 500, color: "#0A0A0A" }}>
-            {session.user?.name ?? "Ledge User"}
+            {session.user?.name ?? "Kounta User"}
           </div>
           <div className="truncate" style={{ fontSize: 12, color: "#999999" }}>
             {session.user?.email}
@@ -275,7 +275,7 @@ function UserProfileMenu({ session }: { session: NonNullable<ReturnType<typeof u
 
 function OverviewIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="2" width="6" height="6" rx="1.5" />
       <rect x="12" y="2" width="6" height="6" rx="1.5" />
       <rect x="2" y="12" width="6" height="6" rx="1.5" />
@@ -286,7 +286,7 @@ function OverviewIcon({ active }: { active: boolean }) {
 
 function AccountsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M7 3v14" />
       <path d="M7 3h6a3.5 3.5 0 0 1 0 7H7" />
       <path d="M7 10h7a3.5 3.5 0 0 1 0 7H7" />
@@ -296,7 +296,7 @@ function AccountsIcon({ active }: { active: boolean }) {
 
 function TransactionsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 5.5h14" />
       <path d="M3 10h14" />
       <path d="M3 14.5h9" />
@@ -306,7 +306,7 @@ function TransactionsIcon({ active }: { active: boolean }) {
 
 function StatementsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 17V6" />
       <path d="M7.5 17V9" />
       <path d="M12 17V3" />
@@ -317,7 +317,7 @@ function StatementsIcon({ active }: { active: boolean }) {
 
 function BankFeedsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 4h14" />
       <path d="M4 4v12" />
       <path d="M16 4v12" />
@@ -331,7 +331,7 @@ function BankFeedsIcon({ active }: { active: boolean }) {
 
 function AssistantIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M10 2l1.5 3.5L15 7l-3.5 1.5L10 12l-1.5-3.5L5 7l3.5-1.5L10 2z" />
       <path d="M15 12l.75 1.75L17.5 14.5l-1.75.75L15 17l-.75-1.75L12.5 14.5l1.75-.75L15 12z" />
     </svg>
@@ -340,7 +340,7 @@ function AssistantIcon({ active }: { active: boolean }) {
 
 function RevenueIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 16l4-5 4 3 4-6 4 3" />
       <path d="M18 16H2V4" />
     </svg>
@@ -349,7 +349,7 @@ function RevenueIcon({ active }: { active: boolean }) {
 
 function InsightsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="7" />
       <path d="M10 6v4l2.5 2.5" />
     </svg>
@@ -358,7 +358,7 @@ function InsightsIcon({ active }: { active: boolean }) {
 
 function SettingsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#0066FF" : "#999999"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "#2d2a26" : "#8a837a"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="2.5" />
       <path d="M16.5 12.5a1.5 1.5 0 0 0 .3 1.65l.05.06a1.82 1.82 0 0 1-1.29 3.1 1.82 1.82 0 0 1-1.29-.53l-.06-.06a1.5 1.5 0 0 0-1.65-.3 1.5 1.5 0 0 0-.91 1.37V18a1.82 1.82 0 0 1-3.64 0v-.1a1.5 1.5 0 0 0-.98-1.37 1.5 1.5 0 0 0-1.65.3l-.06.06A1.82 1.82 0 1 1 2.65 14.3l.06-.05a1.5 1.5 0 0 0 .3-1.65 1.5 1.5 0 0 0-1.37-.91H1.5a1.82 1.82 0 0 1 0-3.64h.1A1.5 1.5 0 0 0 3 7.07a1.5 1.5 0 0 0-.3-1.65l-.06-.05A1.82 1.82 0 1 1 5.22 2.8l.05.06a1.5 1.5 0 0 0 1.65.3h.07a1.5 1.5 0 0 0 .91-1.37V1.5a1.82 1.82 0 0 1 3.64 0v.1a1.5 1.5 0 0 0 .91 1.37 1.5 1.5 0 0 0 1.65-.3l.06-.06a1.82 1.82 0 0 1 2.58 2.58l-.06.05a1.5 1.5 0 0 0-.3 1.65v.07a1.5 1.5 0 0 0 1.37.91h.14a1.82 1.82 0 0 1 0 3.64h-.1a1.5 1.5 0 0 0-1.37.91z" transform="scale(0.85) translate(1.8 1.8)" />
     </svg>

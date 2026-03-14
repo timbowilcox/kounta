@@ -14,7 +14,7 @@ import type {
   RecurringLineItem,
   CreateRecurringEntryInput,
   UpdateRecurringEntryInput,
-} from "@ledge/core";
+} from "@kounta/core";
 
 export const recurringRoutes = new Hono<Env>();
 

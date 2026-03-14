@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, success, paginated } from "../lib/responses.js";
-import type { NotificationStatus, NotificationType } from "@ledge/core";
+import type { NotificationStatus, NotificationType } from "@kounta/core";
 
 export const notificationRoutes = new Hono<Env>();
 

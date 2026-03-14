@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@ledge/sdk", "@ledge/core"],
+  transpilePackages: ["@kounta/sdk", "@kounta/core"],
 };
 
 export default nextConfig;

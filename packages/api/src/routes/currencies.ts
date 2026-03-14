@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, success, created, paginated } from "../lib/responses.js";
-import type { ExchangeRateSource } from "@ledge/core";
+import type { ExchangeRateSource } from "@kounta/core";
 
 export const currencyRoutes = new Hono<Env>();
 

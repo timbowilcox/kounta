@@ -295,11 +295,11 @@ export interface StatementResponse {
 // Result type for explicit error handling
 // ---------------------------------------------------------------------------
 
-export type Result<T, E = LedgeError> =
+export type Result<T, E = KountaError> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: E };
 
-export interface LedgeError {
+export interface KountaError {
   readonly code: string;
   readonly message: string;
   readonly details?: readonly ErrorDetail[];

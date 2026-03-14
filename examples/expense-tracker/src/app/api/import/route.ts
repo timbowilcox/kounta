@@ -1,4 +1,4 @@
-import { ledge, ledgerId } from "@/lib/ledge";
+import { kounta, ledgerId } from "@/lib/kounta";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await ledge.imports.upload(ledgerId, {
+    const result = await kounta.imports.upload(ledgerId, {
       fileContent,
       fileType: "csv",
       filename: "bank-statement.csv",

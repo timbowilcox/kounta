@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { Template } from "@ledge/sdk";
+import type { Template } from "@kounta/sdk";
 import { applyTemplateAction } from "@/lib/actions";
 
 export function TemplatesGrid({ templates }: { templates: Template[] }) {

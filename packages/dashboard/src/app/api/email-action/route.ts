@@ -8,9 +8,9 @@
 
 import { NextResponse } from "next/server";
 
-const LEDGE_API_URL = process.env["LEDGE_API_URL"] ?? "http://localhost:3001";
-const LEDGE_ADMIN_SECRET = process.env["LEDGE_ADMIN_SECRET"] ?? "";
-const BASE_URL = process.env["NEXTAUTH_URL"] ?? "https://useledge.ai";
+const KOUNTA_API_URL = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+const KOUNTA_ADMIN_SECRET = process.env["KOUNTA_ADMIN_SECRET"] ?? "";
+const BASE_URL = process.env["NEXTAUTH_URL"] ?? "https://kounta.ai";
 
 const htmlPage = (title: string, body: string): string => `
 <!DOCTYPE html>
@@ -18,7 +18,7 @@ const htmlPage = (title: string, body: string): string => `
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Ledge</title>
+  <title>${title} — Kounta</title>
   <style>
     body { margin: 0; padding: 0; background-color: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     .card { max-width: 400px; width: 100%; margin: 24px; padding: 40px; background: #FFFFFF; border-radius: 12px; border: 1px solid #E5E5E5; text-align: center; }
@@ -32,7 +32,7 @@ const htmlPage = (title: string, body: string): string => `
 </head>
 <body>
   <div class="card">
-    <div class="logo">Ledge</div>
+    <div class="logo">Kounta</div>
     ${body}
   </div>
 </body>
@@ -44,7 +44,7 @@ const successPage = (message: string, undoUrl?: string): string =>
     <h1>${message}</h1>
     <p>You can close this tab.</p>
     <div style="display: flex; gap: 12px; justify-content: center;">
-      <a href="${BASE_URL}" class="btn">Open Ledge</a>
+      <a href="${BASE_URL}" class="btn">Open Kounta</a>
       ${undoUrl ? `<a href="${undoUrl}" class="btn-ghost">Undo</a>` : ""}
     </div>
   `);
@@ -54,7 +54,7 @@ const errorPage = (message: string): string =>
     <div class="icon" style="color: #DC2626;">&#10007;</div>
     <h1>${message}</h1>
     <p>This link may have expired or already been used.</p>
-    <a href="${BASE_URL}" class="btn">Open Ledge</a>
+    <a href="${BASE_URL}" class="btn">Open Kounta</a>
   `);
 
 export async function GET(request: Request) {
@@ -73,11 +73,11 @@ export async function GET(request: Request) {
   let tokenData: { userId: string; action: string; payload: Record<string, unknown> } | null = null;
 
   try {
-    const verifyRes = await fetch(`${LEDGE_API_URL}/v1/email/verify-token`, {
+    const verifyRes = await fetch(`${KOUNTA_API_URL}/v1/email/verify-token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${LEDGE_ADMIN_SECRET}`,
+        "Authorization": `Bearer ${KOUNTA_ADMIN_SECRET}`,
       },
       body: JSON.stringify({ token }),
     });
@@ -125,12 +125,12 @@ export async function GET(request: Request) {
           const ledgerId = url.searchParams.get("ledger") ?? (tokenData.payload as Record<string, string>).ledgerId;
           if (ledgerId) {
             await fetch(
-              `${LEDGE_API_URL}/v1/ledgers/${ledgerId}/bank-feeds/transactions/${txnId}/mark-personal`,
+              `${KOUNTA_API_URL}/v1/ledgers/${ledgerId}/bank-feeds/transactions/${txnId}/mark-personal`,
               {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  Authorization: `Bearer ${LEDGE_ADMIN_SECRET}`,
+                  Authorization: `Bearer ${KOUNTA_ADMIN_SECRET}`,
                 },
               },
             );

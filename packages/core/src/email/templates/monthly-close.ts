@@ -53,7 +53,7 @@ export const generateMonthlyClose = (data: MonthlyCloseData & { closeToken: stri
 
   const signoff = `
     <hr style="border:none;border-top:1px solid #E5E5E5;margin:24px 0;">
-    <p style="color:#666666;">— Ledge</p>`;
+    <p style="color:#666666;">— Kounta</p>`;
 
   const unsubscribeUrl = `${baseUrl}/api/email-action?action=unsubscribe&type=monthly_close&token=`;
   return emailLayout(greeting + stats + pendingWarning + closeButton + signoff, unsubscribeUrl);

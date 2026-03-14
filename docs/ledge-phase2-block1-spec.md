@@ -1,4 +1,4 @@
-# LEDGE — Phase 2 Block 1: Make It Real
+# KOUNTA — Phase 2 Block 1: Make It Real
 
 **Development Specification** | March 2026 | Confidential
 
@@ -8,13 +8,13 @@
 
 # Overview
 
-Phase 1 delivered a working engine: 235 tests passing, a Docker image, a deployed dashboard at useledge.ai, an SDK, MCP server, three example apps, and full documentation. But the product is not end-to-end functional. The dashboard shows mock data. Auth is stubbed. There is no hosted API. A builder cannot sign up and use Ledge today.
+Phase 1 delivered a working engine: 235 tests passing, a Docker image, a deployed dashboard at kounta.ai, an SDK, MCP server, three example apps, and full documentation. But the product is not end-to-end functional. The dashboard shows mock data. Auth is stubbed. There is no hosted API. A builder cannot sign up and use Kounta today.
 
-Block 1 closes that gap. When Block 1 is complete, a builder can sign up with GitHub or Google, pick a template, get API keys, integrate Ledge into their app, see live financial statements, and upgrade to a paid plan when they outgrow the free tier. Every interaction is real, not mocked.
+Block 1 closes that gap. When Block 1 is complete, a builder can sign up with GitHub or Google, pick a template, get API keys, integrate Kounta into their app, see live financial statements, and upgrade to a paid plan when they outgrow the free tier. Every interaction is real, not mocked.
 
 ## Block 1 Deliverables
 
-- Hosted API at api.getledge.ai (or similar) running on Railway with persistent PostgreSQL
+- Hosted API at api.kounta.ai (or similar) running on Railway with persistent PostgreSQL
 
 - Dashboard wired to the live API — all mock data replaced with real SDK calls
 
@@ -36,7 +36,7 @@ Each deliverable depends on the previous one. The build order is fixed:
 
 - 4\. Billing — enforce free tier limits, enable upgrades via Stripe
 
-- 5\. Domain — point getledge.ai at the dashboard and API
+- 5\. Domain — point kounta.ai at the dashboard and API
 
 # Deploy the API
 
@@ -46,15 +46,15 @@ The API currently runs in a Docker container with embedded SQLite. For productio
 
 Railway is the recommended hosting provider for the API. It supports Docker deployments from GitHub, provides managed PostgreSQL, handles HTTPS automatically, and costs roughly \$5–20/month at low traffic. The deployment flow:
 
-- Connect the GitHub repository (timbowilcox/ledge) to a new Railway project
+- Connect the GitHub repository (timbowilcox/kounta) to a new Railway project
 
 - Railway detects the Dockerfile and builds the image automatically
 
 - Add a Railway-managed PostgreSQL database to the project
 
-- Set environment variables: LEDGE_ADMIN_SECRET, DATABASE_URL (from the PostgreSQL addon), PORT
+- Set environment variables: KOUNTA_ADMIN_SECRET, DATABASE_URL (from the PostgreSQL addon), PORT
 
-- Railway assigns a public URL like ledge-api-production.up.railway.app
+- Railway assigns a public URL like kounta-api-production.up.railway.app
 
 - Verify the health endpoint returns 200 at /v1/health
 
@@ -104,9 +104,9 @@ The key difference: PostgreSQL uses \$1, \$2 parameter placeholders instead of S
 |---------------------------|-----------------------------------------------------------------------------------------|
 | **Variable**              | **Description**                                                                         |
 | **DATABASE_URL**          | PostgreSQL connection string. If absent, SQLite fallback.                               |
-| **LEDGE_ADMIN_SECRET**    | Admin auth secret for ledger creation and API key management. Auto-generated if absent. |
+| **KOUNTA_ADMIN_SECRET**    | Admin auth secret for ledger creation and API key management. Auto-generated if absent. |
 | **PORT**                  | API listen port. Default 3001.                                                          |
-| **LEDGE_HOST**            | Bind address. Default 0.0.0.0 for Docker/Railway.                                       |
+| **KOUNTA_HOST**            | Bind address. Default 0.0.0.0 for Docker/Railway.                                       |
 | **STRIPE_SECRET_KEY**     | Stripe secret key for billing (added in Block 1 Step 4).                                |
 | **STRIPE_WEBHOOK_SECRET** | Stripe webhook signing secret for verifying events.                                     |
 
@@ -130,19 +130,19 @@ Every dashboard screen currently renders hardcoded mock data. Replace all mock d
 
 Add environment variables to the Vercel dashboard deployment:
 
-NEXT_PUBLIC_LEDGE_API_URL=https://api.getledge.ai
+NEXT_PUBLIC_KOUNTA_API_URL=https://api.kounta.ai
 
-LEDGE_API_URL=https://api.getledge.ai (server-side)
+KOUNTA_API_URL=https://api.kounta.ai (server-side)
 
 Create a shared SDK instance in the dashboard:
 
-// lib/ledge.ts
+// lib/kounta.ts
 
-import { Ledge } from '@ledge/sdk'
+import { Kounta } from '@kounta/sdk'
 
-export const ledge = new Ledge({
+export const kounta = new Kounta({
 
-baseUrl: process.env.LEDGE_API_URL ?? process.env.NEXT_PUBLIC_LEDGE_API_URL,
+baseUrl: process.env.KOUNTA_API_URL ?? process.env.NEXT_PUBLIC_KOUNTA_API_URL,
 
 apiKey: // from session after auth
 
@@ -153,12 +153,12 @@ apiKey: // from session after auth
 |                     |                                                                            |                                                                               |
 |---------------------|----------------------------------------------------------------------------|-------------------------------------------------------------------------------|
 | **Screen**          | **Mock Data to Replace**                                                   | **SDK Call**                                                                  |
-| **Overview (/)**    | Transaction count, account count, ledger value, usage, recent transactions | ledge.ledgers.get(), ledge.transactions.list({ limit: 5 }), ledge.usage.get() |
-| **Accounts**        | Account tree with balances                                                 | ledge.accounts.list()                                                         |
-| **Transactions**    | Paginated transaction list                                                 | ledge.transactions.list({ cursor, limit: 8 })                                 |
-| **Statements**      | P&L, Balance Sheet, Cash Flow                                              | ledge.reports.incomeStatement(), .balanceSheet(), .cashFlow()                 |
-| **API Keys**        | Key list, create, revoke                                                   | ledge.apiKeys.list(), .create(), .revoke()                                    |
-| **Template Picker** | Template list and selection                                                | ledge.templates.list(), .apply()                                              |
+| **Overview (/)**    | Transaction count, account count, ledger value, usage, recent transactions | kounta.ledgers.get(), kounta.transactions.list({ limit: 5 }), kounta.usage.get() |
+| **Accounts**        | Account tree with balances                                                 | kounta.accounts.list()                                                         |
+| **Transactions**    | Paginated transaction list                                                 | kounta.transactions.list({ cursor, limit: 8 })                                 |
+| **Statements**      | P&L, Balance Sheet, Cash Flow                                              | kounta.reports.incomeStatement(), .balanceSheet(), .cashFlow()                 |
+| **API Keys**        | Key list, create, revoke                                                   | kounta.apiKeys.list(), .create(), .revoke()                                    |
+| **Template Picker** | Template list and selection                                                | kounta.templates.list(), .apply()                                              |
 
 ## Data Flow After Auth
 
@@ -174,11 +174,11 @@ The auth UI and route structure already exist from Phase 1. The sign-in page has
 
 - Go to github.com/settings/developers and create a new OAuth App
 
-- Application name: Ledge
+- Application name: Kounta
 
-- Homepage URL: https://getledge.ai (or the Vercel URL)
+- Homepage URL: https://kounta.ai (or the Vercel URL)
 
-- Callback URL: https://getledge.ai/api/auth/callback/github
+- Callback URL: https://kounta.ai/api/auth/callback/github
 
 - Copy the Client ID and generate a Client Secret
 
@@ -192,7 +192,7 @@ The auth UI and route structure already exist from Phase 1. The sign-in page has
 
 - Create OAuth 2.0 credentials with Web application type
 
-- Add https://getledge.ai/api/auth/callback/google as an authorised redirect URI
+- Add https://kounta.ai/api/auth/callback/google as an authorised redirect URI
 
 - Copy the Client ID and Client Secret
 
@@ -206,13 +206,13 @@ openssl rand -base64 32
 
 ## Session-to-API-Key Bridge
 
-When a user signs in for the first time, Ledge needs to create an account in the API and issue an API key. The flow:
+When a user signs in for the first time, Kounta needs to create an account in the API and issue an API key. The flow:
 
 - User clicks “Continue with GitHub” and completes OAuth
 
 - NextAuth’s signIn callback fires with the user’s email and provider info
 
-- The callback calls the Ledge API (via admin secret) to create a user record if one does not exist
+- The callback calls the Kounta API (via admin secret) to create a user record if one does not exist
 
 - The callback creates an API key scoped to the user’s default ledger (or creates a ledger if this is their first sign-in)
 
@@ -306,7 +306,7 @@ The free tier limit is enforced through progressive degradation, not a hard wall
 
 ### At 400 Transactions (80%)
 
-- API responses include an X-Ledge-Usage: 400/500 header
+- API responses include an X-Kounta-Usage: 400/500 header
 
 - Dashboard shows a yellow banner: “You’ve used 400 of 500 free transactions this month”
 
@@ -384,11 +384,11 @@ The free tier limit is enforced through progressive degradation, not a hard wall
 
 - The session is configured with the user’s email, the Builder price, and success/cancel URLs
 
-- User is redirected to Stripe’s hosted checkout page — Ledge never touches card numbers
+- User is redirected to Stripe’s hosted checkout page — Kounta never touches card numbers
 
 - After payment, Stripe redirects to the dashboard success page
 
-- The webhook confirms the subscription and Ledge updates the user’s plan
+- The webhook confirms the subscription and Kounta updates the user’s plan
 
 ### Webhook Events
 
@@ -455,20 +455,20 @@ Configure a custom domain so the product has a professional URL instead of verce
 |                      |                                    |                             |
 |----------------------|------------------------------------|-----------------------------|
 | **Subdomain**        | **Points To**                      | **Purpose**                 |
-| **getledge.ai**      | Vercel                             | Dashboard / marketing site  |
-| **api.getledge.ai**  | Railway                            | REST API                    |
-| **mcp.getledge.ai**  | Railway (same or separate service) | MCP server (SSE transport)  |
-| **docs.getledge.ai** | Vercel or GitHub Pages             | Documentation site (future) |
+| **kounta.ai**      | Vercel                             | Dashboard / marketing site  |
+| **api.kounta.ai**  | Railway                            | REST API                    |
+| **mcp.kounta.ai**  | Railway (same or separate service) | MCP server (SSE transport)  |
+| **docs.kounta.ai** | Vercel or GitHub Pages             | Documentation site (future) |
 
 ## DNS Configuration
 
-- Register getledge.ai (or similar available domain)
+- Register kounta.ai (or similar available domain)
 
 - Add a CNAME record for the root domain pointing to Vercel
 
-- Add a CNAME record for api.getledge.ai pointing to Railway
+- Add a CNAME record for api.kounta.ai pointing to Railway
 
-- Add a CNAME record for mcp.getledge.ai pointing to the MCP server host
+- Add a CNAME record for mcp.kounta.ai pointing to the MCP server host
 
 - Configure SSL certificates (automatic via Vercel and Railway)
 
@@ -526,9 +526,9 @@ A single test that exercises the complete user journey:
 
 Block 1 is complete when all of the following are true:
 
-- A builder can visit getledge.ai, sign up with GitHub or Google in under 60 seconds, and arrive at a dashboard with live data
+- A builder can visit kounta.ai, sign up with GitHub or Google in under 60 seconds, and arrive at a dashboard with live data
 
-- The API is hosted at api.getledge.ai and passes all 235 existing tests against PostgreSQL
+- The API is hosted at api.kounta.ai and passes all 235 existing tests against PostgreSQL
 
 - Every dashboard screen displays real data from the API, not mock data
 
@@ -548,6 +548,6 @@ Block 1 is complete when all of the following are true:
 
 - OAuth callback URLs, Stripe webhook, and CORS are configured for the custom domain
 
-- The MCP server is hosted at mcp.getledge.ai and accessible to Claude Code and Cursor
+- The MCP server is hosted at mcp.kounta.ai and accessible to Claude Code and Cursor
 
-**LEDGE** — Phase 2 Block 1 — Make It Real — *Confidential*
+**KOUNTA** — Phase 2 Block 1 — Make It Real — *Confidential*

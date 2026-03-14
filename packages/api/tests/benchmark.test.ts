@@ -8,8 +8,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SqliteDatabase, LedgerEngine } from "@ledge/core";
-import type { Database } from "@ledge/core";
+import { SqliteDatabase, LedgerEngine } from "@kounta/core";
+import type { Database } from "@kounta/core";
 import { createApp } from "../src/app.js";
 import type { Hono } from "hono";
 import type { Env } from "../src/lib/context.js";
@@ -86,7 +86,7 @@ describe("Performance benchmark", () => {
   let creditAccountCode: string;
 
   beforeAll(async () => {
-    process.env["LEDGE_ADMIN_SECRET"] = ADMIN_SECRET;
+    process.env["KOUNTA_ADMIN_SECRET"] = ADMIN_SECRET;
 
     const db = await createTestDb();
     const userId = createSystemUser(db);

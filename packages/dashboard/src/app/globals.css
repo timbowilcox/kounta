@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ── Design System: Ledge Dashboard ──────────────────────────────── */
+/* ── Design System: Kounta Dashboard ─────────────────────────────── */
 /* Target aesthetic: Linear / Mercury / Vercel                        */
 /* Fonts: Geist Sans (UI), Geist Mono (numbers/codes/dates)          */
 
@@ -31,6 +31,13 @@
   --color-danger: #DC2626;
   --color-amber: #D97706;
   --color-hover: #F5F5F5;
+
+  /* Brand */
+  --color-brand: #ebe4dc;
+  --color-brand-dark: #d4ccc4;
+  --color-brand-deeper: #2d2a26;
+  --color-ink: #0a0a0a;
+  --color-stone: #c8beb4;
 
   /* Spacing — 4px increments only */
   /* 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 */
@@ -443,8 +450,8 @@ a {
 }
 
 .sidebar-nav-link:not(.sidebar-nav-link--active):hover {
-  background-color: var(--color-hover) !important;
-  color: var(--color-text-primary) !important;
+  background-color: var(--color-brand-dark) !important;
+  color: var(--color-ink) !important;
 }
 
 /* ── Contextual Prompt ───────────────────────────────────────────── */

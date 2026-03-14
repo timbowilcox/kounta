@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @ledge/api — Server entry point.
+// @kounta/api — Server entry point.
 //
 // Creates a database (PostgreSQL or SQLite), applies migrations, initializes
 // the engine, builds the Hono app, and starts the HTTP server.
@@ -7,19 +7,19 @@
 // Environment variables:
 //   PORT              — HTTP port (default: 3001)
 //   DATABASE_URL      — PostgreSQL connection string (if set, uses PostgreSQL)
-//   LEDGE_DATA_DIR    — Directory for persistent SQLite file (default: in-memory)
-//   LEDGE_ADMIN_SECRET — Admin secret for bootstrap operations
+//   KOUNTA_DATA_DIR    — Directory for persistent SQLite file (default: in-memory)
+//   KOUNTA_ADMIN_SECRET — Admin secret for bootstrap operations
 // ---------------------------------------------------------------------------
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import type { Database } from "@ledge/core";
-import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@ledge/core";
-import type { AttachmentStorage } from "@ledge/core";
+import type { Database } from "@kounta/core";
+import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@kounta/core";
+import type { AttachmentStorage } from "@kounta/core";
 import { createApp } from "./app.js";
-import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition } from "@ledge/core";
+import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition } from "@kounta/core";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -35,14 +35,14 @@ const main = async () => {
     console.log("Connected to PostgreSQL");
   } else {
     // SQLite mode
-    const dataDir = process.env["LEDGE_DATA_DIR"];
+    const dataDir = process.env["KOUNTA_DATA_DIR"];
 
     let sqliteDb: SqliteDatabase;
 
     if (dataDir) {
       // Persistent mode — load existing DB or create new one
       mkdirSync(dataDir, { recursive: true });
-      const dbPath = join(dataDir, "ledge.db");
+      const dbPath = join(dataDir, "kounta.db");
 
       if (existsSync(dbPath)) {
         const data = readFileSync(dbPath);
@@ -82,7 +82,7 @@ const main = async () => {
 
   // Initialize attachment storage if configured
   let storage: AttachmentStorage | undefined;
-  const attachmentsDir = process.env["LEDGE_ATTACHMENTS_DIR"];
+  const attachmentsDir = process.env["KOUNTA_ATTACHMENTS_DIR"];
   if (attachmentsDir) {
     storage = new LocalFileStorage(attachmentsDir);
     console.log(`Attachment storage: ${attachmentsDir}`);
@@ -141,7 +141,7 @@ const main = async () => {
   setInterval(runEmailScheduler, 60 * 60 * 1000).unref();
 
   serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
-    console.log(`@ledge/api listening on http://0.0.0.0:${info.port}`);
+    console.log(`@kounta/api listening on http://0.0.0.0:${info.port}`);
   });
 };
 
@@ -170,7 +170,7 @@ const ensureSystemUser = async (db: Database) => {
   if (!existing) {
     await db.run(
       "INSERT INTO users (id, email, name, auth_provider, auth_provider_id) VALUES (?, ?, ?, ?, ?)",
-      [SYSTEM_USER_ID, "system@ledge.internal", "System", "system", "system"]
+      [SYSTEM_USER_ID, "system@kounta.internal", "System", "system", "system"]
     );
     console.log("Created system user for admin operations");
   }

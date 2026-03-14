@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { auth } from "@/lib/auth";
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { chatWithAssistant, isAssistantAvailable, type SSEEvent } from "@/lib/assistant";
 import { fetchBillingStatus } from "@/lib/actions";
 

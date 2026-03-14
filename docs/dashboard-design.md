@@ -1,6 +1,6 @@
 # Dashboard Design Specification
 ## Design Direction
-The Ledge dashboard follows the Stockholm Design Lab / Sana Labs
+The Kounta dashboard follows the Stockholm Design Lab / Sana Labs
 aesthetic: radical simplicity, generous whitespace, bold typography,
 and restrained colour. It should feel like Linear or Vercel — not
 like QuickBooks.
@@ -69,7 +69,7 @@ left edge. Inactive items Slate 400.
 ## Screens
 ### Signup / Sign in
 - Full-screen centered card on Slate 900 background
-- Ledge logo at top
+- Kounta logo at top
 - Two buttons only: "Continue with GitHub" and "Continue with Google"
 - No email/password fields, no "create account" vs "sign in" distinction
 - Subtle teal radial gradient glow behind the card
@@ -88,7 +88,7 @@ left edge. Inactive items Slate 400.
 - "View all transactions" link
 ### API Keys
 - Heading: "API Keys"
-- Table of existing keys: name, prefix (ledge_live_xxxx...), created date, last used, status
+- Table of existing keys: name, prefix (kounta_live_xxxx...), created date, last used, status
 - "Create new key" button → modal with name input → shows full key ONCE with copy button and .env snippet
 - Revoke button per key with confirmation
 ### Account Tree
@@ -111,7 +111,7 @@ left edge. Inactive items Slate 400.
 - Totals rows use heavier weight and top border
 - Net income / total row highlighted with teal background tint
 ### MCP Connection Guide
-- Step-by-step instructions for connecting Ledge MCP in:
+- Step-by-step instructions for connecting Kounta MCP in:
   - Claude Code
   - Cursor
   - Windsurf

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Expense Tracker — Ledge Example",
-  description: "Expense tracker with CSV import and reconciliation powered by Ledge",
+  title: "Expense Tracker — Kounta Example",
+  description: "Expense tracker with CSV import and reconciliation powered by Kounta",
 };
 
 export default function RootLayout({
@@ -51,7 +51,7 @@ export default function RootLayout({
                   border: "1px solid rgba(13,148,136,0.2)",
                 }}
               >
-                Ledge Example
+                Kounta Example
               </span>
             </div>
           </header>

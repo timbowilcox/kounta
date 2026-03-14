@@ -8,7 +8,7 @@ import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, create
 import type { StripeConnectStatus } from "@/lib/actions";
 import type { EmailPreferences, ClosedPeriodSummary } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
-import type { ApiKeySafe, AccountWithBalance } from "@ledge/sdk";
+import type { ApiKeySafe, AccountWithBalance } from "@kounta/sdk";
 import type { BillingStatus } from "@/lib/actions";
 import { AccountsView } from "@/app/(dashboard)/accounts/accounts-view";
 
@@ -512,7 +512,7 @@ function ApiKeysTab({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
         >
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#0A0A0A" }}>MCP Connection Guide</div>
-            <div style={{ fontSize: 12, color: "#999999", marginTop: 2 }}>Connect Ledge to Claude Code or Cursor</div>
+            <div style={{ fontSize: 12, color: "#999999", marginTop: 2 }}>Connect Kounta to Claude Code or Cursor</div>
           </div>
           <svg
             width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#999999" strokeWidth="1.5"
@@ -604,12 +604,12 @@ function McpGuideContent() {
       file: ".claude/settings.json",
       config: `{
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp@latest"],
+      "args": ["@kounta/mcp@latest"],
       "env": {
-        "LEDGE_API_KEY": "YOUR_API_KEY_HERE",
-        "LEDGE_API_URL": "http://localhost:3100"
+        "KOUNTA_API_KEY": "YOUR_API_KEY_HERE",
+        "KOUNTA_API_URL": "http://localhost:3100"
       }
     }
   }
@@ -620,12 +620,12 @@ function McpGuideContent() {
       file: ".cursor/mcp.json",
       config: `{
   "mcpServers": {
-    "ledge": {
+    "kounta": {
       "command": "npx",
-      "args": ["@ledge/mcp@latest"],
+      "args": ["@kounta/mcp@latest"],
       "env": {
-        "LEDGE_API_KEY": "YOUR_API_KEY_HERE",
-        "LEDGE_API_URL": "http://localhost:3100"
+        "KOUNTA_API_KEY": "YOUR_API_KEY_HERE",
+        "KOUNTA_API_URL": "http://localhost:3100"
       }
     }
   }

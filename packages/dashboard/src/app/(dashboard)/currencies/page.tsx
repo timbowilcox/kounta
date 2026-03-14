@@ -1,4 +1,4 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { CurrenciesView } from "./currencies-view";
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,6 @@
-# Invoice Manager — Ledge Example
+# Invoice Manager — Kounta Example
 
-A freelancer invoice manager built with **Next.js** and **@ledge/sdk**. Demonstrates how to use Ledge's double-entry accounting engine to track invoices, payments, and expenses for a consulting business.
+A freelancer invoice manager built with **Next.js** and **@kounta/sdk**. Demonstrates how to use Kounta's double-entry accounting engine to track invoices, payments, and expenses for a consulting business.
 
 ## What It Does
 
@@ -39,7 +39,7 @@ Every action is a proper double-entry journal entry. The P&L and Balance Sheet u
 
 ### Prerequisites
 
-- The Ledge API running locally (from the monorepo root: `pnpm dev`)
+- The Kounta API running locally (from the monorepo root: `pnpm dev`)
 - Node.js 18+, pnpm
 
 ### Setup
@@ -56,7 +56,7 @@ cp .env.example .env
 
 # Seed the ledger with sample data
 pnpm seed
-# → Copy the LEDGE_LEDGER_ID and LEDGE_API_KEY into .env
+# → Copy the KOUNTA_LEDGER_ID and KOUNTA_API_KEY into .env
 
 # Start the dev server
 pnpm dev
@@ -119,7 +119,7 @@ src/
     account-balances.tsx  # Renders all account balances grouped by type
     recent-transactions.tsx # Transaction journal
   lib/
-    ledge.ts              # Ledge SDK singleton
+    ledge.ts              # Kounta SDK singleton
     format.ts             # Currency and date formatters
     seed.ts               # CLI seed script
 ```
@@ -128,7 +128,7 @@ src/
 
 - Add invoice numbering with auto-increment
 - Track individual invoices with metadata and link payments to specific invoices
-- Add expense receipt uploads using Ledge transaction metadata
+- Add expense receipt uploads using Kounta transaction metadata
 - Build an aging report for outstanding receivables
 - Add tax calculation and withholding (debit expense, credit Tax Liabilities)
 - Generate PDF invoices from transaction data

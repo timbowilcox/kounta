@@ -1,5 +1,5 @@
-import { getSessionClient } from "@/lib/ledge";
-import type { PaginatedResult, TransactionWithLines } from "@ledge/sdk";
+import { getSessionClient } from "@/lib/kounta";
+import type { PaginatedResult, TransactionWithLines } from "@kounta/sdk";
 import { TransactionsView } from "./transactions-view";
 
 export const dynamic = "force-dynamic";

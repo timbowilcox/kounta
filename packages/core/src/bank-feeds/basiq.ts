@@ -102,7 +102,7 @@ export class BasiqProvider implements BankFeedProvider {
   ): Promise<CreateConnectionSessionResult> {
     // Step 1: Create or find user in Basiq
     const user = await this.request<{ id: string }>("POST", "/users", {
-      email: `${params.userId}@ledge.internal`,
+      email: `${params.userId}@kounta.internal`,
       mobile: "+61400000000",
     });
 

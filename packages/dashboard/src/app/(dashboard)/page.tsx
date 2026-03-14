@@ -1,8 +1,8 @@
-import { getSessionClient } from "@/lib/ledge";
+import { getSessionClient } from "@/lib/kounta";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
-import type { TransactionWithLines, AccountWithBalance } from "@ledge/sdk";
+import type { TransactionWithLines, AccountWithBalance } from "@kounta/sdk";
 import { ContextualPrompt } from "@/components/contextual-prompt";
 import { PostTransactionButton } from "@/components/post-transaction-button";
 import { ProgressChecklist } from "@/components/progress-checklist";
@@ -39,7 +39,7 @@ export default async function OverviewPage() {
 
   // Fetch data with safe defaults — each call fails independently
   type LedgerInfo = { name: string; currency: string; accountingBasis: string };
-  let ledger: LedgerInfo = { name: "Ledge", currency: "USD", accountingBasis: "accrual" };
+  let ledger: LedgerInfo = { name: "Kounta", currency: "USD", accountingBasis: "accrual" };
   let accountsList: AccountWithBalance[] = [];
   let recentTransactions: TransactionWithLines[] = [];
 

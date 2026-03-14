@@ -1,22 +1,22 @@
-# @ledge/sdk
+# @kounta/sdk
 
-Typed TypeScript client for the [Ledge](https://getledge.ai) REST API — double-entry accounting infrastructure for builders.
+Typed TypeScript client for the [Kounta](https://kounta.ai) REST API — double-entry accounting infrastructure for builders.
 
 ## Install
 
 ```bash
-npm install @ledge/sdk
+npm install @kounta/sdk
 ```
 
 ## Quick start
 
 ```typescript
-import { Ledge } from "@ledge/sdk";
+import { Kounta } from "@kounta/sdk";
 
-const ledge = new Ledge({
+const ledge = new Kounta({
   apiKey: "ldg_live_...",             // your API key
   adminSecret: "sk_admin_...",        // optional — only for admin operations
-  baseUrl: "https://api.getledge.ai", // optional — defaults to production
+  baseUrl: "https://api.kounta.ai", // optional — defaults to production
 });
 ```
 
@@ -190,7 +190,7 @@ console.log(`Created ${applied.count} accounts`);
 Ledger creation, API key management, and template application require `adminSecret`:
 
 ```typescript
-const admin = new Ledge({
+const admin = new Kounta({
   apiKey: "ldg_live_...",
   adminSecret: "sk_admin_...",
 });
@@ -218,15 +218,15 @@ await admin.apiKeys.revoke(keys[0].id);
 
 ## Error handling
 
-Non-2xx responses throw a `LedgeApiError` with structured fields:
+Non-2xx responses throw a `KountaApiError` with structured fields:
 
 ```typescript
-import { LedgeApiError, ErrorCode } from "@ledge/sdk";
+import { KountaApiError, ErrorCode } from "@kounta/sdk";
 
 try {
   await ledge.transactions.post("ldg_abc123", { /* unbalanced */ });
 } catch (e) {
-  if (e instanceof LedgeApiError) {
+  if (e instanceof KountaApiError) {
     console.log(e.status);    // 400
     console.log(e.code);      // "UNBALANCED_TRANSACTION"
     console.log(e.message);   // human-readable message
@@ -248,7 +248,7 @@ ErrorCode.IMPORT_PARSE_ERROR
 
 ## Types
 
-All domain types are re-exported from `@ledge/sdk` — no need to install `@ledge/core`:
+All domain types are re-exported from `@kounta/sdk` — no need to install `@kounta/core`:
 
 ```typescript
 import type {
@@ -263,7 +263,7 @@ import type {
   Template,
   AuditEntry,
   PaginatedResult,
-} from "@ledge/sdk";
+} from "@kounta/sdk";
 ```
 
 ## Custom fetch
@@ -271,7 +271,7 @@ import type {
 Pass a custom `fetch` for edge runtimes, testing, or middleware:
 
 ```typescript
-const ledge = new Ledge({
+const ledge = new Kounta({
   apiKey: "ldg_live_...",
   fetch: myCustomFetch,
 });

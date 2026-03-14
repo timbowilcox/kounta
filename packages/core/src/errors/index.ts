@@ -1,4 +1,4 @@
-import type { LedgeError, ErrorDetail } from "../types/index.js";
+import type { KountaError, ErrorDetail } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Error codes — every error the engine can return
@@ -48,7 +48,7 @@ export const createError = (
   code: ErrorCodeValue,
   message: string,
   details?: readonly ErrorDetail[]
-): LedgeError => ({
+): KountaError => ({
   code,
   message,
   details,
@@ -57,12 +57,12 @@ export const createError = (
 export const validationError = (
   message: string,
   details?: readonly ErrorDetail[]
-): LedgeError => createError(ErrorCode.VALIDATION_ERROR, message, details);
+): KountaError => createError(ErrorCode.VALIDATION_ERROR, message, details);
 
 export const unbalancedTransactionError = (
   debitTotal: number,
   creditTotal: number
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.UNBALANCED_TRANSACTION,
     `Transaction is unbalanced: debits (${debitTotal}) do not equal credits (${creditTotal})`,
@@ -76,7 +76,7 @@ export const unbalancedTransactionError = (
     ]
   );
 
-export const accountNotFoundError = (identifier: string): LedgeError =>
+export const accountNotFoundError = (identifier: string): KountaError =>
   createError(ErrorCode.ACCOUNT_NOT_FOUND, `Account not found: ${identifier}`, [
     {
       field: "accountCode",
@@ -86,7 +86,7 @@ export const accountNotFoundError = (identifier: string): LedgeError =>
     },
   ]);
 
-export const accountInactiveError = (identifier: string): LedgeError =>
+export const accountInactiveError = (identifier: string): KountaError =>
   createError(ErrorCode.ACCOUNT_INACTIVE, `Account is inactive: ${identifier}`, [
     {
       field: "accountCode",
@@ -99,7 +99,7 @@ export const accountInactiveError = (identifier: string): LedgeError =>
 export const accountWrongLedgerError = (
   accountId: string,
   expectedLedgerId: string
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.ACCOUNT_WRONG_LEDGER,
     `Account ${accountId} does not belong to ledger ${expectedLedgerId}`,
@@ -114,7 +114,7 @@ export const accountWrongLedgerError = (
     ]
   );
 
-export const ledgerNotFoundError = (id: string): LedgeError =>
+export const ledgerNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.LEDGER_NOT_FOUND, `Ledger not found: ${id}`, [
     {
       field: "ledgerId",
@@ -124,7 +124,7 @@ export const ledgerNotFoundError = (id: string): LedgeError =>
     },
   ]);
 
-export const transactionNotFoundError = (id: string): LedgeError =>
+export const transactionNotFoundError = (id: string): KountaError =>
   createError(
     ErrorCode.TRANSACTION_NOT_FOUND,
     `Transaction not found: ${id}`,
@@ -138,7 +138,7 @@ export const transactionNotFoundError = (id: string): LedgeError =>
     ]
   );
 
-export const transactionAlreadyReversedError = (id: string): LedgeError =>
+export const transactionAlreadyReversedError = (id: string): KountaError =>
   createError(
     ErrorCode.TRANSACTION_ALREADY_REVERSED,
     `Transaction ${id} has already been reversed`,
@@ -155,7 +155,7 @@ export const transactionAlreadyReversedError = (id: string): LedgeError =>
 export const periodClosedError = (
   transactionDate: string,
   closedThrough: string
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.PERIOD_CLOSED,
     `Cannot post transaction dated ${transactionDate}: period is closed through ${closedThrough}`,
@@ -169,7 +169,7 @@ export const periodClosedError = (
     ]
   );
 
-export const idempotencyConflictError = (key: string): LedgeError =>
+export const idempotencyConflictError = (key: string): KountaError =>
   createError(
     ErrorCode.IDEMPOTENCY_CONFLICT,
     `Idempotency key "${key}" already exists with different parameters`,
@@ -186,7 +186,7 @@ export const idempotencyConflictError = (key: string): LedgeError =>
 export const duplicateAccountCodeError = (
   code: string,
   ledgerId: string
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.DUPLICATE_ACCOUNT_CODE,
     `Account code "${code}" already exists in ledger ${ledgerId}`,
@@ -200,7 +200,7 @@ export const duplicateAccountCodeError = (
     ]
   );
 
-export const templateNotFoundError = (idOrSlug: string): LedgeError =>
+export const templateNotFoundError = (idOrSlug: string): KountaError =>
   createError(
     ErrorCode.TEMPLATE_NOT_FOUND,
     `Template not found: ${idOrSlug}`,
@@ -216,7 +216,7 @@ export const templateNotFoundError = (idOrSlug: string): LedgeError =>
 
 export const unauthorizedError = (
   message = "Authentication required"
-): LedgeError =>
+): KountaError =>
   createError(ErrorCode.UNAUTHORIZED, message, [
     {
       field: "Authorization",
@@ -227,7 +227,7 @@ export const unauthorizedError = (
 
 export const forbiddenError = (
   message = "Access denied"
-): LedgeError =>
+): KountaError =>
   createError(ErrorCode.FORBIDDEN, message, [
     {
       field: "Authorization",
@@ -236,7 +236,7 @@ export const forbiddenError = (
     },
   ]);
 
-export const apiKeyNotFoundError = (id: string): LedgeError =>
+export const apiKeyNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.API_KEY_NOT_FOUND, `API key not found: ${id}`, [
     {
       field: "keyId",
@@ -246,7 +246,7 @@ export const apiKeyNotFoundError = (id: string): LedgeError =>
     },
   ]);
 
-export const importNotFoundError = (id: string): LedgeError =>
+export const importNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.IMPORT_NOT_FOUND, `Import batch not found: ${id}`, [
     {
       field: "batchId",
@@ -259,7 +259,7 @@ export const importNotFoundError = (id: string): LedgeError =>
 export const importParseError = (
   message: string,
   details?: readonly ErrorDetail[],
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.IMPORT_PARSE_ERROR,
     message,
@@ -280,7 +280,7 @@ export const planLimitReachedError = (
   limit: number,
   nextResetDate: string,
   upgradeUrl: string
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.PLAN_LIMIT_REACHED,
     `Free plan soft limit reached (${count}/${limit}). Transaction accepted as pending.`,
@@ -299,7 +299,7 @@ export const planLimitExceededError = (
   limit: number,
   nextResetDate: string,
   upgradeUrl: string
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.PLAN_LIMIT_EXCEEDED,
     `Free plan hard limit exceeded (${count}/${limit}). Transaction rejected.`,
@@ -313,7 +313,7 @@ export const planLimitExceededError = (
     ]
   );
 
-export const bankConnectionNotFoundError = (id: string): LedgeError =>
+export const bankConnectionNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.BANK_CONNECTION_NOT_FOUND, `Bank connection not found: ${id}`, [
     {
       field: "connectionId",
@@ -323,7 +323,7 @@ export const bankConnectionNotFoundError = (id: string): LedgeError =>
     },
   ]);
 
-export const bankAccountNotFoundError = (id: string): LedgeError =>
+export const bankAccountNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.BANK_ACCOUNT_NOT_FOUND, `Bank account not found: ${id}`, [
     {
       field: "bankAccountId",
@@ -333,7 +333,7 @@ export const bankAccountNotFoundError = (id: string): LedgeError =>
     },
   ]);
 
-export const bankFeedProviderError = (provider: string, message: string): LedgeError =>
+export const bankFeedProviderError = (provider: string, message: string): KountaError =>
   createError(ErrorCode.BANK_FEED_PROVIDER_ERROR, `Bank feed provider error (${provider}): ${message}`, [
     {
       field: "provider",
@@ -342,7 +342,7 @@ export const bankFeedProviderError = (provider: string, message: string): LedgeE
     },
   ]);
 
-export const bankFeedSyncInProgressError = (connectionId: string): LedgeError =>
+export const bankFeedSyncInProgressError = (connectionId: string): KountaError =>
   createError(ErrorCode.BANK_FEED_SYNC_IN_PROGRESS, `A sync is already in progress for connection ${connectionId}`, [
     {
       field: "connectionId",
@@ -351,7 +351,7 @@ export const bankFeedSyncInProgressError = (connectionId: string): LedgeError =>
     },
   ]);
 
-export const bankFeedNotConfiguredError = (): LedgeError =>
+export const bankFeedNotConfiguredError = (): KountaError =>
   createError(ErrorCode.BANK_FEED_NOT_CONFIGURED, "Bank feed provider is not configured", [
     {
       field: "provider",
@@ -359,7 +359,7 @@ export const bankFeedNotConfiguredError = (): LedgeError =>
     },
   ]);
 
-export const notificationNotFoundError = (id: string): LedgeError =>
+export const notificationNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.NOTIFICATION_NOT_FOUND, `Notification not found: ${id}`, [
     {
       field: "notificationId",
@@ -373,7 +373,7 @@ export const exchangeRateNotFoundError = (
   fromCurrency: string,
   toCurrency: string,
   date?: string,
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.EXCHANGE_RATE_NOT_FOUND,
     `No exchange rate found for ${fromCurrency}/${toCurrency}${date ? ` on or before ${date}` : ""}`,
@@ -387,7 +387,7 @@ export const exchangeRateNotFoundError = (
     ]
   );
 
-export const currencyNotEnabledError = (currencyCode: string): LedgeError =>
+export const currencyNotEnabledError = (currencyCode: string): KountaError =>
   createError(
     ErrorCode.CURRENCY_NOT_ENABLED,
     `Currency ${currencyCode} is not enabled on this ledger`,
@@ -405,7 +405,7 @@ export const currencyMismatchError = (
   accountCode: string,
   accountCurrency: string,
   lineCurrency: string,
-): LedgeError =>
+): KountaError =>
   createError(
     ErrorCode.CURRENCY_MISMATCH,
     `Account ${accountCode} is restricted to ${accountCurrency} but line item uses ${lineCurrency}`,
@@ -422,7 +422,7 @@ export const currencyMismatchError = (
 
 export const internalError = (
   message = "An unexpected error occurred"
-): LedgeError =>
+): KountaError =>
   createError(ErrorCode.INTERNAL_ERROR, message, [
     {
       field: "request",
@@ -431,7 +431,7 @@ export const internalError = (
     },
   ]);
 
-export const conversationNotFoundError = (id: string): LedgeError =>
+export const conversationNotFoundError = (id: string): KountaError =>
   createError(ErrorCode.CONVERSATION_NOT_FOUND, `Conversation not found: ${id}`, [
     {
       field: "conversationId",

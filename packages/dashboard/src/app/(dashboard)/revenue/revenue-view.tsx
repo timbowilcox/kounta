@@ -17,7 +17,7 @@ import type {
   RevenueScheduleEntrySummary,
 } from "@/lib/actions";
 import { CreateScheduleModal } from "./create-schedule-modal";
-import type { AccountWithBalance } from "@ledge/sdk";
+import type { AccountWithBalance } from "@kounta/sdk";
 
 // ---------------------------------------------------------------------------
 // Props

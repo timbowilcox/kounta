@@ -116,7 +116,7 @@ export function ProgressChecklist() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: "#0A0A0A" }}>
-              Getting started with Ledge
+              Getting started with Kounta
             </span>
             <span
               style={{
