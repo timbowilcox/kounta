@@ -4,7 +4,7 @@
 
 import type { Database } from "../db/database.js";
 import type { LedgerEngine } from "../engine/index.js";
-import type { StripeConnection, StripeChargeData, StripePayoutData } from "./types.js";
+import type { StripeConnection, StripeChargeData, StripePayoutData, StripeInvoiceData } from "./types.js";
 import { handleChargeSucceeded, handlePayoutPaid } from "./webhook.js";
 import { updateLastSynced } from "./connection.js";
 
@@ -60,6 +60,7 @@ export const backfillCharges = async (
       limit: "100",
       "created[gte]": String(sinceTimestamp),
       status: "succeeded",
+      "expand[]": "data.invoice",
     };
     if (startingAfter) params["starting_after"] = startingAfter;
 
@@ -69,9 +70,20 @@ export const backfillCharges = async (
       currency: string;
       description: string | null;
       receipt_email: string | null;
+      customer: string | null;
       application_fee_amount: number | null;
       balance_transaction: { fee: number; net: number } | string | null;
       metadata: Record<string, string>;
+      invoice: {
+        subscription: string | null;
+        customer_email: string | null;
+        customer: string | null;
+        lines: { data: Array<{
+          description: string | null;
+          price: { recurring: { interval: string; interval_count: number } | null } | null;
+          period: { start: number; end: number };
+        }> };
+      } | string | null;
     }>;
 
     try {
@@ -82,6 +94,31 @@ export const backfillCharges = async (
     }
 
     for (const charge of response.data) {
+      // Extract invoice data if expanded
+      let invoice: StripeInvoiceData | null = null;
+      if (charge.invoice && typeof charge.invoice === "object") {
+        const inv = charge.invoice;
+        invoice = {
+          subscriptionId: inv.subscription,
+          customerEmail: inv.customer_email,
+          customerId: inv.customer,
+          lines: (inv.lines?.data ?? []).map((line) => ({
+            description: line.description,
+            price: line.price
+              ? {
+                  recurring: line.price.recurring
+                    ? {
+                        interval: line.price.recurring.interval as "day" | "week" | "month" | "year",
+                        intervalCount: line.price.recurring.interval_count,
+                      }
+                    : null,
+                }
+              : null,
+            period: { start: line.period.start, end: line.period.end },
+          })),
+        };
+      }
+
       const chargeData: StripeChargeData = {
         id: charge.id,
         amount: charge.amount,
@@ -94,6 +131,8 @@ export const backfillCharges = async (
             ? { fee: charge.balance_transaction.fee, net: charge.balance_transaction.net }
             : null,
         metadata: charge.metadata ?? {},
+        invoice,
+        customerId: charge.customer,
       };
 
       // Generate a synthetic event ID for backfilled charges

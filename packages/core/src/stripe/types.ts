@@ -45,6 +45,54 @@ export interface StripeChargeData {
     readonly net: number;
   } | null;
   readonly metadata: Record<string, string>;
+  /** Invoice data embedded from charge.invoice (expanded) or backfill. */
+  readonly invoice?: StripeInvoiceData | null;
+  /** Customer ID from the charge. */
+  readonly customerId?: string | null;
+}
+
+/** Minimal invoice data needed for revenue recognition. */
+export interface StripeInvoiceData {
+  readonly subscriptionId: string | null;
+  readonly customerEmail: string | null;
+  readonly customerId: string | null;
+  readonly lines: readonly StripeInvoiceLineData[];
+}
+
+export interface StripeInvoiceLineData {
+  readonly description: string | null;
+  readonly price: {
+    readonly recurring: {
+      readonly interval: "day" | "week" | "month" | "year";
+      readonly intervalCount: number;
+    } | null;
+  } | null;
+  readonly period: {
+    readonly start: number; // Unix timestamp
+    readonly end: number;   // Unix timestamp
+  };
+}
+
+/** Subscription update/delete event data. */
+export interface StripeSubscriptionData {
+  readonly id: string;
+  readonly customerId: string;
+  readonly customerEmail?: string | null;
+  readonly status: string;
+  readonly currentPeriodStart: number;
+  readonly currentPeriodEnd: number;
+  readonly items: readonly {
+    readonly price: {
+      readonly unitAmount: number | null;
+      readonly recurring: {
+        readonly interval: "day" | "week" | "month" | "year";
+        readonly intervalCount: number;
+      } | null;
+    };
+    readonly quantity: number;
+  }[];
+  readonly canceledAt: number | null;
+  readonly description: string | null;
 }
 
 export interface StripeRefundData {
@@ -52,6 +100,8 @@ export interface StripeRefundData {
   readonly amount: number; // integer cents
   readonly chargeId: string;
   readonly reason: string | null;
+  /** Subscription ID associated with the refunded charge (for schedule lookup). */
+  readonly subscriptionId?: string | null;
 }
 
 export interface StripePayoutData {

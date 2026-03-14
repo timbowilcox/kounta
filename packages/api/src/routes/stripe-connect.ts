@@ -85,7 +85,7 @@ stripeConnectRoutes.post("/webhook", async (c) => {
   }
 
   // Only handle events we care about
-  if (["charge.succeeded", "charge.refunded", "payout.paid"].includes(event.type)) {
+  if (["charge.succeeded", "charge.refunded", "payout.paid", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
     try {
       await handleEvent(db, engine, connection, event as Parameters<typeof handleEvent>[3]);
     } catch (e) {
