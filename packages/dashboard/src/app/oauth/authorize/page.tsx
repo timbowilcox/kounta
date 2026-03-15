@@ -20,36 +20,36 @@ const hashColor = (str: string): string => {
   return `hsl(${h}, 45%, 55%)`;
 };
 
-/** Colored initial avatar for OAuth clients — uses real logo for known clients */
+/** Client icon for the consent header — uses real logo for known clients */
 function ClientAvatar({ name, clientId }: { name: string; clientId: string }) {
-  // Claude.ai — use the official logo mark (the star/asterisk from the SVG)
+  // Claude.ai — official asterisk mark, matched to Kounta logo height (1.5rem)
   if (clientId === "claude-ai") {
     return (
       <img
-        src="/claude-logo.svg"
+        src="/claude-icon.svg"
         alt="Claude"
-        style={{ height: 28, flexShrink: 0 }}
+        style={{ height: "1.5rem", flexShrink: 0 }}
       />
     );
   }
 
-  // Generic clients — colored initial badge
+  // Generic clients — colored initial badge at matching height
   const bg = CLIENT_COLORS[clientId] ?? hashColor(clientId || name);
   const initial = (name || clientId || "?").charAt(0).toUpperCase();
 
   return (
     <div
       style={{
-        width: 32,
-        height: 32,
-        borderRadius: 8,
+        width: "1.5rem",
+        height: "1.5rem",
+        borderRadius: 6,
         background: bg,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         color: "white",
         fontWeight: 600,
-        fontSize: 14,
+        fontSize: 11,
         flexShrink: 0,
       }}
     >
@@ -255,22 +255,10 @@ function OAuthAuthorizeContent() {
           backgroundColor: "var(--surface-1)",
         }}
       >
-        {/* Header: Kounta logo + client avatar & name */}
+        {/* Header: Kounta logo (left) + client icon (right) — matched heights */}
         <div className="flex items-center justify-between" style={{ marginBottom: "1.5rem" }}>
           <img src="/logo.svg" alt="Kounta" style={{ height: "1.5rem" }} />
-          <div className="flex items-center" style={{ gap: "0.5rem" }}>
-            <ClientAvatar name={clientInfo?.client_name ?? clientId} clientId={clientId} />
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--text-primary)" }}>
-                {clientInfo?.client_name ?? clientId}
-              </div>
-              {clientId === "claude-ai" && (
-                <div style={{ fontSize: "0.6875rem", color: "var(--text-tertiary)" }}>
-                  by Anthropic
-                </div>
-              )}
-            </div>
-          </div>
+          <ClientAvatar name={clientInfo?.client_name ?? clientId} clientId={clientId} />
         </div>
 
         <div style={{ borderTop: "1px solid var(--border)", marginBottom: "1.5rem" }} />
