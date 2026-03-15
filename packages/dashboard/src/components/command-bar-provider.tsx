@@ -31,21 +31,17 @@ export function CommandBarProvider({ children }: { children: ReactNode }) {
     setPrefill("");
   }, []);
 
-  // Global keyboard shortcut: Cmd+K / Ctrl+K
+  // Global keyboard shortcut: Cmd+K / Ctrl+K → navigate to /assistant
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        if (isOpen) {
-          close();
-        } else {
-          open();
-        }
+        window.location.href = "/assistant";
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, open, close]);
+  }, []);
 
   return (
     <CommandBarContext.Provider value={{ isOpen, open, close, prefill }}>

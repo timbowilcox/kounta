@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { useCommandBar } from "./command-bar-provider";
 
 const mainNavItems = [
   { href: "/", label: "Overview", icon: OverviewIcon },
@@ -22,8 +21,6 @@ const bottomNavItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { open: openCommandBar } = useCommandBar();
-
   const renderNavItem = ({ href, label, icon: Icon }: typeof mainNavItems[number]) => {
     const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
     return (
@@ -83,10 +80,10 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Command bar trigger */}
+      {/* Assistant link */}
       <div style={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", marginBottom: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "0.5rem" }}>
-        <button
-          onClick={() => openCommandBar()}
+        <Link
+          href="/assistant"
           className="flex items-center w-full sidebar-cmd-bar"
           style={{
             padding: "0 0.75rem",
@@ -100,6 +97,7 @@ export function Sidebar() {
             cursor: "pointer",
             gap: "0.5rem",
             transition: "all 150ms ease",
+            textDecoration: "none",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "var(--border-strong)";
@@ -113,7 +111,7 @@ export function Sidebar() {
           <span className="sidebar-cmd-star" style={{ transition: "color 150ms ease" }}>✦</span>
           <span style={{ flex: 1, textAlign: "left" }}>Ask Kounta...</span>
           <kbd className="font-mono" style={{ fontSize: "0.6875rem", color: "var(--text-disabled)", opacity: 0.8 }}>⌘K</kbd>
-        </button>
+        </Link>
       </div>
 
       {/* Footer */}
