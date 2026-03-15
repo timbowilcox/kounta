@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { formatDate } from "@/lib/format";
 import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction, fetchStripeStatus, disconnectStripe, syncStripe, getStripeAuthorizeUrl, updateUserNameAction, fetchOAuthConnections, revokeOAuthConnection } from "@/lib/actions";
@@ -143,6 +143,7 @@ const MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
 
 function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: { ledger: Props["ledger"]; fiscalYearStart: number; closedThrough: string | null; closedPeriods: ClosedPeriodSummary[] }) {
   const { data: session, update } = useSession();
+  const router = useRouter();
   const [fyStart, setFyStart] = useState(fiscalYearStart);
   const [fySaving, setFySaving] = useState(false);
   const [fySaved, setFySaved] = useState(false);
@@ -172,6 +173,8 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
       displayNameOriginal.current = displayName.trim();
       setDisplayNameSaved(true);
       setTimeout(() => setDisplayNameSaved(false), 2000);
+      // Refresh server components so sidebar/greeting show the new name
+      router.refresh();
     }
     setDisplayNameSaving(false);
   };

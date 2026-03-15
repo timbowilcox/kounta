@@ -31,7 +31,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, account, profile }) {
+    async jwt({ token, account, profile, trigger, session: updateData }) {
+      // Handle session update (e.g. display name change from Settings)
+      if (trigger === "update" && updateData) {
+        const data = updateData as Record<string, unknown>;
+        if (data.name && typeof data.name === "string") {
+          token.name = data.name;
+        }
+        return token;
+      }
+
       // On initial sign-in, provision the user in the Kounta API
       if (account && profile) {
         const provider = account.provider;
