@@ -67,7 +67,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: "connections", label: "Connections" },
   { key: "recurring", label: "Recurring" },
   { key: "api-keys", label: "API Keys" },
-  { key: "billing", label: "Billing" },
+  { key: "billing", label: "Subscription" },
   { key: "email", label: "Email" },
 ];
 
@@ -896,7 +896,26 @@ function McpGuideContent() {
   );
 }
 
-// ── Billing Tab ────────────────────────────────────────────────────────────
+// ── Subscription Tab ───────────────────────────────────────────────────────
+
+const PLAN_TIERS = [
+  {
+    name: "Free", price: "$0", period: "/month", plan: "free" as const,
+    features: ["500 transactions/month", "Single entity", "Single currency", "Basic statements", "CSV import", "Full API & MCP access"],
+  },
+  {
+    name: "Builder", price: "$19", period: "/month", plan: "builder" as const, recommended: true,
+    features: ["Unlimited transactions", "Bank feed integration", "Auto-reconciliation", "Intelligence layer", "Statement PDF export", "Email notifications"],
+  },
+  {
+    name: "Pro", price: "$49", period: "/month", plan: "pro" as const, comingSoon: true,
+    features: ["Everything in Builder", "Multi-currency", "Up to 3 linked entities", "Consolidated reporting", "Budgeting & forecasting", "Custom chart of accounts", "API webhooks", "Priority support"],
+  },
+  {
+    name: "Platform", price: "$149", period: "/month", plan: "platform" as const, comingSoon: true,
+    features: ["Everything in Pro", "Unlimited entities", "Multi-jurisdiction tax", "RBAC with team roles", "White-label", "Tenant isolation", "Approval workflows", "SLA & dedicated support"],
+  },
+];
 
 function BillingTab({ billing }: { billing: BillingStatus }) {
   const [isPending, startTransition] = useTransition();
@@ -979,12 +998,12 @@ function BillingTab({ billing }: { billing: BillingStatus }) {
 
       {/* Pending notice */}
       {billing.pendingTransactions > 0 && (
-        <div style={{ borderRadius: 8, padding: "16px 20px", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A" }}>
+        <div style={{ borderRadius: 8, padding: "16px 20px", backgroundColor: "var(--surface-2)", border: "1px solid #D97706" }}>
           <div className="flex items-center gap-3">
             <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="10" cy="10" r="8" /><path d="M10 6.5v4" /><circle cx="10" cy="13.5" r="0.5" fill="#D97706" />
             </svg>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "#92400E" }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#D97706" }}>
               {billing.pendingTransactions} transaction{billing.pendingTransactions !== 1 ? "s" : ""} queued
             </span>
           </div>
@@ -1019,6 +1038,73 @@ function BillingTab({ billing }: { billing: BillingStatus }) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Plan tiers */}
+      <div>
+        <div className="section-label" style={{ marginBottom: 16 }}>Plans</div>
+        <div className="grid grid-cols-2" style={{ gap: 12 }}>
+          {PLAN_TIERS.map((tier) => {
+            const isCurrent = billing.plan === tier.plan;
+            const isRecommended = tier.recommended && isFree;
+            return (
+              <div
+                key={tier.plan}
+                className="card"
+                style={{
+                  position: "relative",
+                  border: isRecommended ? "2px solid var(--accent)" : isCurrent ? "1px solid var(--border-strong)" : "1px solid var(--border)",
+                  borderLeft: isCurrent ? "3px solid var(--accent)" : undefined,
+                  padding: 16,
+                  opacity: tier.comingSoon ? 0.6 : 1,
+                }}
+              >
+                {isRecommended && (
+                  <div
+                    className="text-xs font-medium"
+                    style={{
+                      position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)",
+                      backgroundColor: "var(--accent)", color: "white",
+                      padding: "2px 12px", borderRadius: 10, whiteSpace: "nowrap",
+                    }}
+                  >
+                    Recommended
+                  </div>
+                )}
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                  {tier.name}
+                </div>
+                <div className="flex items-baseline gap-1" style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 22, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{tier.price}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{tier.period}</span>
+                </div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, marginBottom: 12 }}>
+                  {tier.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2" style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 5, lineHeight: 1.5 }}>
+                      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                        <path d="M3.5 7l2 2 5-5" />
+                      </svg>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                {isCurrent ? (
+                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ textAlign: "center", backgroundColor: "var(--surface-1)", color: "var(--accent)", border: "1px solid var(--border-strong)", borderRadius: 9999, padding: "4px 12px" }}>
+                    Current plan
+                  </div>
+                ) : tier.comingSoon ? (
+                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ textAlign: "center", backgroundColor: "var(--surface-1)", color: "var(--text-tertiary)", border: "1px solid var(--border)", borderRadius: 9999, padding: "4px 12px" }}>
+                    Coming soon
+                  </div>
+                ) : tier.plan === "builder" && isFree ? (
+                  <button className="btn-primary" style={{ width: "100%", padding: "8px 0", fontSize: 12 }} onClick={handleUpgrade} disabled={isPending || redirecting}>
+                    {redirecting ? "Redirecting..." : "Upgrade"}
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

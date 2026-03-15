@@ -340,6 +340,7 @@ function QuickActionButton({ icon, label }: { icon: React.ReactNode; label: stri
         flex: 1,
         cursor: "pointer",
         gap: 12,
+        textAlign: "left",
       }}
     >
       {icon}
