@@ -313,7 +313,7 @@ export function StatementsView({
                       fontSize: 13,
                       fontWeight: 600,
                       borderTop: "1px solid var(--border)",
-                      color: "var(--text-primary)",
+                      color: isGrand ? "var(--background)" : "var(--text-primary)",
                     }}
                   >
                     {formatTotalLabel(key)}
@@ -325,7 +325,7 @@ export function StatementsView({
                       fontSize: 13,
                       fontWeight: 600,
                       borderTop: "1px solid var(--border)",
-                      color: "var(--text-primary)",
+                      color: isGrand ? "var(--background)" : "var(--text-primary)",
                     }}
                   >
                     {key === "debtToEquity"

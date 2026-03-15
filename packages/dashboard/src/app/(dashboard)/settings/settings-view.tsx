@@ -1043,7 +1043,7 @@ function BillingTab({ billing }: { billing: BillingStatus }) {
       {/* Plan tiers */}
       <div>
         <div className="section-label" style={{ marginBottom: 16 }}>Plans</div>
-        <div className="grid grid-cols-2" style={{ gap: 12 }}>
+        <div className="grid grid-cols-4" style={{ gap: 12 }}>
           {PLAN_TIERS.map((tier) => {
             const isCurrent = billing.plan === tier.plan;
             const isRecommended = tier.recommended && isFree;
