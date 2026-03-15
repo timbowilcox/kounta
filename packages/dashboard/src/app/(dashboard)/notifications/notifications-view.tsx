@@ -107,17 +107,17 @@ export function NotificationsView({ notifications, error }: NotificationsViewPro
     return (
       <div>
         <PageHeader unreadCount={0} />
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
-          <div style={{ margin: "0 auto 16px" }}>
+        <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", minHeight: 160, padding: "3rem 2rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
             <NotificationIconSvg />
           </div>
           <h2
             className="font-bold"
-            style={{ fontSize: 18, color: "var(--text-primary)", marginBottom: 8, fontFamily: "var(--font-family-display)" }}
+            style={{ fontSize: "1.125rem", color: "var(--text-primary)", marginBottom: "0.5rem", fontFamily: "var(--font-family-display)" }}
           >
             Upgrade to Enable Insights
           </h2>
-          <p className="text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>
+          <p className="text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.6, maxWidth: "26.25rem" }}>
             Automated financial insights and notifications require a Builder plan or higher.
             Upgrade your plan to receive monthly summaries, cash position alerts, and anomaly detection.
           </p>
@@ -130,17 +130,17 @@ export function NotificationsView({ notifications, error }: NotificationsViewPro
     return (
       <div>
         <PageHeader unreadCount={0} />
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
-          <div style={{ margin: "0 auto 16px" }}>
+        <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", minHeight: 160, padding: "3rem 2rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
             <NotificationIconSvg />
           </div>
           <h2
             className="font-bold"
-            style={{ fontSize: 18, color: "var(--text-primary)", marginBottom: 8, fontFamily: "var(--font-family-display)" }}
+            style={{ fontSize: "1.125rem", color: "var(--text-primary)", marginBottom: "0.5rem", fontFamily: "var(--font-family-display)" }}
           >
             No Notifications Yet
           </h2>
-          <p className="text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>
+          <p className="text-sm" style={{ color: "var(--text-secondary)", lineHeight: 1.6, maxWidth: "26.25rem" }}>
             Kounta generates financial insights automatically as you use the ledger. Post transactions,
             connect bank feeds, and insights will appear here — monthly summaries, cash position
             alerts, anomaly detection, and more.
