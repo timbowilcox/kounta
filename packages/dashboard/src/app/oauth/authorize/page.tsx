@@ -22,13 +22,13 @@ const hashColor = (str: string): string => {
 
 /** Client icon for the consent header — uses real logo for known clients */
 function ClientAvatar({ name, clientId }: { name: string; clientId: string }) {
-  // Claude.ai — full wordmark logo, matched to Kounta logo height (1.5rem)
+  // Claude.ai — full wordmark logo, matched to Kounta logo height (1.35rem)
   if (clientId === "claude-ai") {
     return (
       <img
         src="/claude-logo.svg"
         alt="Claude"
-        style={{ height: "1.5rem", flexShrink: 0 }}
+        style={{ height: "1.35rem", flexShrink: 0 }}
       />
     );
   }
@@ -40,8 +40,8 @@ function ClientAvatar({ name, clientId }: { name: string; clientId: string }) {
   return (
     <div
       style={{
-        width: "1.5rem",
-        height: "1.5rem",
+        width: "1.35rem",
+        height: "1.35rem",
         borderRadius: 6,
         background: bg,
         display: "flex",
@@ -257,7 +257,7 @@ function OAuthAuthorizeContent() {
       >
         {/* Header: Kounta logo (left) + client icon (right) — matched heights */}
         <div className="flex items-center justify-between" style={{ marginBottom: "1.5rem" }}>
-          <img src="/logo.svg" alt="Kounta" style={{ height: "1.5rem" }} />
+          <img src="/logo.svg" alt="Kounta" style={{ height: "1.35rem" }} />
           <ClientAvatar name={clientInfo?.client_name ?? clientId} clientId={clientId} />
         </div>
 
