@@ -5,7 +5,10 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Kounta — Accounting for Builders",
+  title: {
+    default: "Kounta: Accounting for Builders",
+    template: "%s | Kounta",
+  },
   description: "Programmable double-entry ledger and reporting engine",
   icons: {
     icon: "/favicon.png",
