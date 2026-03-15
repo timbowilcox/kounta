@@ -64,7 +64,7 @@ export function Sidebar() {
       {/* Logo */}
       <div style={{ paddingLeft: 20, paddingRight: 20, marginBottom: 32 }}>
         <Link href="/" className="flex items-center">
-          <img src="/logo.svg" alt="Kounta" style={{ height: 22 }} />
+          <img src="/logo.svg" alt="Kounta" style={{ height: 33 }} />
         </Link>
       </div>
 
