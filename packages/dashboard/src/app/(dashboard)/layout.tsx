@@ -18,9 +18,9 @@ export default function DashboardLayout({
         <div className="flex min-h-screen">
           <Sidebar />
           <main
-            className="flex-1"
+            className="flex-1 page-content"
             style={{
-              marginLeft: 240,
+              marginLeft: 220,
               padding: "32px 32px",
               maxWidth: 1200,
               minHeight: "100vh",

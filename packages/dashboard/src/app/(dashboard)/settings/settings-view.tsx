@@ -106,9 +106,10 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
               }}
               style={{
                 padding: "8px 16px",
+                paddingBottom: 10,
                 fontSize: 13,
                 fontWeight: isActive ? 600 : 500,
-                color: isActive ? "var(--accent)" : "var(--text-tertiary)",
+                color: isActive ? "var(--text-primary)" : "var(--text-tertiary)",
                 background: "none",
                 border: "none",
                 borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
@@ -218,7 +219,7 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
           <InfoRow label="Accounting Basis" value={ledger.accountingBasis} />
           <InfoRow label="Created" value={formatDate(ledger.createdAt)} />
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
               Fiscal Year Start
             </label>
             <select
@@ -308,7 +309,7 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
         {label}
       </div>
       <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{value}</div>
@@ -650,7 +651,7 @@ function McpGuideContent() {
               fontWeight: 500,
               backgroundColor: activeTool === key ? "var(--surface-3)" : "transparent",
               color: activeTool === key ? "var(--accent)" : "var(--text-tertiary)",
-              border: activeTool === key ? "1px solid rgba(0,102,255,0.2)" : "1px solid transparent",
+              border: activeTool === key ? "1px solid var(--border-strong)" : "1px solid transparent",
               cursor: "pointer",
               transition: "all 150ms ease",
             }}
@@ -939,7 +940,7 @@ function EmailTab() {
         <div className="section-label" style={{ marginBottom: 16 }}>Schedule</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
               Timezone
             </label>
             <select
@@ -954,7 +955,7 @@ function EmailTab() {
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
               Digest Day
             </label>
             <select

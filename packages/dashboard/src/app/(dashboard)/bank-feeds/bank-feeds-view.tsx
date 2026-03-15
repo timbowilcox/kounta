@@ -43,19 +43,8 @@ export function BankFeedsView({ connections, error, initialBankTxns }: BankFeeds
             textAlign: "center",
           }}
         >
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: "50%",
-              backgroundColor: "rgba(59,130,246,0.1)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div style={{ margin: "0 auto 16px" }}>
+            <svg width="28" height="28" viewBox="0 0 20 20" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 4h14" />
               <path d="M4 4v12" />
               <path d="M16 4v12" />
@@ -85,19 +74,8 @@ export function BankFeedsView({ connections, error, initialBankTxns }: BankFeeds
       <div>
         <PageHeader />
         <div className="card" style={{ padding: 40, textAlign: "center" }}>
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: "50%",
-              backgroundColor: "rgba(245,158,11,0.1)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div style={{ margin: "0 auto 16px" }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -213,26 +191,14 @@ function EmptyState() {
   return (
     <>
       <div className="card" style={{ padding: 40, textAlign: "center" }}>
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: "50%",
-            backgroundColor: "rgba(59,130,246,0.1)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            margin: "0 auto 16px",
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 4h14" />
-            <path d="M4 4v12" />
-            <path d="M16 4v12" />
-            <path d="M3 16h14" />
-            <path d="M3 8h14" />
-            <path d="M7 8v8" />
-            <path d="M13 8v8" />
+        <div style={{ margin: "0 auto 16px" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 21h18" />
+            <path d="M3 7V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2" />
+            <path d="M3 7h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+            <path d="M8 7V5" />
+            <path d="M16 7V5" />
+            <path d="M12 7V5" />
           </svg>
         </div>
         <h2
@@ -262,17 +228,8 @@ function ApiGuide() {
         {steps.map((step, i) => (
           <div key={i} className="card" style={{ padding: 20 }}>
             <div className="flex items-center" style={{ gap: 12, marginBottom: 12 }}>
-              <span
-                className="flex-shrink-0 flex items-center justify-center text-xs font-bold"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  backgroundColor: "rgba(59,130,246,0.1)",
-                  color: "#3B82F6",
-                }}
-              >
-                {i + 1}
+              <span className="font-mono" style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500, whiteSpace: "nowrap" }}>
+                {String(i + 1).padStart(2, "0")}
               </span>
               <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                 {step.title}
@@ -300,7 +257,7 @@ function ApiGuide() {
               {endpoints.map((ep, i) => (
                 <tr key={i} className="table-row">
                   <td className="table-cell">
-                    <code className="font-mono text-xs font-medium" style={{ color: methodColor(ep.method) }}>
+                    <code className="method-badge" style={{ color: methodColor(ep.method) }}>
                       {ep.method}
                     </code>
                   </td>
@@ -370,7 +327,7 @@ function BankTransactionsSection({ initialTxns }: { initialTxns: BankTransaction
                 fontWeight: 500,
                 backgroundColor: filter === f ? "var(--surface-3)" : "transparent",
                 color: filter === f ? "var(--accent)" : "var(--text-tertiary)",
-                border: filter === f ? "1px solid rgba(0,102,255,0.2)" : "1px solid transparent",
+                border: filter === f ? "1px solid var(--border-strong)" : "1px solid transparent",
                 cursor: "pointer",
                 transition: "all 150ms ease",
               }}
@@ -487,9 +444,10 @@ function bankStatusBadge(status: string): string {
 
 function methodColor(method: string): string {
   switch (method) {
-    case "POST": return "#16A34A";
-    case "GET": return "#3B82F6";
-    case "DELETE": return "var(--negative)";
+    case "GET": return "var(--text-secondary)";
+    case "POST": return "#22c55e";
+    case "DELETE": return "#ef4444";
+    case "PATCH": return "#f59e0b";
     default: return "var(--text-secondary)";
   }
 }

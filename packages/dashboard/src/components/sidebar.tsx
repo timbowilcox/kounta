@@ -53,7 +53,7 @@ export function Sidebar() {
     <aside
       className="fixed left-0 top-0 h-screen flex flex-col"
       style={{
-        width: 240,
+        width: 220,
         backgroundColor: "var(--background)",
         borderRight: "1px solid var(--border)",
         paddingTop: 24,
@@ -94,10 +94,10 @@ export function Sidebar() {
       </nav>
 
       {/* Command bar trigger */}
-      <div style={{ paddingLeft: 12, paddingRight: 12, paddingBottom: 8 }}>
+      <div style={{ paddingLeft: 12, paddingRight: 12, marginBottom: 8, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
         <button
           onClick={() => openCommandBar()}
-          className="flex items-center w-full"
+          className="flex items-center w-full sidebar-cmd-bar"
           style={{
             padding: "0 12px",
             height: 36,
@@ -105,7 +105,7 @@ export function Sidebar() {
             fontSize: 13,
             fontWeight: 400,
             color: "var(--text-tertiary)",
-            backgroundColor: "var(--surface-2)",
+            backgroundColor: "var(--surface-1)",
             border: "1px solid var(--border)",
             cursor: "pointer",
             gap: 8,
@@ -120,9 +120,7 @@ export function Sidebar() {
             e.currentTarget.style.color = "var(--text-tertiary)";
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 2l1.5 3.5L15 7l-3.5 1.5L10 12l-1.5-3.5L5 7l3.5-1.5L10 2z" />
-          </svg>
+          <span className="sidebar-cmd-star" style={{ transition: "color 150ms ease" }}>✦</span>
           <span style={{ flex: 1, textAlign: "left" }}>Ask Kounta...</span>
           <kbd className="font-mono" style={{ fontSize: 11, color: "var(--text-disabled)", opacity: 0.8 }}>⌘K</kbd>
         </button>
@@ -236,11 +234,11 @@ function UserProfileMenu({ session }: { session: NonNullable<ReturnType<typeof u
           <img
             src={session.user.image}
             alt=""
-            style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid var(--border)", flexShrink: 0 }}
+            style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border)", flexShrink: 0 }}
           />
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="truncate" style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
+          <div className="truncate" style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
             {session.user?.name ?? "Kounta User"}
           </div>
         </div>
@@ -249,11 +247,11 @@ function UserProfileMenu({ session }: { session: NonNullable<ReturnType<typeof u
   );
 }
 
-// ── Icons (18px, clean strokes) ──────────────────────────────────
+// ── Icons (16px, clean strokes) ──────────────────────────────────
 
 function OverviewIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="2" width="6" height="6" rx="1.5" />
       <rect x="12" y="2" width="6" height="6" rx="1.5" />
       <rect x="2" y="12" width="6" height="6" rx="1.5" />
@@ -264,7 +262,7 @@ function OverviewIcon({ active }: { active: boolean }) {
 
 function TransactionsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 5.5h14" />
       <path d="M3 10h14" />
       <path d="M3 14.5h9" />
@@ -274,7 +272,7 @@ function TransactionsIcon({ active }: { active: boolean }) {
 
 function StatementsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 17V6" />
       <path d="M7.5 17V9" />
       <path d="M12 17V3" />
@@ -285,7 +283,7 @@ function StatementsIcon({ active }: { active: boolean }) {
 
 function BankFeedsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 4h14" />
       <path d="M4 4v12" />
       <path d="M16 4v12" />
@@ -299,7 +297,7 @@ function BankFeedsIcon({ active }: { active: boolean }) {
 
 function RevenueIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 16l4-5 4 3 4-6 4 3" />
       <path d="M18 16H2V4" />
     </svg>
@@ -308,7 +306,7 @@ function RevenueIcon({ active }: { active: boolean }) {
 
 function InsightsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="7" />
       <path d="M10 6v4l2.5 2.5" />
     </svg>
@@ -317,7 +315,7 @@ function InsightsIcon({ active }: { active: boolean }) {
 
 function SettingsIcon({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="10" cy="10" r="2.5" />
       <path d="M16.5 12.5a1.5 1.5 0 0 0 .3 1.65l.05.06a1.82 1.82 0 0 1-1.29 3.1 1.82 1.82 0 0 1-1.29-.53l-.06-.06a1.5 1.5 0 0 0-1.65-.3 1.5 1.5 0 0 0-.91 1.37V18a1.82 1.82 0 0 1-3.64 0v-.1a1.5 1.5 0 0 0-.98-1.37 1.5 1.5 0 0 0-1.65.3l-.06.06A1.82 1.82 0 1 1 2.65 14.3l.06-.05a1.5 1.5 0 0 0 .3-1.65 1.5 1.5 0 0 0-1.37-.91H1.5a1.82 1.82 0 0 1 0-3.64h.1A1.5 1.5 0 0 0 3 7.07a1.5 1.5 0 0 0-.3-1.65l-.06-.05A1.82 1.82 0 1 1 5.22 2.8l.05.06a1.5 1.5 0 0 0 1.65.3h.07a1.5 1.5 0 0 0 .91-1.37V1.5a1.82 1.82 0 0 1 3.64 0v.1a1.5 1.5 0 0 0 .91 1.37 1.5 1.5 0 0 0 1.65-.3l.06-.06a1.82 1.82 0 0 1 2.58 2.58l-.06.05a1.5 1.5 0 0 0-.3 1.65v.07a1.5 1.5 0 0 0 1.37.91h.14a1.82 1.82 0 0 1 0 3.64h-.1a1.5 1.5 0 0 0-1.37.91z" transform="scale(0.85) translate(1.8 1.8)" />
     </svg>

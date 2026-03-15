@@ -1,5 +1,6 @@
 import { getSessionClient } from "@/lib/kounta";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateShort } from "@/lib/format";
+import { Sparkline } from "@/components/ui/sparkline";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import type { TransactionWithLines, AccountWithBalance } from "@kounta/sdk";
@@ -12,9 +13,10 @@ export const dynamic = "force-dynamic";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 22) return "Good evening";
+  return "Hey";
 }
 
 export default async function OverviewPage() {
@@ -89,12 +91,19 @@ export default async function OverviewPage() {
   return (
     <div>
       {/* Greeting */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 4 }}>
           {getGreeting()}, {firstName}
         </h1>
-        <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-          {ledger.name} &middot; {ledger.currency} &middot; {ledger.accountingBasis}
+        <p style={{ fontSize: 14, color: "var(--text-tertiary)", fontWeight: 400 }}>
+          {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
+        </p>
+        <p style={{ fontSize: 14, color: "var(--text-tertiary)" }}>
+          {recentTransactions.length === 0 && !hasData ? (
+            <>No accounts connected &middot; <Link href="/bank-feeds" style={{ color: "var(--text-secondary)" }}>Connect your bank to get started &rarr;</Link></>
+          ) : (
+            <>{accountsList.length} account{accountsList.length !== 1 ? "s" : ""} &middot; {ledger.currency} &middot; {ledger.accountingBasis}</>
+          )}
         </p>
       </div>
 
@@ -137,19 +146,18 @@ export default async function OverviewPage() {
 
       {/* Quick actions */}
       <div style={{ marginBottom: 32 }}>
-        <div className="section-label" style={{ marginBottom: 8 }}>Quick Actions</div>
         <div className="flex" style={{ gap: 12 }}>
           <QuickActionButton
-            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>}
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>}
             label="Post transaction"
           />
           <QuickAction
-            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 18V8M7.5 18V10M12 18V5M16.5 18V12M21 18V14" /></svg>}
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 18V8M7.5 18V10M12 18V5M16.5 18V12M21 18V14" /></svg>}
             label="Generate statement"
             href="/statements"
           />
           <QuickAction
-            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M7 14h4" /></svg>}
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M7 14h4" /></svg>}
             label="Connect bank account"
             href="/bank-feeds"
           />
@@ -162,7 +170,6 @@ export default async function OverviewPage() {
           className="flex items-center justify-between"
           style={{ padding: "16px 20px" }}
         >
-          <span className="section-label">Recent Transactions</span>
           <Link href="/transactions" className="btn-ghost" style={{ fontSize: 12, height: 28, padding: "0 8px" }}>
             View all &rarr;
           </Link>
@@ -184,9 +191,9 @@ export default async function OverviewPage() {
                 .reduce((sum, l) => sum + l.amount, 0);
               return (
                 <tr key={tx.id} className="table-row">
-                  <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>{formatDate(tx.date)}</td>
+                  <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>{formatDateShort(tx.date)}</td>
                   <td className="table-cell" style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>{tx.memo}</td>
-                  <td className="table-cell text-right font-mono" style={{ fontSize: 13 }}>
+                  <td className="table-cell text-right font-mono" style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
                     {formatCurrency(totalDebit)}
                   </td>
                   <td className="table-cell text-right">
@@ -280,12 +287,11 @@ function MetricCard({
           {subtitle}
         </div>
       )}
-      {/* Mini sparkline placeholder — flat line */}
-      <div style={{ height: 40, marginTop: 12, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ width: "100%", height: 1, backgroundColor: "var(--border-strong)", borderRadius: 1 }} />
+      <div style={{ height: 40, marginTop: 12 }}>
+        <Sparkline data={[]} state="empty" />
       </div>
       {zeroCta && zeroHref && (
-        <a href={zeroHref} style={{ fontSize: 12, color: "var(--accent)", marginTop: 8, display: "block" }}>
+        <a href={zeroHref} style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8, display: "block" }}>
           {zeroCta}
         </a>
       )}
@@ -300,7 +306,7 @@ function QuickAction({ icon, label, href }: { icon: React.ReactNode; label: stri
       className="flex items-center quick-action"
       style={{
         padding: "12px 16px",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: "var(--radius-md)",
         border: "1px solid var(--border)",
         backgroundColor: "var(--surface-1)",
         fontSize: 13,
@@ -313,7 +319,7 @@ function QuickAction({ icon, label, href }: { icon: React.ReactNode; label: stri
     >
       {icon}
       <span style={{ flex: 1 }}>{label}</span>
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M6 4l4 4-4 4" /></svg>
+      <svg className="quick-action-arrow" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M6 4l4 4-4 4" /></svg>
     </Link>
   );
 }
@@ -324,7 +330,7 @@ function QuickActionButton({ icon, label }: { icon: React.ReactNode; label: stri
       className="flex items-center quick-action"
       style={{
         padding: "12px 16px",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: "var(--radius-md)",
         border: "1px solid var(--border)",
         backgroundColor: "var(--surface-1)",
         fontSize: 13,
@@ -338,7 +344,7 @@ function QuickActionButton({ icon, label }: { icon: React.ReactNode; label: stri
     >
       {icon}
       <span style={{ flex: 1 }}>{label}</span>
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M6 4l4 4-4 4" /></svg>
+      <svg className="quick-action-arrow" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M6 4l4 4-4 4" /></svg>
     </PostTransactionButton>
   );
 }

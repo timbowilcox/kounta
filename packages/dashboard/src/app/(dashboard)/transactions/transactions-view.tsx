@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef, useCallback } from "react";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateShort } from "@/lib/format";
 import { fetchTransactions, fetchBankTransactions, markBankTransactionPersonal, fetchAttachments, uploadAttachment, deleteAttachmentAction } from "@/lib/actions";
 import type { BankTransactionSummary, AttachmentSummary } from "@/lib/actions";
 import type { TransactionWithLines, PaginatedResult, AccountWithBalance } from "@kounta/sdk";
@@ -124,7 +124,7 @@ export function TransactionsView({ initialData, accountMap, closedThrough }: Pro
                 fontWeight: 500,
                 backgroundColor: filter === s ? "var(--surface-3)" : "transparent",
                 color: filter === s ? "var(--accent)" : "var(--text-tertiary)",
-                border: filter === s ? "1px solid rgba(0,102,255,0.2)" : "1px solid transparent",
+                border: filter === s ? "1px solid var(--border-strong)" : "1px solid transparent",
                 cursor: "pointer",
                 transition: "all 150ms ease",
               }}
@@ -364,9 +364,9 @@ function TransactionRow({
   return (
     <>
       <tr className="table-row cursor-pointer" onClick={onToggle}>
-        <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{formatDate(tx.date)}</td>
+        <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{formatDateShort(tx.date)}</td>
         <td className="table-cell" style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>{tx.memo}</td>
-        <td className="table-cell text-right font-mono" style={{ fontSize: 13, color: amount < 0 ? "var(--negative)" : undefined }}>
+        <td className="table-cell text-right font-mono" style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: amount < 0 ? "var(--negative)" : "var(--positive)" }}>
           {formatCurrency(amount)}
         </td>
         <td className="table-cell text-right">
@@ -511,7 +511,7 @@ function AttachmentsSection({ transactionId }: { transactionId: string }) {
             fontWeight: 500,
             backgroundColor: "var(--surface-3)",
             color: "var(--accent)",
-            border: "1px solid rgba(0,102,255,0.2)",
+            border: "1px solid var(--border)",
             cursor: uploading ? "wait" : "pointer",
             opacity: uploading ? 0.6 : 1,
           }}
