@@ -14,6 +14,7 @@
 
 import { createMiddleware } from "hono/factory";
 import type { Env } from "../lib/context.js";
+import { validateOAuthToken } from "../lib/oauth-scopes.js";
 
 /**
  * API key authentication middleware.
@@ -43,19 +44,101 @@ export const apiKeyAuth = createMiddleware<Env>(async (c, next) => {
     );
   }
 
-  const result = await engine.validateApiKey(rawKey);
-  if (!result.ok) {
+  // Try API key auth first (keys start with kounta_live_ or kounta_test_)
+  if (rawKey.startsWith("kounta_live_") || rawKey.startsWith("kounta_test_")) {
+    const result = await engine.validateApiKey(rawKey);
+    if (!result.ok) {
+      return c.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: result.error.message,
+            details: [
+              {
+                field: "Authorization",
+                actual: "kounta_live_***",
+                suggestion:
+                  "The provided API key is invalid or has been revoked. Verify the key is correct, or create a new one at POST /v1/api-keys.",
+              },
+            ],
+            requestId: c.get("requestId"),
+          },
+        },
+        401
+      );
+    }
+
+    const apiKey = result.value;
+
+    // Enforce ledger scoping: if the route has a :ledgerId param, it must match the key
+    const ledgerId = c.req.param("ledgerId");
+    if (ledgerId && ledgerId !== apiKey.ledgerId) {
+      return c.json(
+        {
+          error: {
+            code: "FORBIDDEN",
+            message: "API key is not scoped to this ledger",
+            details: [
+              {
+                field: "ledgerId",
+                actual: ledgerId,
+                expected: apiKey.ledgerId,
+                suggestion:
+                  "This API key is scoped to a different ledger. Use an API key created for this ledger, or verify you are using the correct ledger ID in the URL.",
+              },
+            ],
+            requestId: c.get("requestId"),
+          },
+        },
+        403
+      );
+    }
+
+    c.set("apiKeyInfo", {
+      id: apiKey.id,
+      userId: apiKey.userId,
+      ledgerId: apiKey.ledgerId,
+    });
+
+    await next();
+    return;
+  }
+
+  // Try OAuth Bearer token
+  const db = engine.getDb();
+  const oauthResult = await validateOAuthToken(db, rawKey, c.req.method, c.req.path);
+
+  if (!oauthResult.ok) {
+    // If scope issue, return 403; otherwise 401
+    if (oauthResult.error === "Insufficient scope") {
+      return c.json(
+        {
+          error: {
+            code: "FORBIDDEN",
+            message: "OAuth token does not have sufficient scope for this operation",
+            details: [
+              {
+                field: "scope",
+                suggestion: "Request a token with the appropriate scopes for this operation.",
+              },
+            ],
+            requestId: c.get("requestId"),
+          },
+        },
+        403
+      );
+    }
+
     return c.json(
       {
         error: {
           code: "UNAUTHORIZED",
-          message: result.error.message,
+          message: "Invalid or expired token",
           details: [
             {
               field: "Authorization",
-              actual: "kounta_live_***",
               suggestion:
-                "The provided API key is invalid or has been revoked. Verify the key is correct, or create a new one at POST /v1/api-keys.",
+                'Provide a valid API key via "Authorization: Bearer kounta_live_xxx" or a valid OAuth access token.',
             },
           ],
           requestId: c.get("requestId"),
@@ -65,23 +148,20 @@ export const apiKeyAuth = createMiddleware<Env>(async (c, next) => {
     );
   }
 
-  const apiKey = result.value;
-
-  // Enforce ledger scoping: if the route has a :ledgerId param, it must match the key
+  // OAuth token valid — enforce ledger scoping
   const ledgerId = c.req.param("ledgerId");
-  if (ledgerId && ledgerId !== apiKey.ledgerId) {
+  if (ledgerId && ledgerId !== oauthResult.ledgerId) {
     return c.json(
       {
         error: {
           code: "FORBIDDEN",
-          message: "API key is not scoped to this ledger",
+          message: "OAuth token is not scoped to this ledger",
           details: [
             {
               field: "ledgerId",
               actual: ledgerId,
-              expected: apiKey.ledgerId,
-              suggestion:
-                "This API key is scoped to a different ledger. Use an API key created for this ledger, or verify you are using the correct ledger ID in the URL.",
+              expected: oauthResult.ledgerId,
+              suggestion: "This OAuth token is scoped to a different ledger.",
             },
           ],
           requestId: c.get("requestId"),
@@ -92,9 +172,9 @@ export const apiKeyAuth = createMiddleware<Env>(async (c, next) => {
   }
 
   c.set("apiKeyInfo", {
-    id: apiKey.id,
-    userId: apiKey.userId,
-    ledgerId: apiKey.ledgerId,
+    id: "oauth",
+    userId: oauthResult.userId,
+    ledgerId: oauthResult.ledgerId,
   });
 
   await next();

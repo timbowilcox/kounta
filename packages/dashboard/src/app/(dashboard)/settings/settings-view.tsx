@@ -4,8 +4,8 @@ import { useState, useTransition, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { formatDate } from "@/lib/format";
-import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction, fetchStripeStatus, disconnectStripe, syncStripe, getStripeAuthorizeUrl, updateUserNameAction } from "@/lib/actions";
-import type { StripeConnectStatus } from "@/lib/actions";
+import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction, fetchStripeStatus, disconnectStripe, syncStripe, getStripeAuthorizeUrl, updateUserNameAction, fetchOAuthConnections, revokeOAuthConnection } from "@/lib/actions";
+import type { StripeConnectStatus, OAuthConnection } from "@/lib/actions";
 import type { EmailPreferences, ClosedPeriodSummary } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
 import type { ApiKeySafe, AccountWithBalance } from "@kounta/sdk";
@@ -1489,6 +1489,94 @@ function ConnectionsTab() {
             >
               {isPending ? "Connecting..." : "Connect Stripe"}
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* OAuth Connected Applications */}
+      <OAuthConnectionsSection />
+    </div>
+  );
+}
+
+function OAuthConnectionsSection() {
+  const [connections, setConnections] = useState<OAuthConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    fetchOAuthConnections().then((c) => {
+      setConnections(c);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const handleRevoke = (clientId: string, clientName: string) => {
+    if (!confirm(`Revoke access for ${clientName}? This will disconnect the application immediately.`)) return;
+    startTransition(async () => {
+      const ok = await revokeOAuthConnection(clientId);
+      if (ok) {
+        setConnections((prev) => prev.filter((c) => c.client_id !== clientId));
+      }
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="card" style={{ padding: 20 }}>
+        <div className="flex items-center" style={{ gap: 12, marginBottom: 16 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 8,
+            background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="var(--text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="9" width="14" height="8" rx="2" />
+              <path d="M7 9V6a3 3 0 0 1 6 0v3" />
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Connected Applications</div>
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Third-party apps authorized via OAuth</div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Loading...</div>
+        ) : connections.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            No third-party applications are connected. When you authorize an application to access your ledger, it will appear here.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {connections.map((conn) => (
+              <div
+                key={conn.client_id}
+                className="flex items-center justify-between"
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  backgroundColor: "var(--surface-1)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 2 }}>
+                    {conn.client_name}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                    {conn.scopes.join(", ")} · Connected {formatDate(conn.connected_at)}
+                  </div>
+                </div>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, height: 28, padding: "0 10px", color: "var(--negative)" }}
+                  onClick={() => handleRevoke(conn.client_id, conn.client_name)}
+                  disabled={isPending}
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -227,6 +227,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["015_stripe_connect.sql",  "SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_connections'"],
       ["016_revenue_recognition.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'revenue_schedules'"],
       ["017_revenue_notifications.sql", "SELECT 1 FROM pg_enum WHERE enumlabel = 'monthly_recognition_summary' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')"],
+      ["018_oauth.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'oauth_clients'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -266,6 +267,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "015_stripe_connect.sql",
     "016_revenue_recognition.sql",
     "017_revenue_notifications.sql",
+    "018_oauth.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -370,6 +372,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "015_stripe_connect.sqlite.sql",
     "016_revenue_recognition.sqlite.sql",
     "017_revenue_notifications.sqlite.sql",
+    "018_oauth.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

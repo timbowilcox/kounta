@@ -91,6 +91,27 @@ async function startHttp(
       return;
     }
 
+    // OAuth discovery document
+    if (url.pathname === "/.well-known/oauth-authorization-server" && req.method === "GET") {
+      const apiBase = process.env["OAUTH_API_BASE"] ?? "https://api.kounta.ai";
+      const dashboardBase = process.env["OAUTH_DASHBOARD_BASE"] ?? "https://kounta.ai";
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        issuer: apiBase,
+        authorization_endpoint: `${dashboardBase}/oauth/authorize`,
+        token_endpoint: `${apiBase}/oauth/token`,
+        revocation_endpoint: `${apiBase}/oauth/revoke`,
+        userinfo_endpoint: `${apiBase}/oauth/userinfo`,
+        scopes_supported: ["ledger:read", "ledger:write", "bank-feeds:read", "bank-feeds:write", "settings:read"],
+        response_types_supported: ["code"],
+        grant_types_supported: ["authorization_code", "refresh_token"],
+        code_challenge_methods_supported: ["S256"],
+        token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+      }));
+      return;
+    }
+
     // ------------------------------------------------------------------
     // GET /sse — establish SSE connection (requires API key)
     // ------------------------------------------------------------------

@@ -872,3 +872,50 @@ export async function updateUserNameAction(name: string): Promise<boolean> {
   return res.ok;
 }
 
+// --- OAuth Connections -------------------------------------------------------
+
+export interface OAuthConnection {
+  client_id: string;
+  client_name: string;
+  scopes: string[];
+  connected_at: string;
+  token_count: number;
+}
+
+export async function fetchOAuthConnections(): Promise<OAuthConnection[]> {
+  const session = await auth();
+  if (!session?.userId) return [];
+
+  const apiUrl = process.env.KOUNTA_API_URL;
+  const adminSecret = process.env.KOUNTA_ADMIN_SECRET;
+  if (!apiUrl || !adminSecret) return [];
+
+  const res = await fetch(`${apiUrl}/oauth/connections?userId=${session.userId}`, {
+    headers: { Authorization: `Bearer ${adminSecret}` },
+  });
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function revokeOAuthConnection(clientId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.userId) return false;
+
+  const apiUrl = process.env.KOUNTA_API_URL;
+  const adminSecret = process.env.KOUNTA_ADMIN_SECRET;
+  if (!apiUrl || !adminSecret) return false;
+
+  const res = await fetch(`${apiUrl}/oauth/connections/revoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminSecret}`,
+    },
+    body: JSON.stringify({ userId: session.userId, clientId }),
+  });
+
+  return res.ok;
+}
+

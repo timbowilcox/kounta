@@ -41,6 +41,10 @@ const migration007Sql = readFileSync(
   resolve(__dirname, "../../core/src/db/migrations/007_conversations.sqlite.sql"),
   "utf-8"
 );
+const migration018Sql = readFileSync(
+  resolve(__dirname, "../../core/src/db/migrations/018_oauth.sqlite.sql"),
+  "utf-8"
+);
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
@@ -51,6 +55,7 @@ const createTestDb = async (): Promise<Database> => {
   db.exec(schemaWithoutPragmas);
   db.exec(migration006Sql);
   db.exec(migration007Sql);
+  db.exec(migration018Sql);
   return db;
 };
 
