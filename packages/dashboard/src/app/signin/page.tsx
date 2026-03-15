@@ -24,14 +24,8 @@ export default function SignInPage() {
         }}
       >
         {/* Logo */}
-        <div className="flex items-center justify-center" style={{ gap: 14, marginBottom: 36 }}>
-          <img src="/logo-icon.svg" alt="Kounta" width={38} height={38} />
-          <span
-            className="font-bold tracking-tight"
-            style={{ fontSize: 26, color: "var(--text-primary)", fontFamily: "var(--font-family-display)" }}
-          >
-            Kounta
-          </span>
+        <div className="flex items-center justify-center" style={{ marginBottom: 36 }}>
+          <img src="/logo.svg" alt="Kounta" style={{ height: 32 }} />
         </div>
 
         <p className="text-center text-sm" style={{ color: "var(--text-tertiary)", marginBottom: 36 }}>
