@@ -20,8 +20,20 @@ const hashColor = (str: string): string => {
   return `hsl(${h}, 45%, 55%)`;
 };
 
-/** Colored initial avatar for OAuth clients */
+/** Colored initial avatar for OAuth clients — uses real logo for known clients */
 function ClientAvatar({ name, clientId }: { name: string; clientId: string }) {
+  // Claude.ai — use the official logo mark (the star/asterisk from the SVG)
+  if (clientId === "claude-ai") {
+    return (
+      <img
+        src="/claude-logo.svg"
+        alt="Claude"
+        style={{ height: 28, flexShrink: 0 }}
+      />
+    );
+  }
+
+  // Generic clients — colored initial badge
   const bg = CLIENT_COLORS[clientId] ?? hashColor(clientId || name);
   const initial = (name || clientId || "?").charAt(0).toUpperCase();
 
