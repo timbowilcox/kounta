@@ -25,7 +25,7 @@ export default function SignInPage() {
       >
         {/* Logo */}
         <div className="flex items-center justify-center" style={{ marginBottom: "2.25rem" }}>
-          <img src="/logo.svg" alt="Kounta" style={{ height: "3rem" }} />
+          <img src="/logo.svg" alt="Kounta" style={{ height: "2.25rem" }} />
         </div>
 
         <p className="text-center text-sm" style={{ color: "var(--text-tertiary)", marginBottom: "2.25rem" }}>
