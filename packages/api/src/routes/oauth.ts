@@ -73,7 +73,7 @@ oauthRoutes.post("/consent", adminAuth, async (c) => {
   }
 
   // Validate client exists
-  const client = await db.get<{ client_id: string; redirect_uris: string; is_public: number }>(
+  const client = await db.get<{ client_id: string; redirect_uris: string | string[]; is_public: boolean | number }>(
     "SELECT client_id, redirect_uris, is_public FROM oauth_clients WHERE client_id = ?",
     [client_id]
   );
@@ -102,8 +102,9 @@ oauthRoutes.post("/consent", adminAuth, async (c) => {
     return c.json({ redirect_uri: denyUrl });
   }
 
-  // PKCE required for public clients
-  if (client.is_public && !code_challenge) {
+  // PKCE required for public clients (BOOLEAN in PG, INTEGER in SQLite)
+  const isPublicClient = client.is_public === true || client.is_public === 1;
+  if (isPublicClient && !code_challenge) {
     return c.json({ error: { code: "VALIDATION_ERROR", message: "PKCE code_challenge is required for public clients" } }, 400);
   }
 
@@ -338,81 +339,100 @@ oauthRoutes.post("/connections/revoke", adminAuth, async (c) => {
 // ---------------------------------------------------------------------------
 
 oauthRoutes.get("/validate-client", async (c) => {
-  const db = c.get("engine").getDb();
+  try {
+    const db = c.get("engine").getDb();
 
-  const clientId = c.req.query("client_id");
-  const redirectUri = c.req.query("redirect_uri");
-  const responseType = c.req.query("response_type");
-  const scope = c.req.query("scope");
-  const codeChallenge = c.req.query("code_challenge");
+    const clientId = c.req.query("client_id");
+    const redirectUri = c.req.query("redirect_uri");
+    const responseType = c.req.query("response_type");
+    const scope = c.req.query("scope");
+    const codeChallenge = c.req.query("code_challenge");
 
-  if (!clientId) {
-    return c.json({ valid: false, error: "Missing client_id" });
-  }
+    console.log("[oauth] validate-client params:", { clientId, redirectUri, responseType, scope, codeChallenge });
 
-  const client = await db.get<{
-    client_id: string;
-    name: string;
-    redirect_uris: string;
-    scopes: string;
-    is_public: number;
-  }>(
-    "SELECT client_id, name, redirect_uris, scopes, is_public FROM oauth_clients WHERE client_id = ?",
-    [clientId]
-  );
+    if (!clientId) {
+      return c.json({ valid: false, error: "Missing client_id" });
+    }
 
-  if (!client) {
-    return c.json({ valid: false, error: "Unknown client_id" });
-  }
+    const client = await db.get<{
+      client_id: string;
+      name: string;
+      redirect_uris: string | string[];
+      scopes: string | string[];
+      is_public: boolean | number;
+    }>(
+      "SELECT client_id, name, redirect_uris, scopes, is_public FROM oauth_clients WHERE client_id = ?",
+      [clientId]
+    );
 
-  if (responseType && responseType !== "code") {
-    return c.json({ valid: false, error: "Only response_type=code is supported" });
-  }
+    console.log("[oauth] validate-client db result:", client);
 
-  // Validate redirect URI
-  if (redirectUri) {
-    const registeredUris = parseRedirectUris(client.redirect_uris);
-    const allowed = registeredUris.some((uri) => {
-      if (uri === "http://localhost") return redirectUri.startsWith("http://localhost");
-      return uri === redirectUri;
+    if (!client) {
+      return c.json({ valid: false, error: "Unknown client_id" });
+    }
+
+    if (responseType && responseType !== "code") {
+      return c.json({ valid: false, error: "Only response_type=code is supported" });
+    }
+
+    // Validate redirect URI
+    if (redirectUri) {
+      const registeredUris = parseRedirectUris(client.redirect_uris);
+      const allowed = registeredUris.some((uri) => {
+        if (uri === "http://localhost") return redirectUri.startsWith("http://localhost");
+        return uri === redirectUri;
+      });
+      if (!allowed) {
+        return c.json({ valid: false, error: "redirect_uri does not match registered URIs" });
+      }
+    }
+
+    // Validate scopes
+    if (scope) {
+      const requestedScopes = parseScopes(scope);
+      if (!validateScopes(requestedScopes)) {
+        return c.json({ valid: false, error: "One or more scopes are not supported" });
+      }
+    }
+
+    // PKCE required for public clients (BOOLEAN in PG, INTEGER in SQLite)
+    const isPublic = client.is_public === true || client.is_public === 1;
+    if (isPublic && !codeChallenge) {
+      return c.json({ valid: false, error: "PKCE code_challenge is required for public clients" });
+    }
+
+    const clientScopes = parseArrayColumn(client.scopes);
+
+    return c.json({
+      valid: true,
+      client_name: client.name,
+      client_id: client.client_id,
+      scopes: scope ? parseScopes(scope) : clientScopes,
     });
-    if (!allowed) {
-      return c.json({ valid: false, error: "redirect_uri does not match registered URIs" });
-    }
+  } catch (err) {
+    console.error("validate-client error:", err);
+    return c.json({ error: "internal_error", message: String(err) }, 500);
   }
-
-  // Validate scopes
-  if (scope) {
-    const requestedScopes = parseScopes(scope);
-    if (!validateScopes(requestedScopes)) {
-      return c.json({ valid: false, error: "One or more scopes are not supported" });
-    }
-  }
-
-  // PKCE required for public clients
-  if (client.is_public && !codeChallenge) {
-    return c.json({ valid: false, error: "PKCE code_challenge is required for public clients" });
-  }
-
-  return c.json({
-    valid: true,
-    client_name: client.name,
-    client_id: client.client_id,
-    scopes: scope ? parseScopes(scope) : JSON.parse(client.scopes),
-  });
 });
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Parse redirect_uris from DB (stored as JSON array or PG TEXT[]) */
-const parseRedirectUris = (raw: string): string[] => {
-  if (raw.startsWith("[")) return JSON.parse(raw);
-  // PostgreSQL TEXT[] format: {uri1,uri2}
-  if (raw.startsWith("{")) return raw.slice(1, -1).split(",").map((s) => s.replace(/"/g, ""));
-  return [raw];
+/** Parse a TEXT[] / JSON array column from DB — handles native PG arrays, JSON strings, PG text format */
+const parseArrayColumn = (raw: string | string[]): string[] => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    if (raw.startsWith("[")) return JSON.parse(raw);
+    // PostgreSQL TEXT[] format: {uri1,uri2}
+    if (raw.startsWith("{")) return raw.slice(1, -1).split(",").map((s) => s.replace(/"/g, ""));
+    return [raw];
+  }
+  return [];
 };
+
+/** Parse redirect_uris from DB (native PG array, JSON string, or PG TEXT[] string) */
+const parseRedirectUris = (raw: string | string[]): string[] => parseArrayColumn(raw);
 
 // parseScopesFromDb imported from ../lib/oauth-scopes.js
 
