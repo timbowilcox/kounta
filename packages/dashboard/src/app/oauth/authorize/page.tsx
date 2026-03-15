@@ -61,7 +61,7 @@ function OAuthAuthorizeContent() {
 
     const validateClient = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_KOUNTA_API_URL ?? "";
+        const apiUrl = process.env.NEXT_PUBLIC_KOUNTA_API_URL ?? "https://api.kounta.ai";
         const params = new URLSearchParams({
           client_id: clientId,
           redirect_uri: redirectUri,
