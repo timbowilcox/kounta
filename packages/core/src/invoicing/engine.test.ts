@@ -47,6 +47,9 @@ const applyMigrations = (db: Database) => {
   const m024 = readFileSync(
     resolve(__dirname, "../db/migrations/024_customers.sqlite.sql"), "utf-8",
   );
+  const m025 = readFileSync(
+    resolve(__dirname, "../db/migrations/025_invoice_approved_status.sqlite.sql"), "utf-8",
+  );
   const schemaWithoutPragmas = m001
     .split("\n")
     .filter((line) => !line.trim().startsWith("PRAGMA"))
@@ -56,6 +59,51 @@ const applyMigrations = (db: Database) => {
   db.exec(m019);
   db.exec(m021);
   // 024 has ALTER TABLE which may fail if columns already exist in SQLite
+  try { db.exec(m024); } catch { /* columns may already exist */ }
+  try { db.exec(m025); } catch { /* no-op for SQLite */ }
+
+  // SQLite cannot ALTER CHECK constraints. Drop and recreate invoices table
+  // with 'approved' in the CHECK. Safe because this runs before any data is inserted.
+  db.exec(`DROP TABLE IF EXISTS invoices`);
+  db.exec(`
+    CREATE TABLE invoices (
+      id TEXT PRIMARY KEY,
+      ledger_id TEXT NOT NULL REFERENCES ledgers(id),
+      invoice_number TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      customer_email TEXT,
+      customer_address TEXT,
+      issue_date TEXT NOT NULL,
+      due_date TEXT NOT NULL,
+      subtotal INTEGER NOT NULL,
+      tax_amount INTEGER NOT NULL DEFAULT 0,
+      total INTEGER NOT NULL,
+      amount_paid INTEGER NOT NULL DEFAULT 0,
+      amount_due INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      tax_rate REAL,
+      tax_label TEXT,
+      tax_inclusive INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN (
+          'draft', 'approved', 'sent', 'viewed', 'paid',
+          'partially_paid', 'overdue', 'void'
+        )),
+      paid_date TEXT,
+      payment_transaction_id TEXT REFERENCES transactions(id),
+      ar_transaction_id TEXT REFERENCES transactions(id),
+      notes TEXT,
+      footer TEXT,
+      revenue_account_id TEXT REFERENCES accounts(id),
+      ar_account_id TEXT REFERENCES accounts(id),
+      tax_account_id TEXT REFERENCES accounts(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(ledger_id, invoice_number)
+    )
+  `);
+  // Re-apply 023 (sent_at) and 024 (customer_id, payment_terms) on the fresh table
+  try { db.exec(`ALTER TABLE invoices ADD COLUMN sent_at TEXT`); } catch { /* */ }
   try { db.exec(m024); } catch { /* columns may already exist */ }
 };
 
@@ -324,7 +372,7 @@ describe("sendInvoice", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.status).toBe("sent");
+    expect(result.value.status).toBe("approved");
 
     // Verify journal entry
     const arTxId = (await db.get<{ ar_transaction_id: string }>(
@@ -379,7 +427,7 @@ describe("sendInvoice", () => {
     expect(debits).toBe(11000); // 10000 + 1000 tax
   });
 
-  it("status changes to sent", async () => {
+  it("status changes to approved", async () => {
     const inv = await createInvoice(db, ledgerId, userId, {
       customerName: "Acme",
       issueDate: "2026-01-01",
@@ -394,7 +442,7 @@ describe("sendInvoice", () => {
     const result = await sendInvoice(db, engine, inv.value.id, ledgerId, userId);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.status).toBe("sent");
+      expect(result.value.status).toBe("approved");
     }
   });
 

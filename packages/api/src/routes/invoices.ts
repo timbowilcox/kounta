@@ -288,9 +288,10 @@ invoiceRoutes.post("/:id/email", async (c) => {
     { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, resendId: emailResult.data?.id },
   );
 
-  // Update sent_at on the invoice
+  // Update sent_at on the invoice; also upgrade status from 'approved' to 'sent' if applicable
+  const statusUpdate = invoice.status === "approved" ? ", status = 'sent'" : "";
   await db.run(
-    "UPDATE invoices SET sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+    `UPDATE invoices SET sent_at = datetime('now'), updated_at = datetime('now')${statusUpdate} WHERE id = ?`,
     [invoiceId],
   );
 
@@ -338,16 +339,24 @@ invoiceRoutes.post("/:id/send", async (c) => {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
-  const result = await sendInvoice(db, engine, invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system");
+  // Parse body to determine whether to email the invoice
+  const body = await c.req.json().catch(() => ({})) as { sendEmail?: boolean; send_email?: boolean };
+  const wantsEmail = body.sendEmail ?? body.send_email ?? false;
+
+  // Check if email can actually be sent (customer has email + Resend configured)
+  const invoiceRow = await db.get<{ customer_email: string | null }>(
+    "SELECT customer_email FROM invoices WHERE id = ?",
+    [invoiceId],
+  );
+  const canEmail = wantsEmail && !!invoiceRow?.customer_email;
+
+  const result = await sendInvoice(db, engine, invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", { sendEmail: canEmail });
   if (!result.ok) return errorResponse(c, result.error);
 
   const invoice = result.value;
 
-  // Optionally email the invoice to the customer (best-effort)
-  const body = await c.req.json().catch(() => ({})) as { sendEmail?: boolean };
-  const shouldEmail = body.sendEmail !== false && !!invoice.customerEmail;
-
-  if (shouldEmail && invoice.customerEmail) {
+  // Actually send the email (best-effort)
+  if (canEmail && invoice.customerEmail) {
     try {
       const resend = getResendClient();
       if (resend) {

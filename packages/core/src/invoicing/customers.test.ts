@@ -57,6 +57,49 @@ const applyMigrations = (db: Database) => {
   db.exec(m019);
   db.exec(m021);
   try { db.exec(m024); } catch { /* columns may already exist */ }
+
+  // SQLite cannot ALTER CHECK constraints. Drop and recreate invoices table
+  // with 'approved' in the CHECK. Safe because this runs before any data is inserted.
+  db.exec(`DROP TABLE IF EXISTS invoices`);
+  db.exec(`
+    CREATE TABLE invoices (
+      id TEXT PRIMARY KEY,
+      ledger_id TEXT NOT NULL REFERENCES ledgers(id),
+      invoice_number TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      customer_email TEXT,
+      customer_address TEXT,
+      issue_date TEXT NOT NULL,
+      due_date TEXT NOT NULL,
+      subtotal INTEGER NOT NULL,
+      tax_amount INTEGER NOT NULL DEFAULT 0,
+      total INTEGER NOT NULL,
+      amount_paid INTEGER NOT NULL DEFAULT 0,
+      amount_due INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      tax_rate REAL,
+      tax_label TEXT,
+      tax_inclusive INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN (
+          'draft', 'approved', 'sent', 'viewed', 'paid',
+          'partially_paid', 'overdue', 'void'
+        )),
+      paid_date TEXT,
+      payment_transaction_id TEXT REFERENCES transactions(id),
+      ar_transaction_id TEXT REFERENCES transactions(id),
+      notes TEXT,
+      footer TEXT,
+      revenue_account_id TEXT REFERENCES accounts(id),
+      ar_account_id TEXT REFERENCES accounts(id),
+      tax_account_id TEXT REFERENCES accounts(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(ledger_id, invoice_number)
+    )
+  `);
+  try { db.exec(`ALTER TABLE invoices ADD COLUMN sent_at TEXT`); } catch { /* */ }
+  try { db.exec(m024); } catch { /* columns may already exist */ }
 };
 
 const seedTestData = async (db: Database) => {

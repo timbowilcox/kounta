@@ -292,6 +292,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["022_invoice_payment_match_notification.sql", "SELECT 1 FROM pg_enum WHERE enumlabel = 'invoice_payment_match' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')"],
       ["023_invoice_sent_at.sql", "SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'sent_at'"],
       ["024_customers.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'customers'"],
+      ["025_invoice_approved_status.sql", "SELECT 1 FROM pg_constraint WHERE conname = 'invoices_status_check'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -338,6 +339,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "022_invoice_payment_match_notification.sql",
     "023_invoice_sent_at.sql",
     "024_customers.sql",
+    "025_invoice_approved_status.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -477,6 +479,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "022_invoice_payment_match_notification.sqlite.sql",
     "023_invoice_sent_at.sqlite.sql",
     "024_customers.sqlite.sql",
+    "025_invoice_approved_status.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

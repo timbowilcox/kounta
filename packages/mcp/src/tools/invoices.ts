@@ -89,7 +89,7 @@ export function registerInvoiceTools(
     "List invoices with optional filters. Shows customer name, amount, status, and days outstanding. Use to check who owes money, find overdue invoices, or review recent billing.",
     {
       ledgerId: z.string().describe("Ledger ID"),
-      status: z.enum(["draft", "sent", "paid", "partially_paid", "overdue", "void"]).optional().describe("Filter by status"),
+      status: z.enum(["draft", "approved", "sent", "paid", "partially_paid", "overdue", "void"]).optional().describe("Filter by status"),
       customer: z.string().optional().describe("Filter by customer name (partial match)"),
     },
     async (params) => {
@@ -144,7 +144,7 @@ export function registerInvoiceTools(
   // -----------------------------------------------------------------------
   server.tool(
     "send_invoice",
-    "Approve and send an invoice. This changes the status from 'draft' to 'sent' and posts the Accounts Receivable journal entry (debit AR, credit Revenue, credit GST/VAT if applicable). Once sent, the invoice cannot be edited — only voided.\n\nThe accounting entry makes this invoice appear on the Balance Sheet (AR) and Income Statement (Revenue).\n\nIf the customer has an email address on file and email is configured, setting sendEmail to true will generate a PDF and email it to the customer automatically.",
+    "Approve an invoice. Posts the Accounts Receivable journal entry (debit AR, credit Revenue, credit GST/VAT if applicable). Status becomes 'approved' if no email is sent, or 'sent' if the PDF is emailed to the customer. Once approved, the invoice cannot be edited — only voided.\n\nThe accounting entry makes this invoice appear on the Balance Sheet (AR) and Income Statement (Revenue).\n\nIf the customer has an email address on file and email is configured, setting sendEmail to true will generate a PDF and email it to the customer automatically.",
     {
       ledgerId: z.string().describe("Ledger ID"),
       invoiceId: z.string().describe("Invoice ID"),

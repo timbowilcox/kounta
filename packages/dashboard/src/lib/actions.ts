@@ -1269,9 +1269,20 @@ export async function updateInvoiceAction(id: string, input: {
 }
 
 export async function sendInvoiceAction(id: string, sendEmail: boolean = false): Promise<InvoiceListItem | null> {
-  const res = await invoiceFetch(`/${id}/send`, "POST", { send_email: sendEmail });
+  const res = await invoiceFetch(`/${id}/send`, "POST", { sendEmail });
   if (!res.ok) return null;
   const json = await res.json();
+  return json.data;
+}
+
+/** Send email for an already-approved invoice. Upgrades status from 'approved' to 'sent'. */
+export async function emailInvoiceAction(id: string): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}/email`, "POST");
+  if (!res.ok) return null;
+  // Re-fetch the full invoice to get updated status
+  const detailRes = await invoiceFetch(`/${id}`);
+  if (!detailRes.ok) return null;
+  const json = await detailRes.json();
   return json.data;
 }
 

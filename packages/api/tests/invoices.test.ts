@@ -62,6 +62,10 @@ const migration024Sql = readFileSync(
   resolve(__dirname, "../../core/src/db/migrations/024_customers.sqlite.sql"),
   "utf-8"
 );
+const migration025Sql = readFileSync(
+  resolve(__dirname, "../../core/src/db/migrations/025_invoice_approved_status.sqlite.sql"),
+  "utf-8"
+);
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
@@ -76,6 +80,51 @@ const createTestDb = async (): Promise<Database> => {
   db.exec(migration019Sql);
   db.exec(migration021Sql);
   try { db.exec(migration024Sql); } catch { /* ALTER TABLE may fail if columns exist */ }
+  try { db.exec(migration025Sql); } catch { /* no-op for SQLite */ }
+
+  // SQLite cannot ALTER CHECK constraints. Drop and recreate invoices table
+  // with 'approved' in the CHECK. Safe because this runs before any data is inserted.
+  db.exec(`DROP TABLE IF EXISTS invoices`);
+  db.exec(`
+    CREATE TABLE invoices (
+      id TEXT PRIMARY KEY,
+      ledger_id TEXT NOT NULL REFERENCES ledgers(id),
+      invoice_number TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      customer_email TEXT,
+      customer_address TEXT,
+      issue_date TEXT NOT NULL,
+      due_date TEXT NOT NULL,
+      subtotal INTEGER NOT NULL,
+      tax_amount INTEGER NOT NULL DEFAULT 0,
+      total INTEGER NOT NULL,
+      amount_paid INTEGER NOT NULL DEFAULT 0,
+      amount_due INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      tax_rate REAL,
+      tax_label TEXT,
+      tax_inclusive INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN (
+          'draft', 'approved', 'sent', 'viewed', 'paid',
+          'partially_paid', 'overdue', 'void'
+        )),
+      paid_date TEXT,
+      payment_transaction_id TEXT REFERENCES transactions(id),
+      ar_transaction_id TEXT REFERENCES transactions(id),
+      notes TEXT,
+      footer TEXT,
+      revenue_account_id TEXT REFERENCES accounts(id),
+      ar_account_id TEXT REFERENCES accounts(id),
+      tax_account_id TEXT REFERENCES accounts(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(ledger_id, invoice_number)
+    )
+  `);
+  try { db.exec(`ALTER TABLE invoices ADD COLUMN sent_at TEXT`); } catch { /* */ }
+  try { db.exec(migration024Sql); } catch { /* columns may already exist */ }
+
   return db;
 };
 
@@ -340,7 +389,7 @@ describe("Invoice API", () => {
   // =========================================================================
 
   describe("POST /v1/invoices/:id/send", () => {
-    it("transitions to sent and posts AR journal entry", async () => {
+    it("transitions to approved and posts AR journal entry", async () => {
       const { auth } = await setupLedgerWithKey();
       const createRes = await createDraftInvoice(auth);
       const created = (await createRes.json()).data;
@@ -349,12 +398,12 @@ describe("Invoice API", () => {
       expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body.data.status).toBe("sent");
+      expect(body.data.status).toBe("approved");
 
       // Verify the invoice now has an AR transaction
       const getRes = await jsonRequest(app, "GET", `/v1/invoices/${created.id}`, undefined, auth);
       const inv = (await getRes.json()).data;
-      expect(inv.status).toBe("sent");
+      expect(inv.status).toBe("approved");
     });
 
     // =========================================================================

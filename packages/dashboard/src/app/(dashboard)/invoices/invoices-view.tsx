@@ -9,6 +9,7 @@ import {
   createInvoiceAction,
   updateInvoiceAction,
   sendInvoiceAction,
+  emailInvoiceAction,
   recordPaymentAction,
   voidInvoiceAction,
   deleteInvoiceAction,
@@ -50,6 +51,7 @@ function centsToDollars(cents: number): string {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   draft: { bg: "rgba(113,113,122,0.12)", text: "var(--text-tertiary)" },
+  approved: { bg: "rgba(20,184,166,0.12)", text: "#14b8a6" },
   sent: { bg: "rgba(59,130,246,0.12)", text: "#3b82f6" },
   overdue: { bg: "rgba(239,68,68,0.12)", text: "var(--negative)" },
   partially_paid: { bg: "rgba(245,158,11,0.12)", text: "#D97706" },
@@ -157,10 +159,11 @@ const PAYMENT_TERMS_OPTIONS = [
 // Tab types
 // ---------------------------------------------------------------------------
 
-type StatusTab = "all" | "draft" | "sent" | "overdue" | "partially_paid" | "paid" | "void";
+type StatusTab = "all" | "draft" | "approved" | "sent" | "overdue" | "partially_paid" | "paid" | "void";
 const TABS: { key: StatusTab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "draft", label: "Draft" },
+  { key: "approved", label: "Approved" },
   { key: "sent", label: "Sent" },
   { key: "overdue", label: "Overdue" },
   { key: "partially_paid", label: "Partial" },
@@ -220,6 +223,16 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
     });
   };
 
+  const handleEmailInvoice = (id: string) => {
+    startTransition(async () => {
+      const result = await emailInvoiceAction(id);
+      if (result) {
+        setDetailInvoice(result);
+        refresh();
+      }
+    });
+  };
+
   const handleVoid = (id: string) => {
     startTransition(async () => {
       const result = await voidInvoiceAction(id);
@@ -240,27 +253,41 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
     });
   };
 
-  const handleDownloadPDF = (id: string) => {
-    startTransition(async () => {
+  const handleDownloadPDF = async (id: string) => {
+    try {
       const result = await fetchInvoicePDFBase64(id);
       if (!result) return;
+      // Convert base64 to blob for reliable download
+      const byteChars = atob(result.base64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNumbers[i] = byteChars.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = `data:application/pdf;base64,${result.base64}`;
+      link.href = url;
       link.download = result.filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    });
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("PDF download failed:", e);
+    }
   };
 
   const [previewPDF, setPreviewPDF] = useState<string | null>(null);
 
-  const handlePreviewPDF = (id: string) => {
-    startTransition(async () => {
+  const handlePreviewPDF = async (id: string) => {
+    try {
       const result = await fetchInvoicePDFBase64(id);
       if (!result) return;
       setPreviewPDF(`data:application/pdf;base64,${result.base64}`);
-    });
+    } catch (e) {
+      console.error("PDF preview failed:", e);
+    }
   };
 
   const filtered = invoices;
@@ -445,6 +472,7 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
           isPending={isPending}
           onClose={() => setDetailInvoice(null)}
           onSend={(sendEmail: boolean) => handleSend(detailInvoice.id, sendEmail)}
+          onEmailInvoice={() => handleEmailInvoice(detailInvoice.id)}
           onVoid={() => handleVoid(detailInvoice.id)}
           onDelete={() => handleDelete(detailInvoice.id)}
           onEdit={() => { setEditInvoice(detailInvoice); setDetailInvoice(null); }}
@@ -984,6 +1012,7 @@ function InvoiceDetailDrawer({
   isPending,
   onClose,
   onSend,
+  onEmailInvoice,
   onVoid,
   onDelete,
   onEdit,
@@ -995,6 +1024,7 @@ function InvoiceDetailDrawer({
   isPending: boolean;
   onClose: () => void;
   onSend: (sendEmail: boolean) => void;
+  onEmailInvoice: () => void;
   onVoid: () => void;
   onDelete: () => void;
   onEdit: () => void;
@@ -1003,10 +1033,12 @@ function InvoiceDetailDrawer({
   onPreviewPDF: () => void;
 }) {
   const isDraft = invoice.status === "draft";
-  const canPay = ["sent", "overdue", "partially_paid"].includes(invoice.status);
-  const canVoid = ["sent", "overdue"].includes(invoice.status);
+  const isApproved = invoice.status === "approved";
+  const canPay = ["approved", "sent", "overdue", "partially_paid"].includes(invoice.status);
+  const canVoid = ["approved", "sent", "overdue"].includes(invoice.status);
   const isTerminal = ["paid", "void"].includes(invoice.status);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmVoid, setConfirmVoid] = useState(false);
 
   return (
     <>
@@ -1064,26 +1096,22 @@ function InvoiceDetailDrawer({
             {isDraft && (
               <>
                 <button className="btn-secondary" onClick={onEdit} disabled={isPending}>Edit</button>
-                <button className="btn-secondary" onClick={() => onSend(false)} disabled={isPending}>Approve</button>
+                <button className="btn-secondary" onClick={() => onSend(false)} disabled={isPending}>
+                  {isPending ? "Approving..." : "Approve"}
+                </button>
                 {invoice.customerEmail && (
-                  <button className="btn-primary" onClick={() => onSend(true)} disabled={isPending}>Approve &amp; email</button>
+                  <button className="btn-primary" onClick={() => onSend(true)} disabled={isPending}>
+                    {isPending ? "Sending..." : "Approve & email"}
+                  </button>
                 )}
               </>
             )}
             {canPay && (
               <button className="btn-primary" onClick={onRecordPayment} disabled={isPending}>Record payment</button>
             )}
-            {canVoid && (
-              <button
-                onClick={onVoid}
-                disabled={isPending}
-                style={{
-                  height: 36, padding: "0 12px", borderRadius: 6, fontSize: 13, fontWeight: 500,
-                  backgroundColor: "transparent", border: "1px solid rgba(239,68,68,0.3)", color: "var(--negative)",
-                  cursor: "pointer",
-                }}
-              >
-                Void
+            {isApproved && invoice.customerEmail && (
+              <button className="btn-secondary" onClick={onEmailInvoice} disabled={isPending}>
+                {isPending ? "Sending..." : "Send email"}
               </button>
             )}
           </div>
@@ -1182,7 +1210,7 @@ function InvoiceDetailDrawer({
           )}
         </div>
 
-        {/* Spacer pushes delete to bottom */}
+        {/* Spacer pushes danger action to bottom */}
         <div style={{ flex: 1 }} />
 
         {/* Delete — bottom of drawer, draft only */}
@@ -1215,6 +1243,41 @@ function InvoiceDetailDrawer({
                 }}
               >
                 Delete invoice
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Void — bottom of drawer, for approved/sent/overdue invoices */}
+        {canVoid && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            {confirmVoid ? (
+              <div className="flex items-center" style={{ gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Void this invoice?</span>
+                <button
+                  onClick={() => { setConfirmVoid(false); onVoid(); }}
+                  disabled={isPending}
+                  style={{
+                    height: 32, padding: "0 12px", borderRadius: 6, fontSize: 13, fontWeight: 500,
+                    backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--negative)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Yes, void
+                </button>
+                <button className="btn-secondary" onClick={() => setConfirmVoid(false)} style={{ height: 32 }}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmVoid(true)}
+                style={{
+                  background: "none", border: "none", padding: 0,
+                  fontSize: 13, color: "var(--negative)", cursor: "pointer",
+                }}
+              >
+                Void invoice
               </button>
             )}
           </div>

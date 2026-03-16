@@ -4,6 +4,7 @@
 
 export type InvoiceStatus =
   | "draft"
+  | "approved"
   | "sent"
   | "viewed"
   | "paid"

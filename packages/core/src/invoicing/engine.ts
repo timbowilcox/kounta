@@ -361,6 +361,7 @@ export const sendInvoice = async (
   invoiceId: string,
   ledgerId: string,
   _userId: string,
+  options?: { sendEmail?: boolean },
 ): Promise<Result<Invoice>> => {
   const invoice = await fetchInvoiceWithChildren(db, invoiceId);
   if (!invoice) {
@@ -463,10 +464,12 @@ export const sendInvoice = async (
   if (!txResult.ok) return err(txResult.error);
 
   // Update invoice status and store transaction reference
+  // 'approved' = AR posted but not emailed; 'sent' = AR posted AND emailed
+  const newStatus = options?.sendEmail ? "sent" : "approved";
   const now = nowUtc();
   await db.run(
-    `UPDATE invoices SET status = 'sent', ar_transaction_id = ?, updated_at = ? WHERE id = ?`,
-    [txResult.value.id, now, invoiceId],
+    `UPDATE invoices SET status = ?, ar_transaction_id = ?, updated_at = ? WHERE id = ?`,
+    [newStatus, txResult.value.id, now, invoiceId],
   );
 
   const updated = await fetchInvoiceWithChildren(db, invoiceId);
@@ -490,10 +493,10 @@ export const recordPayment = async (
     return err(createError(ErrorCode.INVOICE_NOT_FOUND, `Invoice not found: ${invoiceId}`));
   }
 
-  const validStatuses = ["sent", "partially_paid", "overdue"];
+  const validStatuses = ["approved", "sent", "partially_paid", "overdue"];
   if (!validStatuses.includes(invoice.status)) {
     return err(createError(ErrorCode.INVOICE_INVALID_STATE, `Cannot record payment on ${invoice.status} invoice`, [
-      { field: "status", actual: invoice.status, expected: "sent, partially_paid, or overdue" },
+      { field: "status", actual: invoice.status, expected: "approved, sent, partially_paid, or overdue" },
     ]));
   }
 
@@ -730,7 +733,7 @@ export const getInvoiceSummary = async (
 
   const outstanding = await db.get<{ total: number | null }>(
     `SELECT COALESCE(SUM(amount_due), 0) AS total FROM invoices
-     WHERE ledger_id = ? AND status IN ('sent', 'partially_paid', 'overdue')`,
+     WHERE ledger_id = ? AND status IN ('approved', 'sent', 'partially_paid', 'overdue')`,
     [ledgerId],
   );
 
@@ -789,7 +792,7 @@ export const getARAging = async (
 
   const rows = await db.all<{ amount_due: number; due_date: string }>(
     `SELECT amount_due, due_date FROM invoices
-     WHERE ledger_id = ? AND status IN ('sent', 'partially_paid', 'overdue')`,
+     WHERE ledger_id = ? AND status IN ('approved', 'sent', 'partially_paid', 'overdue')`,
     [ledgerId],
   );
 
@@ -840,7 +843,7 @@ export const checkOverdueInvoices = async (
   const today = todayUtc();
   const result = await db.run(
     `UPDATE invoices SET status = 'overdue', updated_at = ?
-     WHERE ledger_id = ? AND status = 'sent' AND due_date < ?`,
+     WHERE ledger_id = ? AND status IN ('approved', 'sent') AND due_date < ?`,
     [nowUtc(), ledgerId, today],
   );
   return result.changes;
@@ -883,7 +886,7 @@ export const matchBankDepositToInvoices = async (
 
   const invoices = await db.all<InvoiceRow>(
     `SELECT * FROM invoices
-     WHERE ledger_id = ? AND status IN ('sent', 'partially_paid', 'overdue')
+     WHERE ledger_id = ? AND status IN ('approved', 'sent', 'partially_paid', 'overdue')
      AND amount_due > 0`,
     [ledgerId],
   );
