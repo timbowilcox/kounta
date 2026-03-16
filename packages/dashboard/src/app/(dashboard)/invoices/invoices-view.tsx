@@ -521,6 +521,8 @@ function CreateInvoiceModal({
   const [issueDate, setIssueDate] = useState(editInvoice?.issueDate?.slice(0, 10) ?? todayISO());
   const [dueDate, setDueDate] = useState(editInvoice?.dueDate?.slice(0, 10) ?? plus30());
   const [notes, setNotes] = useState("");
+  // TODO: Persist showNotesOnInvoice server-side (invoice metadata or dedicated column)
+  const [showNotesOnInvoice, setShowNotesOnInvoice] = useState(true);
   const [taxInclusive, setTaxInclusive] = useState(false);
 
   // TODO: Filter by account type instead of code prefix when custom CoA editing lands.
@@ -693,10 +695,10 @@ function CreateInvoiceModal({
             {/* Header */}
             <div style={{ display: "flex", backgroundColor: "var(--surface-2)", padding: "6px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-tertiary)" }}>
               <div style={{ flex: 3 }}>Description</div>
+              <div style={{ width: 130, textAlign: "left", paddingLeft: 8 }}>Account</div>
               <div style={{ width: 60, textAlign: "center" }}>Qty</div>
               <div style={{ width: 90, textAlign: "right" }}>Unit Price</div>
               <div style={{ width: 90, textAlign: "right" }}>Amount</div>
-              <div style={{ width: 130, textAlign: "left", paddingLeft: 8 }}>Account</div>
               <div style={{ width: 28 }} />
             </div>
             {/* Rows */}
@@ -711,6 +713,18 @@ function CreateInvoiceModal({
                       onChange={(e) => updateLine(i, "description", e.target.value)}
                       placeholder="Description"
                     />
+                  </div>
+                  <div style={{ width: 130, paddingLeft: 8 }}>
+                    <select
+                      style={{ ...inputStyle, height: 32, fontSize: 11, backgroundColor: "transparent", border: "none", padding: "0 4px", color: "var(--text-primary)" }}
+                      value={li.accountId}
+                      onChange={(e) => updateLine(i, "accountId", e.target.value)}
+                    >
+                      <option value="" style={{ color: "#1a1a1a", backgroundColor: "#ffffff" }}>Default</option>
+                      {revenueAccounts.map((a) => (
+                        <option key={a.id} value={a.id} style={{ color: "#1a1a1a", backgroundColor: "#ffffff" }}>{a.code ? `${a.code} ${a.name}` : a.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ width: 60, paddingRight: 8 }}>
                     <input
@@ -729,18 +743,6 @@ function CreateInvoiceModal({
                   </div>
                   <div style={{ width: 90, textAlign: "right", fontSize: 13, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
                     {formatCurrency(amt)}
-                  </div>
-                  <div style={{ width: 130, paddingLeft: 8 }}>
-                    <select
-                      style={{ ...inputStyle, height: 32, fontSize: 11, backgroundColor: "transparent", border: "none", padding: "0 4px" }}
-                      value={li.accountId}
-                      onChange={(e) => updateLine(i, "accountId", e.target.value)}
-                    >
-                      <option value="">Default</option>
-                      {revenueAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.code ? `${a.code} ${a.name}` : a.name}</option>
-                      ))}
-                    </select>
                   </div>
                   <div style={{ width: 28, textAlign: "center" }}>
                     {lineItems.length > 1 && (
@@ -802,8 +804,12 @@ function CreateInvoiceModal({
             style={{ ...inputStyle, height: 60, resize: "vertical", padding: 10 }}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Visible on the invoice"
+            placeholder="Payment terms, thank you message, etc."
           />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)", cursor: "pointer", marginTop: 8 }}>
+            <input type="checkbox" checked={showNotesOnInvoice} onChange={(e) => setShowNotesOnInvoice(e.target.checked)} />
+            Show notes on invoice
+          </label>
         </div>
 
         {/* Error */}
