@@ -1040,3 +1040,24 @@ export async function runDepreciationAction(): Promise<{
   return json.data;
 }
 
+export interface CapitalisationCheckResult {
+  recommendation: "expense" | "instant_writeoff" | "capitalise" | "consider_section_179";
+  reason: string;
+  threshold?: number | null;
+  suggestedMethod?: string;
+  suggestedLifeYears?: number;
+  jurisdiction: string;
+}
+
+export async function capitalisationCheckAction(input: {
+  amount: number;
+  asset_type: string;
+  purchase_date: string;
+  annual_turnover?: number;
+}): Promise<CapitalisationCheckResult | null> {
+  const res = await fixedAssetFetch("/capitalisation-check", "POST", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
