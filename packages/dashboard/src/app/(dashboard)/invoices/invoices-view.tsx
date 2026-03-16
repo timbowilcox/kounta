@@ -13,7 +13,6 @@ import {
   recordPaymentAction,
   voidInvoiceAction,
   deleteInvoiceAction,
-  fetchInvoicePDFBase64,
 } from "@/lib/actions";
 import type {
   InvoiceListItem,
@@ -253,41 +252,14 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
     });
   };
 
-  const handleDownloadPDF = async (id: string) => {
-    try {
-      const result = await fetchInvoicePDFBase64(id);
-      if (!result) return;
-      // Convert base64 to blob for reliable download
-      const byteChars = atob(result.base64);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) {
-        byteNumbers[i] = byteChars.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("PDF download failed:", e);
-    }
+  const handleDownloadPDF = (id: string) => {
+    window.open(`/api/invoices/${id}/pdf`, "_blank");
   };
 
   const [previewPDF, setPreviewPDF] = useState<string | null>(null);
 
-  const handlePreviewPDF = async (id: string) => {
-    try {
-      const result = await fetchInvoicePDFBase64(id);
-      if (!result) return;
-      setPreviewPDF(`data:application/pdf;base64,${result.base64}`);
-    } catch (e) {
-      console.error("PDF preview failed:", e);
-    }
+  const handlePreviewPDF = (id: string) => {
+    setPreviewPDF(`/api/invoices/${id}/pdf`);
   };
 
   const filtered = invoices;
