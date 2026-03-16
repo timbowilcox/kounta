@@ -19,6 +19,7 @@ import type {
   InvoiceSummary,
   ARAgingBucket,
   CustomerListItem,
+  TierError,
 } from "@/lib/actions";
 import type { AccountWithBalance } from "@kounta/sdk";
 import { UpgradePrompt } from "@/components/upgrade-prompt";
@@ -684,7 +685,17 @@ function CreateInvoiceModal({
       if (isEdit && editInvoice) {
         result = await updateInvoiceAction(editInvoice.id, input);
       } else {
-        result = await createInvoiceAction(input);
+        const actionResult = await createInvoiceAction(input);
+        if (!actionResult.ok) {
+          const tierErr = actionResult.error;
+          if (tierErr.type === "tier_limit") {
+            setError(`${tierErr.message}. Upgrade your plan to continue.`);
+          } else {
+            setError(tierErr.message);
+          }
+          return;
+        }
+        result = actionResult.data;
       }
 
       if (!result) {

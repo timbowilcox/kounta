@@ -1067,22 +1067,24 @@ function McpGuideContent() {
 
 // ── Subscription Tab ───────────────────────────────────────────────────────
 
+const TIER_ORDER = ["free", "builder", "pro", "platform"];
+
 const PLAN_TIERS = [
   {
     name: "Free", price: "$0", period: "/month", plan: "free" as const,
-    features: ["500 transactions/month", "Single entity", "Single currency", "Basic statements", "CSV import", "Full API & MCP access"],
+    features: ["100 transactions/month", "5 invoices/month", "3 customers", "1 ledger", "MCP access", "Basic statements"],
   },
   {
     name: "Builder", price: "$19", period: "/month", plan: "builder" as const, recommended: true,
-    features: ["Unlimited transactions", "Bank feed integration", "Auto-reconciliation", "Intelligence layer", "Statement PDF export", "Email notifications"],
+    features: ["1,000 transactions/month", "Unlimited invoices", "Unlimited customers", "3 ledgers", "API & SDK access", "PDF export & email"],
   },
   {
-    name: "Pro", price: "$49", period: "/month", plan: "pro" as const, comingSoon: true,
-    features: ["Everything in Builder", "Multi-currency", "Up to 3 linked entities", "Consolidated reporting", "Budgeting & forecasting", "Custom chart of accounts", "API webhooks", "Priority support"],
+    name: "Pro", price: "$49", period: "/month", plan: "pro" as const,
+    features: ["10,000 transactions/month", "10 ledgers", "Revenue recognition", "Multi-currency", "Custom chart of accounts", "Consolidated view"],
   },
   {
-    name: "Platform", price: "$149", period: "/month", plan: "platform" as const, comingSoon: true,
-    features: ["Everything in Pro", "Unlimited entities", "Multi-jurisdiction tax", "RBAC with team roles", "White-label", "Tenant isolation", "Approval workflows", "SLA & dedicated support"],
+    name: "Platform", price: "$149", period: "/month", plan: "platform" as const,
+    features: ["Unlimited everything", "Programmatic provisioning", "Webhooks", "White-label", "Unlimited ledgers", "Priority support"],
   },
 ];
 
@@ -1247,7 +1249,7 @@ function BillingTab({ billing, tierUsage }: { billing: BillingStatus; tierUsage:
                   border: isRecommended ? "2px solid var(--accent)" : isCurrent ? "1px solid var(--border-strong)" : "1px solid var(--border)",
                   borderLeft: isCurrent ? "3px solid var(--accent)" : undefined,
                   padding: 16,
-                  opacity: tier.comingSoon ? 0.6 : 1,
+                  opacity: 1,
                 }}
               >
                 {isRecommended && (
@@ -1283,11 +1285,7 @@ function BillingTab({ billing, tierUsage }: { billing: BillingStatus; tierUsage:
                   <div className="text-xs font-semibold uppercase tracking-wide" style={{ textAlign: "center", backgroundColor: "var(--surface-1)", color: "var(--accent)", border: "1px solid var(--border-strong)", borderRadius: 9999, padding: "4px 12px" }}>
                     Current plan
                   </div>
-                ) : tier.comingSoon ? (
-                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ textAlign: "center", backgroundColor: "var(--surface-1)", color: "var(--text-tertiary)", border: "1px solid var(--border)", borderRadius: 9999, padding: "4px 12px" }}>
-                    Coming soon
-                  </div>
-                ) : tier.plan === "builder" && isFree ? (
+                ) : TIER_ORDER.indexOf(tier.plan) > TIER_ORDER.indexOf(tierUsage.tier) ? (
                   <button className="btn-primary" style={{ width: "100%", padding: "8px 0", fontSize: 12 }} onClick={handleUpgrade} disabled={isPending || redirecting}>
                     {redirecting ? "Redirecting..." : "Upgrade"}
                   </button>

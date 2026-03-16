@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { fetchCurrentTier } from "@/lib/actions";
 
 const mainNavItems = [
   { href: "/", label: "Overview", icon: OverviewIcon },
@@ -20,9 +21,21 @@ const bottomNavItems = [
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
+const TIER_BADGE_STYLES: Record<string, { color: string; bg: string }> = {
+  free: { color: "var(--text-tertiary)", bg: "transparent" },
+  builder: { color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
+  pro: { color: "#a855f7", bg: "rgba(168,85,247,0.1)" },
+  platform: { color: "#d97706", bg: "rgba(217,119,6,0.1)" },
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const [tier, setTier] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCurrentTier().then(setTier).catch(() => {});
+  }, []);
   const renderNavItem = ({ href, label, icon: Icon }: typeof mainNavItems[number]) => {
     const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
     return (
@@ -81,6 +94,52 @@ export function Sidebar() {
           {bottomNavItems.map(renderNavItem)}
         </ul>
       </nav>
+
+      {/* Tier badge */}
+      {tier && (
+        <div style={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", marginBottom: "0.5rem" }}>
+          {tier === "free" ? (
+            <Link
+              href="/settings?tab=billing"
+              className="flex items-center justify-between"
+              style={{
+                padding: "0.375rem 0.75rem",
+                borderRadius: "var(--radius-md)",
+                fontSize: "0.75rem",
+                color: "var(--text-tertiary)",
+                textDecoration: "none",
+              }}
+            >
+              <span>Free plan</span>
+              <span style={{ color: "var(--accent)", fontWeight: 500 }}>Upgrade &rarr;</span>
+            </Link>
+          ) : (
+            <div
+              className="flex items-center gap-2"
+              style={{
+                padding: "0.375rem 0.75rem",
+                borderRadius: "var(--radius-md)",
+                fontSize: "0.75rem",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "1px 8px",
+                  borderRadius: 9999,
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  color: TIER_BADGE_STYLES[tier]?.color ?? "var(--text-secondary)",
+                  backgroundColor: TIER_BADGE_STYLES[tier]?.bg ?? "var(--surface-1)",
+                  textTransform: "capitalize",
+                }}
+              >
+                {tier}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Assistant link */}
       <div style={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", marginBottom: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "0.5rem" }}>

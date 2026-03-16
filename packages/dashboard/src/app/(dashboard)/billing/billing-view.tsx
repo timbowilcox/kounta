@@ -4,18 +4,20 @@ import { useState, useTransition } from "react";
 import { createCheckoutSession, createPortalSession } from "@/lib/actions";
 import type { BillingStatus } from "@/lib/actions";
 
+const TIER_ORDER = ["free", "builder", "pro", "platform"];
+
 const TIERS = [
   {
     name: "Free",
     price: "$0",
     period: "/month",
     features: [
-      "500 transactions/month",
-      "Single entity",
-      "Single currency",
+      "100 transactions/month",
+      "5 invoices/month",
+      "3 customers",
+      "1 ledger",
+      "MCP access",
       "Basic statements",
-      "CSV import",
-      "Full API & MCP access",
     ],
     recommended: false,
     plan: "free" as const,
@@ -25,12 +27,12 @@ const TIERS = [
     price: "$19",
     period: "/month",
     features: [
-      "Unlimited transactions",
-      "Bank feed integration",
-      "Auto-reconciliation",
-      "Intelligence layer",
-      "Statement PDF export",
-      "Email notifications",
+      "1,000 transactions/month",
+      "Unlimited invoices",
+      "Unlimited customers",
+      "3 ledgers",
+      "API & SDK access",
+      "PDF export & email",
     ],
     recommended: true,
     plan: "builder" as const,
@@ -40,37 +42,48 @@ const TIERS = [
     price: "$49",
     period: "/month",
     features: [
-      "Everything in Builder",
+      "10,000 transactions/month",
+      "10 ledgers",
+      "Revenue recognition",
       "Multi-currency",
-      "Up to 3 linked entities",
-      "Consolidated reporting",
-      "Budgeting & forecasting",
       "Custom chart of accounts",
-      "API webhooks",
-      "Priority support",
+      "Consolidated view",
     ],
     recommended: false,
     plan: "pro" as const,
-    comingSoon: true,
   },
   {
     name: "Platform",
     price: "$149",
     period: "/month",
     features: [
-      "Everything in Pro",
-      "Unlimited entities",
-      "Multi-jurisdiction tax",
-      "RBAC with team roles",
+      "Unlimited everything",
+      "Programmatic provisioning",
+      "Webhooks",
       "White-label",
-      "Tenant isolation",
-      "Approval workflows",
-      "SLA & dedicated support",
+      "Unlimited ledgers",
+      "Priority support",
     ],
     recommended: false,
     plan: "platform" as const,
-    comingSoon: true,
   },
+];
+
+const COMPARISON_ROWS: { label: string; values: (string | boolean)[] }[] = [
+  { label: "Price", values: ["$0/mo", "$19/mo", "$49/mo", "$149/mo"] },
+  { label: "Ledgers", values: ["1", "3", "10", "Unlimited"] },
+  { label: "Transactions/mo", values: ["100", "1,000", "10,000", "Unlimited"] },
+  { label: "Invoices/mo", values: ["5", "Unlimited", "Unlimited", "Unlimited"] },
+  { label: "Customers", values: ["3", "Unlimited", "Unlimited", "Unlimited"] },
+  { label: "Fixed Assets", values: ["3", "Unlimited", "Unlimited", "Unlimited"] },
+  { label: "API/SDK access", values: [false, true, true, true] },
+  { label: "PDF export", values: [false, true, true, true] },
+  { label: "Invoice email", values: [false, true, true, true] },
+  { label: "Multi-currency", values: [false, true, true, true] },
+  { label: "Revenue recognition", values: [false, false, true, true] },
+  { label: "Consolidated view", values: [false, false, true, true] },
+  { label: "White-label", values: [false, false, false, true] },
+  { label: "Webhooks", values: [false, false, false, true] },
 ];
 
 export function BillingView({ billing }: { billing: BillingStatus }) {
@@ -175,8 +188,10 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
             style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}
           >
             {isFree
-              ? "500 transactions per month. Transactions beyond the limit are queued as pending."
-              : "Unlimited transactions. All features unlocked."}
+              ? "100 transactions, 5 invoices, 3 customers per month."
+              : billing.plan === "builder" ? "1,000 transactions/month. Unlimited invoices and customers."
+              : billing.plan === "pro" ? "10,000 transactions/month. Revenue recognition and consolidated view."
+              : "Unlimited everything. Programmatic provisioning and white-label."}
           </p>
         </div>
 
@@ -371,7 +386,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                       : "1px solid var(--border)",
                   borderLeft: isCurrent ? "3px solid var(--accent)" : undefined,
                   padding: 20,
-                  opacity: tier.comingSoon ? 0.6 : 1,
+                  opacity: 1,
                 }}
               >
                 {isRecommended && (
@@ -456,21 +471,7 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
                   >
                     Current plan
                   </div>
-                ) : tier.comingSoon ? (
-                  <div
-                    className="text-xs font-semibold uppercase tracking-wide"
-                    style={{
-                      textAlign: "center",
-                      backgroundColor: "var(--surface-1)",
-                      color: "var(--text-tertiary)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 9999,
-                      padding: "5px 12px",
-                    }}
-                  >
-                    Coming soon
-                  </div>
-                ) : tier.plan === "builder" && isFree ? (
+                ) : TIER_ORDER.indexOf(tier.plan) > TIER_ORDER.indexOf(billing.plan) ? (
                   <button
                     className="btn-primary"
                     style={{ width: "100%", padding: "10px 0", fontSize: 13 }}
@@ -483,6 +484,58 @@ export function BillingView({ billing }: { billing: BillingStatus }) {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Feature comparison table */}
+      <div style={{ marginTop: 32 }}>
+        <div className="section-label" style={{ marginBottom: 16 }}>Compare plans</div>
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "12px 16px", fontSize: 12, color: "var(--text-tertiary)", fontWeight: 500, borderBottom: "1px solid var(--border)" }}>Feature</th>
+                {TIERS.map((t) => (
+                  <th
+                    key={t.plan}
+                    style={{
+                      textAlign: "center",
+                      padding: "12px 16px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: billing.plan === t.plan ? "var(--accent)" : "var(--text-primary)",
+                      borderBottom: "1px solid var(--border)",
+                      backgroundColor: billing.plan === t.plan ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined,
+                    }}
+                  >
+                    {t.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON_ROWS.map((row) => (
+                <tr key={row.label}>
+                  <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{row.label}</td>
+                  {row.values.map((val, i) => (
+                    <td
+                      key={i}
+                      style={{
+                        textAlign: "center",
+                        padding: "10px 16px",
+                        fontSize: 13,
+                        borderBottom: "1px solid var(--border)",
+                        color: typeof val === "boolean" ? (val ? "var(--positive)" : "var(--text-disabled)") : "var(--text-primary)",
+                        backgroundColor: billing.plan === TIERS[i]!.plan ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined,
+                      }}
+                    >
+                      {typeof val === "boolean" ? (val ? "\u2713" : "\u2014") : val}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

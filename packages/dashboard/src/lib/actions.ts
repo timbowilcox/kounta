@@ -18,6 +18,41 @@ import type {
 } from "@kounta/sdk";
 import type { ApiKeySafe, ApiKeyWithRaw } from "@kounta/sdk";
 
+// --- Tier error handling -----------------------------------------------------
+
+export interface TierError {
+  type: "tier_limit" | "tier_feature";
+  message: string;
+  upgradeUrl: string;
+  requiredTier?: string;
+  resource?: string;
+  used?: number;
+  limit?: number;
+}
+
+export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: TierError };
+
+async function parseTierError(res: Response): Promise<TierError | null> {
+  if (res.status !== 403 && res.status !== 429) return null;
+  try {
+    const body = await res.json();
+    const errMsg = body?.error?.message ?? body?.message ?? "";
+    const isTierRelated = /upgrade|tier|plan|limit/i.test(errMsg);
+    if (!isTierRelated) return null;
+    return {
+      type: res.status === 429 ? "tier_limit" : "tier_feature",
+      message: errMsg,
+      upgradeUrl: body?.error?.upgrade_url ?? "/settings?tab=billing",
+      requiredTier: body?.error?.required_tier,
+      resource: body?.error?.resource,
+      used: body?.error?.used,
+      limit: body?.error?.limit,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- Transactions (paginated) ----------------------------------------------
 
 export async function fetchTransactions(
@@ -117,12 +152,22 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 
 export async function postTransaction(
   input: PostTransactionParams,
-): Promise<TransactionWithLines> {
-  const { client, ledgerId } = await getSessionClient();
-  return client.transactions.post(ledgerId, {
-    ...input,
-    sourceType: "manual",
-  });
+): Promise<ActionResult<TransactionWithLines>> {
+  try {
+    const { client, ledgerId } = await getSessionClient();
+    const data = await client.transactions.post(ledgerId, {
+      ...input,
+      sourceType: "manual",
+    });
+    return { ok: true, data };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const isTierRelated = /upgrade|tier|plan|limit/i.test(msg);
+    if (isTierRelated) {
+      return { ok: false, error: { type: "tier_limit", message: msg, upgradeUrl: "/settings?tab=billing" } };
+    }
+    throw e;
+  }
 }
 
 // --- Template application -------------------------------------------------
@@ -279,6 +324,15 @@ export async function fetchTiers(): Promise<Record<string, TierConfig>> {
   if (!res.ok) return {};
   const json = await res.json();
   return json.data;
+}
+
+export async function fetchCurrentTier(): Promise<string> {
+  try {
+    const status = await fetchBillingStatus();
+    return status.plan;
+  } catch {
+    return "free";
+  }
 }
 
 // --- Email Preferences -------------------------------------------------------
@@ -1302,11 +1356,15 @@ export async function createInvoiceAction(input: {
   footer?: string;
   taxInclusive?: boolean;
   invoiceNumber?: string;
-}): Promise<InvoiceListItem | null> {
+}): Promise<ActionResult<InvoiceListItem>> {
   const res = await invoiceFetch("", "POST", input);
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: false, error: { type: "tier_limit", message: "Failed to create invoice", upgradeUrl: "/settings?tab=billing" } };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
 export async function updateInvoiceAction(id: string, input: {

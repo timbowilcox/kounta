@@ -271,7 +271,11 @@ export function PostTransactionModal() {
 
     startTransition(async () => {
       try {
-        await postTransaction({ date, memo: memo.trim(), lines });
+        const result = await postTransaction({ date, memo: memo.trim(), lines });
+        if (!result.ok) {
+          setError(`${result.error.message} Upgrade your plan to continue.`);
+          return;
+        }
         setSuccessMsg("Transaction posted successfully");
         setTimeout(() => {
           close();
