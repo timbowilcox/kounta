@@ -5,8 +5,9 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { LedgerEngine } from "@kounta/core";
-import { getJurisdictionConfig } from "@kounta/core";
+import { getJurisdictionConfig, incrementUsage } from "@kounta/core";
 import { handleResult } from "../lib/helpers.js";
+import { mcpCheckLimit, getLedgerOwner } from "../lib/tier-check.js";
 
 export function registerTransactionTools(
   server: McpServer,
@@ -39,6 +40,14 @@ export function registerTransactionTools(
       metadata: z.record(z.unknown()).optional().describe("Additional metadata (JSON)"),
     },
     async ({ ledgerId, date, memo, lines, effectiveDate, idempotencyKey, metadata }) => {
+      // Tier limit check
+      const db = engine.getDb();
+      const ownerId = await getLedgerOwner(db, ledgerId);
+      if (ownerId) {
+        const limitErr = await mcpCheckLimit(db, ownerId, ledgerId, "transactions");
+        if (limitErr) return limitErr;
+      }
+
       const result = await engine.postTransaction({
         ledgerId,
         date,
@@ -49,6 +58,11 @@ export function registerTransactionTools(
         sourceType: "mcp",
         metadata,
       });
+
+      // Increment tier usage after successful post
+      if (result.ok && ownerId) {
+        try { await incrementUsage(db, ownerId, ledgerId, "transactions_count"); } catch { /* best-effort */ }
+      }
 
       // Capitalisation check — best-effort notification for large expenses
       if (result.ok) {

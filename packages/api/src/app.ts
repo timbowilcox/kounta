@@ -38,6 +38,7 @@ import { invoiceRoutes } from "./routes/invoices.js";
 import { customerRoutes } from "./routes/customers.js";
 import { jurisdictionRoutes } from "./routes/jurisdictions.js";
 import { oauthRoutes, wellKnownRoutes } from "./routes/oauth.js";
+import { usageRoutes } from "./routes/usage.js";
 
 export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Hono<Env> => {
   const app = new Hono<Env>();
@@ -133,6 +134,7 @@ export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Ho
   app.route("/v1/invoices", invoiceRoutes);
   app.route("/v1/customers", customerRoutes);
   app.route("/v1/jurisdictions", jurisdictionRoutes);
+  app.route("/v1/usage", usageRoutes);
   app.route("/oauth", oauthRoutes);
   app.route("/.well-known", wellKnownRoutes);
 

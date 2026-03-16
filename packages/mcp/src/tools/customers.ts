@@ -13,6 +13,7 @@ import {
   listCustomers,
 } from "@kounta/core";
 import { toolOk, toolErr } from "../lib/helpers.js";
+import { mcpCheckLimit, getLedgerOwner } from "../lib/tier-check.js";
 
 export function registerCustomerTools(
   server: McpServer,
@@ -74,6 +75,13 @@ export function registerCustomerTools(
     },
     async (params) => {
       try {
+        // Tier limit check
+        const ownerId = await getLedgerOwner(db, params.ledgerId);
+        if (ownerId) {
+          const limitErr = await mcpCheckLimit(db, ownerId, params.ledgerId, "customers");
+          if (limitErr) return limitErr;
+        }
+
         const result = await createCustomer(db, params.ledgerId, {
           name: params.name,
           email: params.email,

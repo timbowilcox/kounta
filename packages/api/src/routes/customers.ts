@@ -17,6 +17,7 @@ import {
   listInvoices,
 } from "@kounta/core";
 import type { CreateCustomerInput, UpdateCustomerInput } from "@kounta/core";
+import { tierLimitCheck, tierUsageIncrement } from "../middleware/tier-enforcement.js";
 
 export const customerRoutes = new Hono<Env>();
 
@@ -49,7 +50,7 @@ customerRoutes.get("/", async (c) => {
 // POST / — create customer
 // ---------------------------------------------------------------------------
 
-customerRoutes.post("/", async (c) => {
+customerRoutes.post("/", tierLimitCheck("customers"), tierUsageIncrement("customers"), async (c) => {
   const db = c.get("engine").getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const body = await c.req.json() as CreateCustomerInput;

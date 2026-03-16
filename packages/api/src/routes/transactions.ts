@@ -7,7 +7,7 @@ import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, accepted, success, paginated } from "../lib/responses.js";
 import { enforcePlanLimit, UPGRADE_URL } from "../middleware/plan.js";
-import { planLimitExceededError, getJurisdictionConfig } from "@kounta/core";
+import { planLimitExceededError, getJurisdictionConfig, checkLimit, incrementUsage as incrementTierUsage } from "@kounta/core";
 
 export const transactionRoutes = new Hono<Env>();
 
@@ -24,7 +24,31 @@ transactionRoutes.post("/", async (c) => {
   const headerKey = c.req.header("Idempotency-Key");
   const idempotencyKey = body.idempotencyKey ?? headerKey;
 
-  // Plan enforcement — check usage limits before posting
+  // Tier-based usage limit check (new system)
+  try {
+    const apiKeyInfo = c.get("apiKeyInfo");
+    if (apiKeyInfo) {
+      const tierCheck = await checkLimit(engine.getDb(), apiKeyInfo.userId, ledgerId!, "transactions");
+      if (!tierCheck.allowed) {
+        return c.json(
+          {
+            error: {
+              code: "PLAN_LIMIT_EXCEEDED",
+              message: tierCheck.message,
+              details: [{ field: "transactions", actual: String(tierCheck.used), expected: String(tierCheck.limit) }],
+              limit: tierCheck.limit,
+              used: tierCheck.used,
+              upgrade_url: UPGRADE_URL,
+              requestId: c.get("requestId"),
+            },
+          },
+          429,
+        );
+      }
+    }
+  } catch { /* fail open if tier check unavailable */ }
+
+  // Legacy plan enforcement — check usage limits before posting
   let enforcement: Awaited<ReturnType<typeof enforcePlanLimit>>;
   try {
     enforcement = await enforcePlanLimit(engine, ledgerId!);
@@ -64,8 +88,14 @@ transactionRoutes.post("/", async (c) => {
     return errorResponse(c, result.error);
   }
 
-  // Increment usage counter (best-effort — migration may not be applied)
+  // Increment usage counters (best-effort — migration may not be applied)
   try { await engine.incrementUsage(ledgerId!); } catch { /* ignore */ }
+  try {
+    const apiKeyInfo = c.get("apiKeyInfo");
+    if (apiKeyInfo) {
+      await incrementTierUsage(engine.getDb(), apiKeyInfo.userId, ledgerId!, "transactions_count");
+    }
+  } catch { /* ignore */ }
 
   // Receipt prompt — notify for expenses over $75 (7500 cents)
   try {

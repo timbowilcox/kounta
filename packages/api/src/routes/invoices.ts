@@ -27,6 +27,7 @@ import {
   emailLayout,
 } from "@kounta/core";
 import type { CreateInvoiceInput, UpdateInvoiceInput, RecordPaymentInput, InvoicePDFConfig } from "@kounta/core";
+import { tierLimitCheck, tierUsageIncrement, tierFeatureGate } from "../middleware/tier-enforcement.js";
 
 export const invoiceRoutes = new Hono<Env>();
 
@@ -88,7 +89,7 @@ invoiceRoutes.get("/aging", async (c) => {
 // POST / — create invoice
 // ---------------------------------------------------------------------------
 
-invoiceRoutes.post("/", async (c) => {
+invoiceRoutes.post("/", tierLimitCheck("invoices"), tierUsageIncrement("invoices"), async (c) => {
   const engine = c.get("engine");
   const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
@@ -126,7 +127,7 @@ invoiceRoutes.get("/:id", async (c) => {
 // GET /:id/pdf — generate and download invoice PDF
 // ---------------------------------------------------------------------------
 
-invoiceRoutes.get("/:id/pdf", async (c) => {
+invoiceRoutes.get("/:id/pdf", tierFeatureGate("pdfExport"), async (c) => {
   const db = c.get("engine").getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
@@ -193,7 +194,7 @@ invoiceRoutes.get("/:id/pdf", async (c) => {
 // POST /:id/email — send invoice email with PDF attachment
 // ---------------------------------------------------------------------------
 
-invoiceRoutes.post("/:id/email", async (c) => {
+invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
   const db = c.get("engine").getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");

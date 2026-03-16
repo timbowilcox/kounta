@@ -15,7 +15,9 @@ import {
   getInvoiceSummary,
   getARAging,
 } from "@kounta/core";
+import { incrementUsage } from "@kounta/core";
 import { toolOk, toolErr } from "../lib/helpers.js";
+import { mcpCheckLimit, getLedgerOwner } from "../lib/tier-check.js";
 
 export function registerInvoiceTools(
   server: McpServer,
@@ -48,6 +50,13 @@ export function registerInvoiceTools(
     },
     async (params) => {
       try {
+        // Tier limit check
+        const ownerId = await getLedgerOwner(db, params.ledgerId);
+        if (ownerId) {
+          const limitErr = await mcpCheckLimit(db, ownerId, params.ledgerId, "invoices");
+          if (limitErr) return limitErr;
+        }
+
         const today = new Date().toISOString().slice(0, 10);
         const dueDate = params.dueDate ?? (() => {
           const d = new Date();
@@ -74,6 +83,12 @@ export function registerInvoiceTools(
         });
 
         if (!result.ok) return toolErr(result.error);
+
+        // Increment tier usage
+        if (ownerId) {
+          try { await incrementUsage(db, ownerId, params.ledgerId, "invoices_count"); } catch { /* best-effort */ }
+        }
+
         return toolOk(result.value);
       } catch (e) {
         return toolErr({ code: "INTERNAL_ERROR", message: String(e), details: [] });

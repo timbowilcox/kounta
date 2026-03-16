@@ -20,10 +20,12 @@ import {
   ensureRevenueAccounts,
 } from "@kounta/core";
 import type { CreateScheduleInput, UpdateScheduleInput } from "@kounta/core";
+import { tierFeatureGate } from "../middleware/tier-enforcement.js";
 
 export const revenueRoutes = new Hono<Env>();
 
 revenueRoutes.use("/*", apiKeyAuth);
+revenueRoutes.use("/*", tierFeatureGate("revenueRecognition"));
 
 // ---------------------------------------------------------------------------
 // GET /schedules — list revenue schedules

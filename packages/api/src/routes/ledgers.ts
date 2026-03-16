@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { adminAuth, apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, success } from "../lib/responses.js";
+import { checkLimit } from "@kounta/core";
 
 export const ledgerRoutes = new Hono<Env>();
 
@@ -38,6 +39,27 @@ ledgerRoutes.post("/", adminAuth, async (c) => {
       400
     );
   }
+
+  // Check ledger limit for the owner
+  try {
+    const limitCheck = await checkLimit(engine.getDb(), ownerId, undefined, "ledgers");
+    if (!limitCheck.allowed) {
+      return c.json(
+        {
+          error: {
+            code: "PLAN_LIMIT_EXCEEDED",
+            message: limitCheck.message,
+            details: [{ field: "ledgers", actual: String(limitCheck.used), expected: String(limitCheck.limit) }],
+            limit: limitCheck.limit,
+            used: limitCheck.used,
+            upgrade_url: (process.env["NEXT_PUBLIC_APP_URL"] || "https://kounta.ai") + "/billing",
+            requestId: c.get("requestId"),
+          },
+        },
+        403,
+      );
+    }
+  } catch { /* fail open if tier check unavailable */ }
 
   const result = await engine.createLedger({
     name: body.name,

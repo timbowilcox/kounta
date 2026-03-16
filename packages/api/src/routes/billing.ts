@@ -148,6 +148,38 @@ billingRoutes.post("/webhook", async (c) => {
       break;
     }
 
+    case "customer.subscription.created":
+    case "customer.subscription.updated": {
+      const subscription = event.data.object as import("stripe").default.Subscription;
+      const customerId = typeof subscription.customer === "string" ? subscription.customer : (subscription.customer as { id: string } | null)?.id;
+      if (customerId) {
+        try {
+          const userResult = await engine.findUserByStripeCustomer(customerId);
+          if (userResult.ok && userResult.value) {
+            const priceId = subscription.items.data[0]?.price?.id;
+            const plan = (priceId && PRICE_TO_PLAN[priceId]) || userResult.value.plan;
+            await engine.updateUserPlan(
+              userResult.value.id,
+              plan,
+              customerId,
+              subscription.id,
+            );
+            // Update plan_updated_at
+            try {
+              await engine.getDb().run(
+                "UPDATE users SET plan_updated_at = ? WHERE id = ?",
+                [new Date().toISOString(), userResult.value.id],
+              );
+            } catch { /* column may not exist yet */ }
+            console.log(`Updated user ${userResult.value.id} to ${plan} plan (${event.type})`);
+          }
+        } catch (e) {
+          console.error(`Error handling ${event.type}:`, e);
+        }
+      }
+      break;
+    }
+
     case "customer.subscription.deleted": {
       const subscription = event.data.object as import("stripe").default.Subscription;
       const customerId = typeof subscription.customer === "string" ? subscription.customer : (subscription.customer as { id: string } | null)?.id;
@@ -159,6 +191,13 @@ billingRoutes.post("/webhook", async (c) => {
               userResult.value.id,
               "free",
             );
+            // Update plan_updated_at
+            try {
+              await engine.getDb().run(
+                "UPDATE users SET plan_updated_at = ? WHERE id = ?",
+                [new Date().toISOString(), userResult.value.id],
+              );
+            } catch { /* column may not exist yet */ }
             console.log("Downgraded user " + userResult.value.id + " to free plan after subscription deletion");
           }
         } catch (e) {

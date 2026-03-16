@@ -22,6 +22,7 @@ import {
   updateFixedAsset,
 } from "@kounta/core";
 import type { CreateFixedAssetInput, UpdateFixedAssetInput, DisposeAssetInput } from "@kounta/core";
+import { tierLimitCheck, tierUsageIncrement } from "../middleware/tier-enforcement.js";
 
 export const fixedAssetRoutes = new Hono<Env>();
 
@@ -111,7 +112,7 @@ fixedAssetRoutes.post("/capitalisation-check", async (c) => {
 // POST / — create fixed asset
 // ---------------------------------------------------------------------------
 
-fixedAssetRoutes.post("/", async (c) => {
+fixedAssetRoutes.post("/", tierLimitCheck("fixed_assets"), tierUsageIncrement("fixed_assets"), async (c) => {
   const engine = c.get("engine");
   const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;

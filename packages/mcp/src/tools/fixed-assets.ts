@@ -21,6 +21,7 @@ import {
 } from "@kounta/core";
 import type { DepreciationMethod } from "@kounta/core";
 import { toolOk, toolErr } from "../lib/helpers.js";
+import { mcpCheckLimit, getLedgerOwner } from "../lib/tier-check.js";
 
 export function registerFixedAssetTools(
   server: McpServer,
@@ -82,6 +83,13 @@ export function registerFixedAssetTools(
     },
     async (params) => {
       try {
+        // Tier limit check
+        const ownerId = await getLedgerOwner(db, params.ledgerId);
+        if (ownerId) {
+          const limitErr = await mcpCheckLimit(db, ownerId, params.ledgerId, "fixed_assets");
+          if (limitErr) return limitErr;
+        }
+
         const result = await createFixedAsset(db, {
           ledgerId: params.ledgerId,
           name: params.name,

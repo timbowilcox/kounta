@@ -345,6 +345,8 @@ export class Kounta {
   readonly fixedAssets: FixedAssetsModule;
   readonly invoices: InvoicesModule;
   readonly customers: CustomersModule;
+  readonly usage: UsageModule;
+  readonly tiers: TiersModule;
 
   constructor(config: KountaConfig) {
     this._apiKey = config.apiKey;
@@ -373,6 +375,8 @@ export class Kounta {
     this.fixedAssets = new FixedAssetsModule(this);
     this.invoices = new InvoicesModule(this);
     this.customers = new CustomersModule(this);
+    this.usage = new UsageModule(this);
+    this.tiers = new TiersModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1553,5 +1557,76 @@ class CustomersModule {
     }[];
   }> {
     return this.c.request("GET", `/v1/customers/${customerId}/statement`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Usage module — tier-based usage tracking
+// ---------------------------------------------------------------------------
+
+export interface UsageSummaryResource {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+}
+
+export interface UsageSummary {
+  tier: string;
+  period: { start: string; end: string };
+  ledgerCount: number;
+  transactions: UsageSummaryResource;
+  invoices: UsageSummaryResource;
+  customers: UsageSummaryResource;
+  fixedAssets: UsageSummaryResource;
+}
+
+export interface UsageHistoryRecord {
+  periodStart: string;
+  periodEnd: string;
+  transactions: number;
+  invoices: number;
+  customers: number;
+  fixedAssets: number;
+}
+
+class UsageModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** Get current billing period usage summary. */
+  async getCurrent(): Promise<UsageSummary> {
+    return this.c.request("GET", "/v1/usage");
+  }
+
+  /** Get usage history for the last 12 months. */
+  async getHistory(): Promise<UsageHistoryRecord[]> {
+    return this.c.request("GET", "/v1/usage/history");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tiers module — tier configuration
+// ---------------------------------------------------------------------------
+
+export interface TierConfig {
+  name: string;
+  price: number;
+  limits: {
+    maxLedgers: number | null;
+    maxTransactionsPerMonth: number | null;
+    maxInvoicesPerMonth: number | null;
+    maxCustomers: number | null;
+    maxFixedAssets: number | null;
+  };
+  features: Record<string, boolean>;
+  bankSyncInterval: string;
+  aiModel: string;
+}
+
+class TiersModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List all available tiers with their limits and features. */
+  async list(): Promise<Record<string, TierConfig>> {
+    return this.c.request("GET", "/v1/usage/tiers");
   }
 }

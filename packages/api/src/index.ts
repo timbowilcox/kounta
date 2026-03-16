@@ -294,6 +294,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["024_customers.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'customers'"],
       ["025_invoice_approved_status.sql", "SELECT 1 FROM pg_constraint WHERE conname = 'invoices_status_check'"],
       ["026_fix_invoice_approved_constraint.sql", "SELECT 1 FROM pg_constraint WHERE conname = 'invoices_status_check' AND pg_get_constraintdef(oid) LIKE '%approved%'"],
+      ["027_tier_usage_tracking.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'usage_tracking'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -342,6 +343,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "024_customers.sql",
     "025_invoice_approved_status.sql",
     "026_fix_invoice_approved_constraint.sql",
+    "027_tier_usage_tracking.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -483,6 +485,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "024_customers.sqlite.sql",
     "025_invoice_approved_status.sqlite.sql",
     "026_fix_invoice_approved_constraint.sqlite.sql",
+    "027_tier_usage_tracking.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {
