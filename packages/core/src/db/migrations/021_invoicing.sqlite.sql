@@ -30,11 +30,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax_inclusive            INTEGER NOT NULL DEFAULT 0,
 
   -- Status
-  status                  TEXT NOT NULL DEFAULT 'draft'
-    CHECK (status IN (
-      'draft', 'sent', 'viewed', 'paid',
-      'partially_paid', 'overdue', 'void'
-    )),
+  -- NOTE: No CHECK constraint here. SQLite cannot ALTER CHECK constraints,
+  -- so adding new statuses (e.g. 'approved') would require dropping and
+  -- recreating the table. Validation is enforced at the application layer.
+  status                  TEXT NOT NULL DEFAULT 'draft',
 
   -- Payment tracking
   paid_date               TEXT,
