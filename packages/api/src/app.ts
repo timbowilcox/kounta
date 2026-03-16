@@ -35,6 +35,7 @@ import { stripeConnectRoutes } from "./routes/stripe-connect.js";
 import { revenueRoutes } from "./routes/revenue.js";
 import { fixedAssetRoutes } from "./routes/fixed-assets.js";
 import { invoiceRoutes } from "./routes/invoices.js";
+import { customerRoutes } from "./routes/customers.js";
 import { jurisdictionRoutes } from "./routes/jurisdictions.js";
 import { oauthRoutes, wellKnownRoutes } from "./routes/oauth.js";
 
@@ -130,6 +131,7 @@ export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Ho
   app.route("/v1/revenue", revenueRoutes);
   app.route("/v1/fixed-assets", fixedAssetRoutes);
   app.route("/v1/invoices", invoiceRoutes);
+  app.route("/v1/customers", customerRoutes);
   app.route("/v1/jurisdictions", jurisdictionRoutes);
   app.route("/oauth", oauthRoutes);
   app.route("/.well-known", wellKnownRoutes);

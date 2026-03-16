@@ -8,6 +8,9 @@ import { generateId, nowUtc, todayUtc } from "../engine/id.js";
 import type { Result } from "../types/index.js";
 import { ErrorCode, createError, ok, err } from "../errors/index.js";
 import { getJurisdictionConfig } from "../jurisdiction/config.js";
+import type { CustomerRow } from "./customers.js";
+import { calculateDueDate } from "./payment-terms.js";
+import type { PaymentTermsCode } from "./payment-terms.js";
 import type {
   Invoice,
   InvoiceSummary,
@@ -165,6 +168,36 @@ export const createInvoice = async (
     return err(createError(ErrorCode.LEDGER_NOT_FOUND, `Ledger not found: ${ledgerId}`));
   }
 
+  // If customer_id is provided, auto-fill missing fields from the customer record
+  let customerName = input.customerName;
+  let customerEmail = input.customerEmail ?? null;
+  let customerAddress = input.customerAddress ?? null;
+  let paymentTerms = input.paymentTerms ?? null;
+  let customerId = input.customerId ?? null;
+
+  if (customerId) {
+    const customer = await db.get<CustomerRow>(
+      "SELECT * FROM customers WHERE id = ? AND ledger_id = ?",
+      [customerId, ledgerId],
+    );
+    if (!customer) {
+      return err(createError(ErrorCode.CUSTOMER_NOT_FOUND, `Customer not found: ${customerId}`));
+    }
+    // Auto-fill from customer if not explicitly provided
+    if (!input.customerName || input.customerName.trim().length === 0) {
+      customerName = customer.name;
+    }
+    if (!input.customerEmail && customer.email) {
+      customerEmail = customer.email;
+    }
+    if (!input.customerAddress && customer.address) {
+      customerAddress = customer.address;
+    }
+    if (!input.paymentTerms && customer.payment_terms) {
+      paymentTerms = customer.payment_terms;
+    }
+  }
+
   const jurisdiction = getJurisdictionConfig(ledger.jurisdiction);
 
   // Tax defaults from jurisdiction
@@ -172,6 +205,11 @@ export const createInvoice = async (
   const taxLabel = jurisdiction.vatName ?? null;
   const taxInclusive = input.taxInclusive ?? false;
   const currency = input.currency ?? ledger.currency;
+
+  // Calculate due date from payment terms if dueDate not explicitly provided
+  const dueDate = input.dueDate ?? (paymentTerms
+    ? calculateDueDate(input.issueDate, paymentTerms as PaymentTermsCode)
+    : (() => { const d = new Date(input.issueDate); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })());
 
   // Generate or use provided invoice number
   const invoiceNumber = input.invoiceNumber ?? await generateInvoiceNumber(db, ledgerId);
@@ -197,18 +235,18 @@ export const createInvoice = async (
   await db.run(
     `INSERT INTO invoices (
       id, ledger_id, invoice_number,
-      customer_name, customer_email, customer_address,
-      issue_date, due_date,
+      customer_id, customer_name, customer_email, customer_address,
+      payment_terms, issue_date, due_date,
       subtotal, tax_amount, total, amount_paid, amount_due,
       currency, tax_rate, tax_label, tax_inclusive,
       status, notes, footer,
       revenue_account_id, ar_account_id, tax_account_id,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, ledgerId, invoiceNumber,
-      input.customerName, input.customerEmail ?? null, input.customerAddress ?? null,
-      input.issueDate, input.dueDate,
+      customerId, customerName, customerEmail, customerAddress,
+      paymentTerms, input.issueDate, dueDate,
       calc.subtotal, calc.taxAmount, calc.total, 0, calc.amountDue,
       currency, taxRate, taxLabel, taxInclusive ? 1 : 0,
       "draft", input.notes ?? null, input.footer ?? null,
@@ -261,9 +299,11 @@ export const updateInvoice = async (
   const sets: string[] = [];
   const params: unknown[] = [];
 
+  if (input.customerId !== undefined) { sets.push("customer_id = ?"); params.push(input.customerId); }
   if (input.customerName !== undefined) { sets.push("customer_name = ?"); params.push(input.customerName); }
   if (input.customerEmail !== undefined) { sets.push("customer_email = ?"); params.push(input.customerEmail); }
   if (input.customerAddress !== undefined) { sets.push("customer_address = ?"); params.push(input.customerAddress); }
+  if (input.paymentTerms !== undefined) { sets.push("payment_terms = ?"); params.push(input.paymentTerms); }
   if (input.issueDate !== undefined) { sets.push("issue_date = ?"); params.push(input.issueDate); }
   if (input.dueDate !== undefined) { sets.push("due_date = ?"); params.push(input.dueDate); }
   if (input.notes !== undefined) { sets.push("notes = ?"); params.push(input.notes); }
@@ -620,6 +660,7 @@ export const listInvoices = async (
   filters?: {
     status?: string;
     customerName?: string;
+    customerId?: string;
     dateFrom?: string;
     dateTo?: string;
     cursor?: string;
@@ -632,6 +673,7 @@ export const listInvoices = async (
 
   if (filters?.status) { conditions.push("i.status = ?"); params.push(filters.status); }
   if (filters?.customerName) { conditions.push("i.customer_name LIKE ?"); params.push(`%${filters.customerName}%`); }
+  if (filters?.customerId) { conditions.push("i.customer_id = ?"); params.push(filters.customerId); }
   if (filters?.dateFrom) { conditions.push("i.issue_date >= ?"); params.push(filters.dateFrom); }
   if (filters?.dateTo) { conditions.push("i.issue_date <= ?"); params.push(filters.dateTo); }
   if (filters?.cursor) { conditions.push("i.id > ?"); params.push(filters.cursor); }

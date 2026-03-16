@@ -30,8 +30,10 @@ export function registerInvoiceTools(
     "Create a new invoice for a customer. Provide the customer name, line items with descriptions and prices, and optionally a due date. Tax is automatically calculated based on the ledger's jurisdiction (e.g. 10% GST for Australian ledgers). The invoice starts in 'draft' status — use send_invoice to approve it and post the accounting entry.\n\nExample: 'Create an invoice for Acme Corp for 10 hours of consulting at $150/hour, due in 30 days'",
     {
       ledgerId: z.string().describe("Ledger ID"),
+      customerId: z.string().optional().describe("Customer ID — auto-fills name, email, and payment terms from the customer record"),
       customerName: z.string().describe("Customer name"),
       customerEmail: z.string().optional().describe("Customer email address"),
+      paymentTerms: z.enum(["due_on_receipt", "net_7", "net_14", "net_15", "net_30", "net_45", "net_60", "net_90"]).optional().describe("Payment terms (defaults to customer's terms or net_30)"),
       lineItems: z.array(z.object({
         description: z.string().describe("Line item description"),
         quantity: z.number().describe("Quantity"),
@@ -54,8 +56,10 @@ export function registerInvoiceTools(
         })();
 
         const result = await createInvoice(db, params.ledgerId, "mcp-agent", {
+          customerId: params.customerId,
           customerName: params.customerName,
           customerEmail: params.customerEmail,
+          paymentTerms: params.paymentTerms,
           issueDate: params.issueDate ?? today,
           dueDate,
           lineItems: params.lineItems.map((li) => ({

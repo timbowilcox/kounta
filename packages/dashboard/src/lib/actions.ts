@@ -1157,8 +1157,10 @@ async function invoiceFetch(path: string, method = "GET", body?: unknown): Promi
 export interface InvoiceListItem {
   id: string;
   invoiceNumber: string;
+  customerId: string | null;
   customerName: string;
   customerEmail: string | null;
+  paymentTerms: string | null;
   issueDate: string;
   dueDate: string;
   subtotal: number;
@@ -1228,11 +1230,13 @@ export async function fetchInvoice(id: string): Promise<InvoiceListItem | null> 
 }
 
 export async function createInvoiceAction(input: {
+  customerId?: string;
   customerName: string;
   customerEmail?: string;
   customerAddress?: string;
   issueDate: string;
-  dueDate: string;
+  dueDate?: string;
+  paymentTerms?: string;
   lineItems: { description: string; quantity: number; unitPrice: number; taxRate?: number; accountId?: string }[];
   notes?: string;
   footer?: string;
@@ -1246,9 +1250,11 @@ export async function createInvoiceAction(input: {
 }
 
 export async function updateInvoiceAction(id: string, input: {
+  customerId?: string | null;
   customerName?: string;
   customerEmail?: string;
   customerAddress?: string;
+  paymentTerms?: string;
   issueDate?: string;
   dueDate?: string;
   lineItems?: { description: string; quantity: number; unitPrice: number; taxRate?: number; accountId?: string }[];
@@ -1305,5 +1311,65 @@ export async function fetchInvoicePDFBase64(id: string): Promise<{ base64: strin
   const filenameMatch = disposition.match(/filename="(.+?)"/);
   const filename = filenameMatch?.[1] ?? `invoice-${id}.pdf`;
   return { base64, filename };
+}
+
+// --- Customers ---------------------------------------------------------------
+
+async function customerFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
+  const session = await auth();
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+  if (!session?.apiKey) throw new Error("No authenticated session");
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.apiKey}`,
+  };
+  if (body) headers["Content-Type"] = "application/json";
+
+  return fetch(`${apiUrl}/v1/customers${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+}
+
+export interface CustomerListItem {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  taxId: string | null;
+  paymentTerms: string;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchCustomers(search?: string): Promise<CustomerListItem[]> {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  params.set("active", "true");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await customerFetch(qs);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function createCustomerAction(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  taxId?: string;
+  paymentTerms?: string;
+  notes?: string;
+}): Promise<CustomerListItem | null> {
+  const res = await customerFetch("", "POST", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
 }
 

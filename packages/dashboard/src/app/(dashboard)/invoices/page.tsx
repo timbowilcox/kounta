@@ -5,19 +5,21 @@ import {
   fetchAccounts,
   fetchJurisdictionSettings,
   fetchJurisdictions,
+  fetchCustomers,
 } from "@/lib/actions";
 import { InvoicesView } from "./invoices-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function InvoicesPage() {
-  const [invoices, summary, aging, accounts, jurisdictionSettings, jurisdictions] = await Promise.allSettled([
+  const [invoices, summary, aging, accounts, jurisdictionSettings, jurisdictions, customers] = await Promise.allSettled([
     fetchInvoices(),
     fetchInvoiceSummary(),
     fetchARAging(),
     fetchAccounts(),
     fetchJurisdictionSettings(),
     fetchJurisdictions(),
+    fetchCustomers(),
   ]);
 
   // Resolve tax config from jurisdiction
@@ -46,6 +48,7 @@ export default async function InvoicesPage() {
       }
       initialAging={aging.status === "fulfilled" ? aging.value : []}
       accounts={accounts.status === "fulfilled" ? accounts.value : []}
+      customers={customers.status === "fulfilled" ? customers.value : []}
       taxLabel={taxLabel}
       taxRate={taxRate}
     />

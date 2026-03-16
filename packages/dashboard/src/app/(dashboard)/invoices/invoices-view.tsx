@@ -18,6 +18,7 @@ import type {
   InvoiceListItem,
   InvoiceSummary,
   ARAgingBucket,
+  CustomerListItem,
 } from "@/lib/actions";
 import type { AccountWithBalance } from "@kounta/sdk";
 
@@ -136,9 +137,21 @@ interface Props {
   initialSummary: InvoiceSummary;
   initialAging: ARAgingBucket[];
   accounts: AccountWithBalance[];
+  customers: CustomerListItem[];
   taxLabel: string;
   taxRate: number;
 }
+
+const PAYMENT_TERMS_OPTIONS = [
+  { code: "due_on_receipt", label: "Due on receipt" },
+  { code: "net_7", label: "Net 7" },
+  { code: "net_14", label: "Net 14" },
+  { code: "net_15", label: "Net 15" },
+  { code: "net_30", label: "Net 30" },
+  { code: "net_45", label: "Net 45" },
+  { code: "net_60", label: "Net 60" },
+  { code: "net_90", label: "Net 90" },
+];
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -159,7 +172,7 @@ const TABS: { key: StatusTab; label: string }[] = [
 // Main view
 // ---------------------------------------------------------------------------
 
-export function InvoicesView({ initialInvoices, initialSummary, initialAging, accounts, taxLabel, taxRate }: Props) {
+export function InvoicesView({ initialInvoices, initialSummary, initialAging, accounts, customers, taxLabel, taxRate }: Props) {
   const [invoices, setInvoices] = useState(initialInvoices);
   const [summary, setSummary] = useState(initialSummary);
   const [activeTab, setActiveTab] = useState<StatusTab>("all");
@@ -414,6 +427,7 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
           taxLabel={taxLabel}
           taxRate={taxRate}
           accounts={accounts}
+          customers={customers}
           onClose={() => { setShowCreate(false); setEditInvoice(null); }}
           onCreated={(inv) => {
             setShowCreate(false);
@@ -503,6 +517,7 @@ function CreateInvoiceModal({
   taxLabel,
   taxRate,
   accounts,
+  customers,
   onClose,
   onCreated,
 }: {
@@ -510,16 +525,46 @@ function CreateInvoiceModal({
   taxLabel: string;
   taxRate: number;
   accounts: AccountWithBalance[];
+  customers: CustomerListItem[];
   onClose: () => void;
   onCreated: (inv: InvoiceListItem | null) => void;
 }) {
   const isEdit = !!editInvoice;
 
   const [invoiceNumber, setInvoiceNumber] = useState(editInvoice?.invoiceNumber ?? "");
+  const [customerId, setCustomerId] = useState<string>(editInvoice?.customerId ?? "");
   const [customerName, setCustomerName] = useState(editInvoice?.customerName ?? "");
   const [customerEmail, setCustomerEmail] = useState(editInvoice?.customerEmail ?? "");
+  const [paymentTerms, setPaymentTerms] = useState(editInvoice?.paymentTerms ?? "net_30");
   const [issueDate, setIssueDate] = useState(editInvoice?.issueDate?.slice(0, 10) ?? todayISO());
   const [dueDate, setDueDate] = useState(editInvoice?.dueDate?.slice(0, 10) ?? plus30());
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  const filteredCustomers = customers.filter((c) =>
+    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    (c.email && c.email.toLowerCase().includes(customerSearch.toLowerCase())),
+  );
+
+  const selectCustomer = (c: CustomerListItem) => {
+    setCustomerId(c.id);
+    setCustomerName(c.name);
+    setCustomerEmail(c.email ?? "");
+    setCustomerSearch("");
+    setShowCustomerDropdown(false);
+    if (c.paymentTerms) {
+      setPaymentTerms(c.paymentTerms);
+      // Recalculate due date based on payment terms
+      const termsDays: Record<string, number> = {
+        due_on_receipt: 0, net_7: 7, net_14: 14, net_15: 15,
+        net_30: 30, net_45: 45, net_60: 60, net_90: 90,
+      };
+      const days = termsDays[c.paymentTerms] ?? 30;
+      const d = new Date(issueDate);
+      d.setDate(d.getDate() + days);
+      setDueDate(d.toISOString().slice(0, 10));
+    }
+  };
   const [notes, setNotes] = useState("");
   // TODO: Persist showNotesOnInvoice server-side (invoice metadata or dedicated column)
   const [showNotesOnInvoice, setShowNotesOnInvoice] = useState(true);
@@ -581,8 +626,10 @@ function CreateInvoiceModal({
     setError(null);
     startTransition(async () => {
       const input = {
+        customerId: customerId || undefined,
         customerName,
         customerEmail: customerEmail || undefined,
+        paymentTerms: paymentTerms || undefined,
         issueDate,
         dueDate,
         invoiceNumber: invoiceNumber || undefined,
@@ -664,23 +711,90 @@ function CreateInvoiceModal({
           />
         </div>
 
-        {/* Customer */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Customer name *</label>
-            <input style={inputStyle} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Acme Corp" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Customer email</label>
-            <input style={inputStyle} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="billing@acme.com" />
+        {/* Customer — autocomplete from saved customers */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1, position: "relative" }}>
+              <label style={labelStyle}>Customer *</label>
+              <input
+                style={inputStyle}
+                value={customerName}
+                onChange={(e) => {
+                  setCustomerName(e.target.value);
+                  setCustomerSearch(e.target.value);
+                  setCustomerId("");
+                  setShowCustomerDropdown(e.target.value.length > 0 && customers.length > 0);
+                }}
+                onFocus={() => {
+                  if (customerName.length > 0 && customers.length > 0 && !customerId) {
+                    setCustomerSearch(customerName);
+                    setShowCustomerDropdown(true);
+                  }
+                }}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                placeholder="Search or type customer name..."
+              />
+              {showCustomerDropdown && filteredCustomers.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+                  backgroundColor: "#ffffff", border: "1px solid var(--border)", borderRadius: 6,
+                  maxHeight: 180, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                }}>
+                  {filteredCustomers.slice(0, 8).map((c) => (
+                    <div
+                      key={c.id}
+                      onMouseDown={() => selectCustomer(c)}
+                      style={{
+                        padding: "8px 12px", cursor: "pointer", fontSize: 13,
+                        color: "#1a1a1a", borderBottom: "1px solid #eee",
+                      }}
+                    >
+                      <div style={{ fontWeight: 500 }}>{c.name}</div>
+                      {c.email && <div style={{ fontSize: 11, color: "#888" }}>{c.email}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {customerId && (
+                <div style={{ fontSize: 11, color: "var(--positive)", marginTop: 2 }}>
+                  Linked to saved customer
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Customer email</label>
+              <input style={inputStyle} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="billing@acme.com" />
+            </div>
           </div>
         </div>
 
-        {/* Dates */}
+        {/* Dates + Payment terms */}
         <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Issue date</label>
             <input type="date" style={inputStyle} value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Payment terms</label>
+            <select
+              style={{ ...inputStyle, color: "var(--text-primary)" }}
+              value={paymentTerms}
+              onChange={(e) => {
+                setPaymentTerms(e.target.value);
+                const termsDays: Record<string, number> = {
+                  due_on_receipt: 0, net_7: 7, net_14: 14, net_15: 15,
+                  net_30: 30, net_45: 45, net_60: 60, net_90: 90,
+                };
+                const days = termsDays[e.target.value] ?? 30;
+                const d = new Date(issueDate);
+                d.setDate(d.getDate() + days);
+                setDueDate(d.toISOString().slice(0, 10));
+              }}
+            >
+              {PAYMENT_TERMS_OPTIONS.map((t) => (
+                <option key={t.code} value={t.code} style={{ color: "#1a1a1a", backgroundColor: "#ffffff" }}>{t.label}</option>
+              ))}
+            </select>
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Due date</label>

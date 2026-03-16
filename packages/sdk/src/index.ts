@@ -152,7 +152,18 @@ export type {
   InvoiceSummary,
   ARAgingBucket,
 
+  // Customers
+  Customer,
+  CreateCustomerInput,
+  UpdateCustomerInput,
+
+  // Payment Terms
+  PaymentTermsCode,
+  PaymentTermsConfig,
+
 } from "@kounta/core";
+
+export { PAYMENT_TERMS, calculateDueDate, getPaymentTermsLabel } from "@kounta/core";
 
 export type {
   // Schema-derived input types
@@ -226,6 +237,9 @@ import type {
   RecordPaymentInput,
   InvoiceSummary,
   ARAgingBucket,
+  Customer,
+  CreateCustomerInput,
+  UpdateCustomerInput,
 } from "@kounta/core";
 
 import type {
@@ -330,6 +344,7 @@ export class Kounta {
   readonly revenue: RevenueModule;
   readonly fixedAssets: FixedAssetsModule;
   readonly invoices: InvoicesModule;
+  readonly customers: CustomersModule;
 
   constructor(config: KountaConfig) {
     this._apiKey = config.apiKey;
@@ -357,6 +372,7 @@ export class Kounta {
     this.revenue = new RevenueModule(this);
     this.fixedAssets = new FixedAssetsModule(this);
     this.invoices = new InvoicesModule(this);
+    this.customers = new CustomersModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1480,5 +1496,62 @@ class InvoicesModule {
   /** Send invoice email with PDF attachment to the customer. */
   async sendEmail(invoiceId: string): Promise<{ sent: boolean; to: string; invoiceNumber: string }> {
     return this.c.request("POST", `/v1/invoices/${invoiceId}/email`);
+  }
+}
+
+// ── Customers ───────────────────────────────────────────────────────────────
+
+class CustomersModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List customers with optional search and active filter. */
+  async list(opts?: { search?: string; active?: boolean; cursor?: string; limit?: number }): Promise<PaginatedResult<Customer>> {
+    const qs = buildQuery({ search: opts?.search, active: opts?.active, cursor: opts?.cursor, limit: opts?.limit });
+    return this.c.requestPaginated<Customer>(`/v1/customers${qs}`);
+  }
+
+  /** Create a new customer. */
+  async create(input: CreateCustomerInput): Promise<Customer> {
+    return this.c.request("POST", "/v1/customers", { body: input });
+  }
+
+  /** Get a customer by ID. */
+  async get(customerId: string): Promise<Customer> {
+    return this.c.request("GET", `/v1/customers/${customerId}`);
+  }
+
+  /** Update a customer. */
+  async update(customerId: string, input: UpdateCustomerInput): Promise<Customer> {
+    return this.c.request("PATCH", `/v1/customers/${customerId}`, { body: input });
+  }
+
+  /** Delete or deactivate a customer. */
+  async delete(customerId: string): Promise<{ deleted: boolean; id: string }> {
+    return this.c.request("DELETE", `/v1/customers/${customerId}`);
+  }
+
+  /** List invoices for a customer. */
+  async invoices(customerId: string): Promise<PaginatedResult<Invoice>> {
+    return this.c.requestPaginated<Invoice>(`/v1/customers/${customerId}/invoices`);
+  }
+
+  /** Get a customer statement (outstanding invoices summary). */
+  async statement(customerId: string): Promise<{
+    customer: { id: string; name: string; email: string | null };
+    totalOutstanding: number;
+    totalOverdue: number;
+    currency: string;
+    invoices: {
+      id: string;
+      invoiceNumber: string;
+      issueDate: string;
+      dueDate: string;
+      total: number;
+      amountPaid: number;
+      amountDue: number;
+      status: string;
+    }[];
+  }> {
+    return this.c.request("GET", `/v1/customers/${customerId}/statement`);
   }
 }

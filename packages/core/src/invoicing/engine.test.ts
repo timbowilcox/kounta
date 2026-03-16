@@ -44,6 +44,9 @@ const applyMigrations = (db: Database) => {
   const m021 = readFileSync(
     resolve(__dirname, "../db/migrations/021_invoicing.sqlite.sql"), "utf-8",
   );
+  const m024 = readFileSync(
+    resolve(__dirname, "../db/migrations/024_customers.sqlite.sql"), "utf-8",
+  );
   const schemaWithoutPragmas = m001
     .split("\n")
     .filter((line) => !line.trim().startsWith("PRAGMA"))
@@ -52,6 +55,8 @@ const applyMigrations = (db: Database) => {
   db.exec(m006);
   db.exec(m019);
   db.exec(m021);
+  // 024 has ALTER TABLE which may fail if columns already exist in SQLite
+  try { db.exec(m024); } catch { /* columns may already exist */ }
 };
 
 const seedTestData = async (db: Database) => {

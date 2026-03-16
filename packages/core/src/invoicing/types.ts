@@ -62,6 +62,8 @@ export interface Invoice {
   readonly paidDate: string | null;
   readonly notes: string | null;
   readonly footer: string | null;
+  readonly customerId: string | null;
+  readonly paymentTerms: string | null;
   readonly revenueAccountId: string | null;
   readonly arAccountId: string | null;
   readonly taxAccountId: string | null;
@@ -85,11 +87,13 @@ export interface CreateInvoiceLineItemInput {
 }
 
 export interface CreateInvoiceInput {
+  readonly customerId?: string;
   readonly customerName: string;
   readonly customerEmail?: string;
   readonly customerAddress?: string;
   readonly issueDate: string;
-  readonly dueDate: string;
+  readonly dueDate?: string;
+  readonly paymentTerms?: string;
   readonly lineItems: readonly CreateInvoiceLineItemInput[];
   readonly taxRate?: number;
   readonly taxInclusive?: boolean;
@@ -103,9 +107,11 @@ export interface CreateInvoiceInput {
 }
 
 export interface UpdateInvoiceInput {
+  readonly customerId?: string | null;
   readonly customerName?: string;
   readonly customerEmail?: string;
   readonly customerAddress?: string;
+  readonly paymentTerms?: string;
   readonly issueDate?: string;
   readonly dueDate?: string;
   readonly lineItems?: readonly CreateInvoiceLineItemInput[];
@@ -176,6 +182,8 @@ export interface InvoiceRow {
   ar_transaction_id: string | null;
   notes: string | null;
   footer: string | null;
+  customer_id: string | null;
+  payment_terms: string | null;
   revenue_account_id: string | null;
   ar_account_id: string | null;
   tax_account_id: string | null;
@@ -268,6 +276,8 @@ export const mapInvoice = (
   paidDate: row.paid_date,
   notes: row.notes,
   footer: row.footer,
+  customerId: row.customer_id ?? null,
+  paymentTerms: row.payment_terms ?? null,
   revenueAccountId: row.revenue_account_id,
   arAccountId: row.ar_account_id,
   taxAccountId: row.tax_account_id,

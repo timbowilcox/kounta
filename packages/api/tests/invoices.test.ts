@@ -58,6 +58,10 @@ const migration021Sql = readFileSync(
   resolve(__dirname, "../../core/src/db/migrations/021_invoicing.sqlite.sql"),
   "utf-8"
 );
+const migration024Sql = readFileSync(
+  resolve(__dirname, "../../core/src/db/migrations/024_customers.sqlite.sql"),
+  "utf-8"
+);
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
@@ -71,6 +75,7 @@ const createTestDb = async (): Promise<Database> => {
   db.exec(migration018Sql);
   db.exec(migration019Sql);
   db.exec(migration021Sql);
+  try { db.exec(migration024Sql); } catch { /* ALTER TABLE may fail if columns exist */ }
   return db;
 };
 
