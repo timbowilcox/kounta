@@ -101,6 +101,9 @@ export interface CreateFixedAssetInput {
   // Jurisdiction-specific overrides
   readonly macrsPropertyClass?: string;
   readonly capitalAllowancePool?: CapitalAllowancePool;
+  // Pro-rata first period (default true). When true, the first depreciation
+  // period is reduced proportionally based on days remaining in the purchase month.
+  readonly proRataFirstPeriod?: boolean;
 }
 
 export interface DisposeAssetInput {
