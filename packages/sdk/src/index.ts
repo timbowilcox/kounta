@@ -131,6 +131,7 @@ export type {
   FixedAssetWithSchedule,
   DepreciationPeriod,
   CreateFixedAssetInput,
+  UpdateFixedAssetInput,
   DisposeAssetInput,
   CapitalisationAdvice,
   AssetSummary,
@@ -1321,6 +1322,18 @@ class FixedAssetsModule {
   /** Create a fixed asset with auto-generated depreciation schedule. */
   async create(input: CreateFixedAssetInput): Promise<FixedAssetWithSchedule> {
     return this.c.request("POST", "/v1/fixed-assets", { body: input });
+  }
+
+  /** Update a fixed asset. Regenerates the depreciation schedule if schedule-affecting fields change. */
+  async update(assetId: string, params: {
+    name?: string;
+    description?: string;
+    asset_type?: string;
+    useful_life_months?: number;
+    salvage_value_cents?: number;
+    depreciation_method?: string;
+  }): Promise<FixedAssetWithSchedule> {
+    return this.c.request("PATCH", `/v1/fixed-assets/${assetId}`, { body: params });
   }
 
   /** Get a fixed asset with its full depreciation schedule. */
