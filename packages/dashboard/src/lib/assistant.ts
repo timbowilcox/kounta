@@ -49,7 +49,8 @@ Guidelines:
 - Be concise and direct. Lead with the answer, then provide context.
 - When showing financial data, use clear formatting with aligned numbers.
 - For reports (P&L, balance sheet, cash flow), summarise the key insights first, then offer to show the full breakdown.
-- When the user asks to post a transaction or reverse one, describe what will happen and wait for their confirmation. Never execute write operations without explicit user approval.
+- You can create, send, and manage invoices. Sending an invoice and recording payments are write operations that require confirmation.
+- When the user asks to post a transaction, reverse one, send an invoice, or record a payment, describe what will happen and wait for their confirmation. Never execute write operations without explicit user approval.
 - If a question is ambiguous, ask a clarifying question rather than guessing.
 - Use accounting terminology correctly but explain it simply when the user seems unfamiliar.`;
 
@@ -123,7 +124,7 @@ function buildSystemPrompt(ledgerContext?: {
 // Tool definitions
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction", "create_recurring_entry", "run_depreciation"]);
+const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction", "create_recurring_entry", "run_depreciation", "send_invoice", "record_invoice_payment"]);
 
 const tools: Anthropic.Tool[] = [
   {
@@ -360,6 +361,105 @@ const tools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // --- Invoices / Accounts Receivable ---
+  {
+    name: "create_invoice",
+    description: "Create a draft invoice for a customer. Provide customer name, line items with descriptions and prices, and optionally a due date. Tax is calculated based on the ledger's jurisdiction. The invoice starts in 'draft' status — use send_invoice to approve and post the accounting entry.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        customerName: { type: "string", description: "Customer name" },
+        customerEmail: { type: "string", description: "Customer email address" },
+        lineItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string", description: "Line item description" },
+              quantity: { type: "number", description: "Quantity" },
+              unitPrice: { type: "number", description: "Unit price in cents" },
+              taxRate: { type: "number", description: "Per-line tax rate override (e.g. 0.10 for 10%)" },
+            },
+            required: ["description", "quantity", "unitPrice"],
+          },
+          description: "Invoice line items",
+        },
+        dueDate: { type: "string", description: "Due date (YYYY-MM-DD). Defaults to 30 days from today" },
+        issueDate: { type: "string", description: "Issue date (YYYY-MM-DD). Defaults to today" },
+        notes: { type: "string", description: "Notes to appear on the invoice" },
+        taxInclusive: { type: "boolean", description: "Whether prices include tax (default: false)" },
+        invoiceNumber: { type: "string", description: "Custom invoice number (auto-generated if omitted)" },
+      },
+      required: ["customerName", "lineItems"],
+    },
+  },
+  {
+    name: "list_invoices",
+    description: "List invoices with optional filters. Shows customer name, amount, status, and days outstanding. Use to check who owes money, find overdue invoices, or review recent billing.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["draft", "sent", "paid", "partially_paid", "overdue", "void"], description: "Filter by status" },
+        customer: { type: "string", description: "Filter by customer name (partial match)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_invoice",
+    description: "Get full details of a specific invoice including all line items, payment history, and linked journal entries.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        invoiceId: { type: "string", description: "Invoice ID" },
+      },
+      required: ["invoiceId"],
+    },
+  },
+  {
+    name: "send_invoice",
+    description: "Approve and send an invoice. Changes status from 'draft' to 'sent' and posts the Accounts Receivable journal entry (debit AR, credit Revenue, credit GST/VAT if applicable). Once sent, the invoice cannot be edited — only voided. This is a write operation that requires user confirmation.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        invoiceId: { type: "string", description: "Invoice ID to send" },
+      },
+      required: ["invoiceId"],
+    },
+  },
+  {
+    name: "record_invoice_payment",
+    description: "Record a payment received against an invoice. Posts a journal entry (debit Cash/Bank, credit Accounts Receivable). Automatically updates status to 'paid' or 'partially_paid'. This is a write operation that requires user confirmation.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        invoiceId: { type: "string", description: "Invoice ID" },
+        amountCents: { type: "number", description: "Payment amount in cents" },
+        paymentDate: { type: "string", description: "Payment date (YYYY-MM-DD)" },
+        paymentMethod: { type: "string", description: "Payment method (bank_transfer, stripe, cash, other)" },
+        reference: { type: "string", description: "Bank reference or payment ID" },
+      },
+      required: ["invoiceId", "amountCents", "paymentDate"],
+    },
+  },
+  {
+    name: "get_invoice_summary",
+    description: "Get a summary of accounts receivable: total outstanding, total overdue, number of open invoices, and average days to payment. Use for a quick financial health check.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_ar_aging",
+    description: "Get an accounts receivable aging report showing outstanding invoices grouped by how overdue they are: Current, 1-30 days, 31-60 days, 61-90 days, and 90+ days. Use for cash flow planning and identifying collection issues.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -515,6 +615,74 @@ async function executeTool(
         isWriteConfirmation: true,
       };
 
+    case "create_invoice": {
+      const today = new Date().toISOString().slice(0, 10);
+      const defaultDue = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
+      return {
+        output: await client.invoices.create({
+          customerName: input.customerName as string,
+          customerEmail: input.customerEmail as string | undefined,
+          lineItems: (input.lineItems as Array<{
+            description: string;
+            quantity: number;
+            unitPrice: number;
+            taxRate?: number;
+          }>).map((li) => ({
+            description: li.description,
+            quantity: li.quantity,
+            unitPrice: li.unitPrice,
+            taxRate: li.taxRate,
+          })),
+          issueDate: (input.issueDate as string) ?? today,
+          dueDate: (input.dueDate as string) ?? defaultDue,
+          notes: input.notes as string | undefined,
+          taxInclusive: input.taxInclusive as boolean | undefined,
+          invoiceNumber: input.invoiceNumber as string | undefined,
+        }),
+      };
+    }
+
+    case "list_invoices":
+      return {
+        output: await client.invoices.list({
+          status: input.status as string | undefined,
+          customer: input.customer as string | undefined,
+        }),
+      };
+
+    case "get_invoice":
+      return {
+        output: await client.invoices.get(input.invoiceId as string),
+      };
+
+    case "send_invoice":
+      return {
+        output: {
+          confirmation_required: true,
+          action: "send_invoice",
+          description: `Approve and send invoice ${input.invoiceId}`,
+          details: input,
+        },
+        isWriteConfirmation: true,
+      };
+
+    case "record_invoice_payment":
+      return {
+        output: {
+          confirmation_required: true,
+          action: "record_invoice_payment",
+          description: `Record payment of ${input.amountCents} cents against invoice ${input.invoiceId}`,
+          details: input,
+        },
+        isWriteConfirmation: true,
+      };
+
+    case "get_invoice_summary":
+      return { output: await client.invoices.getSummary() };
+
+    case "get_ar_aging":
+      return { output: await client.invoices.getAging() };
+
     default:
       return { output: { error: `Unknown tool: ${toolName}` } };
   }
@@ -564,6 +732,17 @@ export async function executeConfirmedWrite(
 
     case "run_depreciation":
       return client.fixedAssets.runDepreciation();
+
+    case "send_invoice":
+      return client.invoices.send(input.invoiceId as string);
+
+    case "record_invoice_payment":
+      return client.invoices.recordPayment(input.invoiceId as string, {
+        amount: input.amountCents as number,
+        paymentDate: input.paymentDate as string,
+        paymentMethod: input.paymentMethod as string | undefined,
+        reference: input.reference as string | undefined,
+      });
 
     default:
       throw new Error(`Not a write tool: ${toolName}`);

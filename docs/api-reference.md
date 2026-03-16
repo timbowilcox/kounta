@@ -44,6 +44,7 @@ Complete reference for the Kounta REST API.
   - [Onboarding](#onboarding)
   - [Admin](#admin)
   - [Fixed Assets](#fixed-assets)
+  - [Invoices](#invoices)
   - [Jurisdiction](#jurisdiction)
 - [Quick Reference](#quick-reference)
 
@@ -1814,6 +1815,131 @@ Post all pending depreciation entries. Creates journal entries for each asset wi
 **Auth:** API Key
 
 **Response:** `201 Created` — Returns the posted depreciation transactions.
+
+---
+
+### Invoices
+
+Full Accounts Receivable lifecycle: create, send (approve), record payment, void, summary, and AR aging.
+
+#### `GET /v1/invoices`
+
+List invoices with optional filters.
+
+**Auth:** API Key
+
+**Query params:**
+| Param | Description |
+|-------|-------------|
+| `status` | Filter by status: `draft`, `sent`, `paid`, `partially_paid`, `overdue`, `void` |
+| `customer` | Filter by customer name (partial match) |
+| `from_date` | Filter by issue date (YYYY-MM-DD) |
+| `to_date` | Filter by issue date (YYYY-MM-DD) |
+| `cursor` | Pagination cursor |
+| `limit` | Max results (default 50, max 200) |
+
+**Response:** `200 OK` — Paginated list of invoices.
+
+#### `POST /v1/invoices`
+
+Create a new draft invoice.
+
+**Auth:** API Key
+
+**Body:**
+```json
+{
+  "customerName": "Acme Corp",
+  "customerEmail": "billing@acme.com",
+  "issueDate": "2025-06-01",
+  "dueDate": "2025-07-01",
+  "lineItems": [
+    { "description": "Consulting", "quantity": 10, "unitPrice": 15000 },
+    { "description": "Travel", "quantity": 1, "unitPrice": 50000 }
+  ],
+  "notes": "Payment due within 30 days",
+  "taxInclusive": false,
+  "invoiceNumber": "INV-001"
+}
+```
+
+**Response:** `201 Created` — Returns the created invoice with calculated totals and tax.
+
+#### `GET /v1/invoices/summary`
+
+Get an AR summary: total outstanding, total overdue, invoice count, average days to payment.
+
+**Auth:** API Key
+
+**Response:** `200 OK`
+
+#### `GET /v1/invoices/aging`
+
+Get an AR aging report with buckets: Current, 1-30 days, 31-60 days, 61-90 days, 90+ days.
+
+**Auth:** API Key
+
+**Response:** `200 OK`
+
+#### `GET /v1/invoices/:id`
+
+Get full invoice details including line items and payment history.
+
+**Auth:** API Key
+
+**Response:** `200 OK`
+
+#### `PATCH /v1/invoices/:id`
+
+Update a draft invoice. Only draft invoices can be edited.
+
+**Auth:** API Key
+
+**Body:** Partial invoice fields (customerName, lineItems, dueDate, etc.)
+
+**Response:** `200 OK`
+
+#### `POST /v1/invoices/:id/send`
+
+Approve and send an invoice. Transitions from `draft` to `sent` and posts the AR journal entry (debit Accounts Receivable, credit Revenue, credit GST/VAT if applicable). Once sent, an invoice cannot be edited — only voided.
+
+**Auth:** API Key
+
+**Response:** `200 OK`
+
+#### `POST /v1/invoices/:id/payment`
+
+Record a payment against an invoice. Posts a journal entry (debit Cash/Bank, credit Accounts Receivable). Automatically updates status to `paid` or `partially_paid`.
+
+**Auth:** API Key
+
+**Body:**
+```json
+{
+  "amount": 220000,
+  "paymentDate": "2025-06-15",
+  "paymentMethod": "bank_transfer",
+  "reference": "REF-001"
+}
+```
+
+**Response:** `200 OK`
+
+#### `POST /v1/invoices/:id/void`
+
+Void an invoice and reverse the AR journal entry. Cannot void invoices with recorded payments.
+
+**Auth:** API Key
+
+**Response:** `200 OK`
+
+#### `DELETE /v1/invoices/:id`
+
+Delete a draft invoice. Only draft invoices can be deleted (no accounting impact).
+
+**Auth:** API Key
+
+**Response:** `200 OK`
 
 ---
 

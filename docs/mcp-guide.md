@@ -1,7 +1,7 @@
 # MCP Server Guide
 
 ## Overview
-The Kounta MCP server exposes 55 tools, 4 resources, and 3 prompt templates for AI-powered accounting. Two transport modes:
+The Kounta MCP server exposes 63 tools, 4 resources, and 3 prompt templates for AI-powered accounting. Two transport modes:
 - **Hosted (SSE)**: Connect to `https://mcp.kounta.ai` with your API key
 - **Local (stdio)**: Run locally with `npx @kounta/mcp` for development
 
@@ -157,6 +157,16 @@ Health check: GET `https://mcp.kounta.ai/health`
 53. **update_fixed_asset** — Update asset details (name, useful life, method, etc.). Params: `assetId`, `name?`, `description?`, `usefulLifeMonths?`, `salvageValueCents?`, `depreciationMethod?`, `assetType?`
 54. **update_jurisdiction** — Update ledger jurisdiction and tax settings. Params: `ledgerId`, `jurisdiction?`, `taxId?`, `taxBasis?`
 55. **get_setup_guide** — Get jurisdiction-aware setup guide for fixed assets. Params: `ledgerId`
+
+### Invoices / Accounts Receivable
+56. **create_invoice** — Create a draft invoice for a customer. Params: `ledgerId`, `customerName`, `customerEmail?`, `lineItems`, `dueDate?`, `issueDate?`, `notes?`, `taxInclusive?`, `invoiceNumber?`
+57. **list_invoices** — List invoices with optional filters. Params: `ledgerId`, `status?`, `customer?`
+58. **get_invoice** — Get full invoice details with line items and payments. Params: `invoiceId`
+59. **send_invoice** — Approve and send invoice, posting AR journal entry. Params: `ledgerId`, `invoiceId`
+60. **record_invoice_payment** — Record payment against an invoice. Params: `ledgerId`, `invoiceId`, `amountCents`, `paymentDate`, `paymentMethod?`, `reference?`, `bankAccountId?`
+61. **void_invoice** — Void an invoice and reverse AR entry. Params: `ledgerId`, `invoiceId`
+62. **get_invoice_summary** — Get AR summary (outstanding, overdue, counts). Params: `ledgerId`
+63. **get_ar_aging** — Get AR aging report by overdue buckets. Params: `ledgerId`
 
 ## Resources (4)
 1. `ledger://{id}/chart-of-accounts` — Full chart of accounts as JSON

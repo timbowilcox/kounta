@@ -141,6 +141,17 @@ export type {
   AssetStatus,
   CapitalAllowancePool,
 
+  // Invoicing
+  Invoice,
+  InvoiceLineItem,
+  InvoicePayment,
+  InvoiceStatus,
+  CreateInvoiceInput,
+  UpdateInvoiceInput,
+  RecordPaymentInput,
+  InvoiceSummary,
+  ARAgingBucket,
+
 } from "@kounta/core";
 
 export type {
@@ -209,6 +220,12 @@ import type {
   AssetSummary,
   DepreciationRunResult,
   DisposalResult,
+  Invoice,
+  CreateInvoiceInput,
+  UpdateInvoiceInput,
+  RecordPaymentInput,
+  InvoiceSummary,
+  ARAgingBucket,
 } from "@kounta/core";
 
 import type {
@@ -312,6 +329,7 @@ export class Kounta {
   readonly stripeConnect: StripeConnectModule;
   readonly revenue: RevenueModule;
   readonly fixedAssets: FixedAssetsModule;
+  readonly invoices: InvoicesModule;
 
   constructor(config: KountaConfig) {
     this._apiKey = config.apiKey;
@@ -338,6 +356,7 @@ export class Kounta {
     this.stripeConnect = new StripeConnectModule(this);
     this.revenue = new RevenueModule(this);
     this.fixedAssets = new FixedAssetsModule(this);
+    this.invoices = new InvoicesModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1374,5 +1393,62 @@ class FixedAssetsModule {
   /** Dispose of a fixed asset. */
   async dispose(assetId: string, input: DisposeAssetInput): Promise<DisposalResult> {
     return this.c.request("POST", `/v1/fixed-assets/${assetId}/dispose`, { body: input });
+  }
+}
+
+// ── Invoices ────────────────────────────────────────────────────────────────
+
+class InvoicesModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List invoices with optional filters. */
+  async list(opts?: { status?: string; customer?: string; cursor?: string; limit?: number }): Promise<PaginatedResult<Invoice>> {
+    const qs = buildQuery({ status: opts?.status, customer: opts?.customer, cursor: opts?.cursor, limit: opts?.limit });
+    return this.c.requestPaginated<Invoice>(`/v1/invoices${qs}`);
+  }
+
+  /** Create a new invoice. */
+  async create(input: Omit<CreateInvoiceInput, "ledgerId">): Promise<Invoice> {
+    return this.c.request("POST", "/v1/invoices", { body: input });
+  }
+
+  /** Get an invoice with line items and payments. */
+  async get(invoiceId: string): Promise<Invoice> {
+    return this.c.request("GET", `/v1/invoices/${invoiceId}`);
+  }
+
+  /** Update a draft invoice. */
+  async update(invoiceId: string, input: UpdateInvoiceInput): Promise<Invoice> {
+    return this.c.request("PATCH", `/v1/invoices/${invoiceId}`, { body: input });
+  }
+
+  /** Send (approve) an invoice — posts the AR journal entry. */
+  async send(invoiceId: string): Promise<Invoice> {
+    return this.c.request("POST", `/v1/invoices/${invoiceId}/send`);
+  }
+
+  /** Record a payment against an invoice. */
+  async recordPayment(invoiceId: string, input: RecordPaymentInput): Promise<Invoice> {
+    return this.c.request("POST", `/v1/invoices/${invoiceId}/payment`, { body: input });
+  }
+
+  /** Void an invoice — reverses the AR journal entry if posted. */
+  async void(invoiceId: string): Promise<Invoice> {
+    return this.c.request("POST", `/v1/invoices/${invoiceId}/void`);
+  }
+
+  /** Delete a draft invoice. */
+  async delete(invoiceId: string): Promise<{ deleted: boolean; id: string }> {
+    return this.c.request("DELETE", `/v1/invoices/${invoiceId}`);
+  }
+
+  /** Get invoice summary (totals, counts, averages). */
+  async getSummary(): Promise<InvoiceSummary> {
+    return this.c.request("GET", "/v1/invoices/summary");
+  }
+
+  /** Get AR aging report. */
+  async getAging(): Promise<ARAgingBucket[]> {
+    return this.c.request("GET", "/v1/invoices/aging");
   }
 }

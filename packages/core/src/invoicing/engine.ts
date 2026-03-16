@@ -805,6 +805,90 @@ export const checkOverdueInvoices = async (
 };
 
 // ---------------------------------------------------------------------------
+// Bank feed invoice matching
+// ---------------------------------------------------------------------------
+
+export interface InvoicePaymentMatch {
+  readonly invoiceId: string;
+  readonly invoiceNumber: string;
+  readonly customerName: string;
+  readonly invoiceTotal: number;
+  readonly invoiceAmountDue: number;
+  readonly bankTransactionAmount: number;
+  readonly confidence: number;
+}
+
+/**
+ * Match a bank deposit against outstanding invoices.
+ *
+ * Scoring:
+ * - Exact amount match:         60 pts
+ * - Amount within 1%:           40 pts
+ * - Customer name in memo:      30 pts
+ * - Invoice number in memo:     10 pts
+ *
+ * Returns matches with confidence >= 0.5, sorted descending.
+ */
+export const matchBankDepositToInvoices = async (
+  db: Database,
+  ledgerId: string,
+  depositAmountCents: number,
+  depositMemo: string,
+  _depositDate: string,
+): Promise<readonly InvoicePaymentMatch[]> => {
+  // Only match positive (credit) deposits
+  if (depositAmountCents <= 0) return [];
+
+  const invoices = await db.all<InvoiceRow>(
+    `SELECT * FROM invoices
+     WHERE ledger_id = ? AND status IN ('sent', 'partially_paid', 'overdue')
+     AND amount_due > 0`,
+    [ledgerId],
+  );
+
+  const memoLower = depositMemo.toLowerCase();
+  const matches: InvoicePaymentMatch[] = [];
+
+  for (const inv of invoices) {
+    let score = 0;
+
+    // Amount matching
+    const amountDue = Number(inv.amount_due);
+    if (depositAmountCents === amountDue) {
+      score += 60;
+    } else {
+      const diff = Math.abs(depositAmountCents - amountDue) / amountDue;
+      if (diff <= 0.01) score += 40;
+    }
+
+    // Customer name in memo
+    if (memoLower.includes(inv.customer_name.toLowerCase())) {
+      score += 30;
+    }
+
+    // Invoice number in memo
+    if (memoLower.includes(inv.invoice_number.toLowerCase())) {
+      score += 10;
+    }
+
+    const confidence = score / 100;
+    if (confidence >= 0.5) {
+      matches.push({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoice_number,
+        customerName: inv.customer_name,
+        invoiceTotal: Number(inv.total),
+        invoiceAmountDue: amountDue,
+        bankTransactionAmount: depositAmountCents,
+        confidence,
+      });
+    }
+  }
+
+  return matches.sort((a, b) => b.confidence - a.confidence);
+};
+
+// ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 

@@ -23,8 +23,8 @@ Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 312+ tests pas
 packages/
   core/       # @kounta/core — double-entry engine, domain logic
   api/        # @kounta/api — REST API via Hono
-  mcp/        # @kounta/mcp — MCP server (55 tools)
-  sdk/        # @kounta/sdk — TypeScript client SDK (12 modules)
+  mcp/        # @kounta/mcp — MCP server (63 tools)
+  sdk/        # @kounta/sdk — TypeScript client SDK (13 modules)
   dashboard/  # @kounta/dashboard — Next.js dashboard (14 pages)
 examples/
   saas-tracker/        # SaaS subscription revenue tracker
@@ -106,19 +106,34 @@ examples/
     - SDK: FixedAssetsModule
     - 77+ new tests (63 engine + 14 API integration)
 
+### Phase 2, Block 4 — Invoicing / Accounts Receivable
+
+19. **Invoicing** (Migration 021)
+    - Full AR lifecycle: create draft, send (approve), record payment, void
+    - Invoice line items with per-line tax rate overrides
+    - Multiple payments per invoice (partial payment support)
+    - AR journal entry posted on send (debit AR, credit Revenue, credit GST/VAT)
+    - Payment journal entry posted on payment (debit Cash/Bank, credit AR)
+    - Void reverses AR journal entry
+    - Invoice summary and AR aging report (Current, 1-30, 31-60, 61-90, 90+ days)
+    - Overdue scheduler (daily check, marks past-due invoices as overdue)
+    - API: 10 endpoints (GET list, POST create, GET summary, GET aging, GET by ID, PATCH update, POST send, POST payment, POST void, DELETE draft)
+    - MCP: 8 invoice tools (create_invoice, list_invoices, get_invoice, send_invoice, record_invoice_payment, void_invoice, get_invoice_summary, get_ar_aging)
+    - SDK: InvoicesModule with 10 methods
+    - Dashboard: 7 AI assistant tools with write confirmations for send and payment
+    - 48 new tests (30 core engine + 18 API integration)
+
 ## Current State
 
 ### Test Status
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| @kounta/core | 192 | ✅ passing |
-| @kounta/mcp | 36 | ✅ passing |
-| @kounta/api | 49 (45 integration + 4 benchmark) | ✅ passing |
+| @kounta/core | 350 | ✅ passing |
+| @kounta/mcp | 44 | ✅ passing |
+| @kounta/api | 67 (63 integration + 4 benchmark) | ✅ passing |
 | @kounta/sdk | 35 | ✅ passing |
-| **Total** | **312+** | **all passing** |
-
-> Note: 77+ new tests added for fixed assets (63 depreciation engine + 14 API integration).
+| **Total** | **496+** | **all passing** |
 
 ### Database Migrations
 
@@ -144,22 +159,23 @@ examples/
 | 018 | fixed_assets | Fixed asset register and depreciation schedules |
 | 019 | jurisdiction | Jurisdiction configuration (AU, US, UK, NZ, CA, SG) |
 | 020 | capitalisation_notification | Capitalisation check notification type |
+| 021 | invoicing | Invoices, invoice line items, invoice payments (AR lifecycle) |
 
-### MCP Tools (55 total)
+### MCP Tools (63 total)
 
-setup_ledger, complete_setup, post_transaction, reverse_transaction, search_transactions, list_accounts, create_account, get_statement, import_file, confirm_matches, get_import_batch, get_usage, connect_bank, list_bank_accounts, sync_bank_feed, list_bank_transactions, match_bank_transaction, list_notifications, get_unread_count, action_notification, manage_preferences, generate_insights, enable_currency, set_exchange_rate, list_exchange_rates, convert_amount, revalue_accounts, check_capitalisation, create_fixed_asset, list_fixed_assets, get_depreciation_schedule, get_depreciation_due, run_depreciation, get_asset_register_summary, dispose_fixed_asset, update_fixed_asset, update_jurisdiction, get_setup_guide, ...
+setup_ledger, complete_setup, post_transaction, reverse_transaction, search_transactions, list_accounts, create_account, get_statement, import_file, confirm_matches, get_import_batch, get_usage, connect_bank, list_bank_accounts, sync_bank_feed, list_bank_transactions, match_bank_transaction, list_notifications, get_unread_count, action_notification, manage_preferences, generate_insights, enable_currency, set_exchange_rate, list_exchange_rates, convert_amount, revalue_accounts, check_capitalisation, create_fixed_asset, list_fixed_assets, get_depreciation_schedule, get_depreciation_due, run_depreciation, get_asset_register_summary, dispose_fixed_asset, update_fixed_asset, update_jurisdiction, get_setup_guide, create_invoice, list_invoices, get_invoice, send_invoice, record_invoice_payment, void_invoice, get_invoice_summary, get_ar_aging
 
-### SDK Modules (13)
+### SDK Modules (14)
 
-ledgers, accounts, transactions, reports, audit, imports, templates, apiKeys, admin, bankFeeds, notifications, currencies, fixedAssets
+ledgers, accounts, transactions, reports, audit, imports, templates, apiKeys, admin, bankFeeds, notifications, currencies, fixedAssets, invoices
 
 ### Dashboard Pages (16)
 
 /, /accounts, /transactions, /statements, /bank-feeds, /notifications, /currencies, /fixed-assets, /settings, /api-keys, /mcp, /billing, /templates, /signin + auth API route
 
-### API Endpoints (45+)
+### API Endpoints (55+)
 
-Health, Ledgers (CRUD), Accounts (CRUD), Transactions (post/list/get/reverse), Reports (P&L/BS/CF), Audit, Templates (list/get/recommend/apply), Imports (upload/list/get/confirm), API Keys (create/list/revoke), Currencies (list/enable), Exchange Rates (list/set/convert), Revalue, Bank Feeds (connect/list/sync/match), Notifications (list/get/action/preferences/generate), Billing/Usage, Fixed Assets (create/list/get/update/dispose/depreciation-schedule/depreciation-due/run-depreciation/register-summary/capitalisation-check), Jurisdiction (get/patch)
+Health, Ledgers (CRUD), Accounts (CRUD), Transactions (post/list/get/reverse), Reports (P&L/BS/CF), Audit, Templates (list/get/recommend/apply), Imports (upload/list/get/confirm), API Keys (create/list/revoke), Currencies (list/enable), Exchange Rates (list/set/convert), Revalue, Bank Feeds (connect/list/sync/match), Notifications (list/get/action/preferences/generate), Billing/Usage, Fixed Assets (create/list/get/update/dispose/depreciation-schedule/depreciation-due/run-depreciation/register-summary/capitalisation-check), Jurisdiction (get/patch), Invoices (list/create/get/update/send/payment/void/delete/summary/aging)
 
 ## Environment Variables
 

@@ -1,0 +1,6 @@
+-- ---------------------------------------------------------------------------
+-- 022: Add invoice_payment_match notification type (SQLite)
+-- ---------------------------------------------------------------------------
+-- SQLite uses CHECK constraints not enums. The CHECK on the notifications
+-- table already uses a permissive list or no constraint, so no DDL needed.
+-- This file exists for migration-runner parity.

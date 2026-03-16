@@ -60,7 +60,7 @@ function parseToolResult(result: { content: unknown[] }): unknown {
 // ---------------------------------------------------------------------------
 
 describe("Tool discovery", () => {
-  it("lists all 55 tools", async () => {
+  it("lists all 63 tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
@@ -74,16 +74,20 @@ describe("Tool discovery", () => {
       "create_account",
       "create_classification_rule",
       "create_fixed_asset",
+      "create_invoice",
       "create_recurring_entry",
       "create_revenue_schedule",
       "dispose_fixed_asset",
       "enable_currency",
       "generate_insights",
+      "get_ar_aging",
       "get_asset_register_summary",
       "get_deferred_revenue",
       "get_depreciation_due",
       "get_depreciation_schedule",
       "get_import_batch",
+      "get_invoice",
+      "get_invoice_summary",
       "get_mrr",
       "get_notification",
       "get_revenue_schedule",
@@ -99,6 +103,7 @@ describe("Tool discovery", () => {
       "list_classification_rules",
       "list_exchange_rates",
       "list_fixed_assets",
+      "list_invoices",
       "list_merchant_aliases",
       "list_notifications",
       "list_recurring_entries",
@@ -106,11 +111,13 @@ describe("Tool discovery", () => {
       "map_bank_account",
       "pause_recurring_entry",
       "post_transaction",
+      "record_invoice_payment",
       "resume_recurring_entry",
       "revalue_accounts",
       "reverse_transaction",
       "run_depreciation",
       "search_transactions",
+      "send_invoice",
       "set_exchange_rate",
       "setup_ledger",
       "sync_bank_account",
@@ -119,6 +126,7 @@ describe("Tool discovery", () => {
       "update_jurisdiction",
       "update_notification",
       "update_recurring_entry",
+      "void_invoice",
     ]);
   });
 });

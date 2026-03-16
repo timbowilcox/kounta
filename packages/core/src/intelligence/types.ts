@@ -14,6 +14,7 @@ export type NotificationType =
   | "schedule_completion"
   | "large_deferred_balance"
   | "capitalisation_check"
+  | "invoice_payment_match"
   | "system";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
@@ -113,6 +114,19 @@ export interface UnclassifiedData {
     memo: string;
     amount: number;
   }[];
+}
+
+export interface InvoicePaymentMatchData {
+  readonly invoiceId: string;
+  readonly invoiceNumber: string;
+  readonly customerName: string;
+  readonly invoiceTotal: number;
+  readonly invoiceAmountDue: number;
+  readonly bankTransactionId: string;
+  readonly bankTransactionAmount: number;
+  readonly bankTransactionDate: string;
+  readonly bankTransactionMemo: string;
+  readonly confidence: number;
 }
 
 // ---------------------------------------------------------------------------
