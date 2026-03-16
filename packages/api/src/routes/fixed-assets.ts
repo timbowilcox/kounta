@@ -19,8 +19,9 @@ import {
   getAssetSummary,
   disposeFixedAsset,
   adviseOnCapitalisation,
+  updateFixedAsset,
 } from "@kounta/core";
-import type { CreateFixedAssetInput, DisposeAssetInput } from "@kounta/core";
+import type { CreateFixedAssetInput, UpdateFixedAssetInput, DisposeAssetInput } from "@kounta/core";
 
 export const fixedAssetRoutes = new Hono<Env>();
 
@@ -134,6 +135,33 @@ fixedAssetRoutes.get("/:id", async (c) => {
   const assetId = c.req.param("id");
 
   const result = await getFixedAsset(db, assetId);
+  if (!result.ok) return errorResponse(c, result.error);
+  return success(c, result.value);
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /:id — update fixed asset
+// ---------------------------------------------------------------------------
+
+fixedAssetRoutes.patch("/:id", async (c) => {
+  const db = c.get("engine").getDb();
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+  const assetId = c.req.param("id");
+
+  // Verify asset belongs to the authenticated ledger
+  const existing = await db.get<{ ledger_id: string }>(
+    "SELECT ledger_id FROM fixed_assets WHERE id = ?",
+    [assetId],
+  );
+  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+    return errorResponse(c, {
+      code: "FIXED_ASSET_NOT_FOUND",
+      message: `Fixed asset ${assetId} not found`,
+    });
+  }
+
+  const body = await c.req.json() as Omit<UpdateFixedAssetInput, never>;
+  const result = await updateFixedAsset(db, assetId, body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });

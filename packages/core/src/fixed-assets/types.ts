@@ -106,6 +106,15 @@ export interface CreateFixedAssetInput {
   readonly proRataFirstPeriod?: boolean;
 }
 
+export interface UpdateFixedAssetInput {
+  readonly name?: string;
+  readonly description?: string;
+  readonly assetType?: string;
+  readonly usefulLifeMonths?: number;
+  readonly salvageValueCents?: number;
+  readonly depreciationMethod?: DepreciationMethod;
+}
+
 export interface DisposeAssetInput {
   readonly disposalDate: string;
   readonly disposalProceeds: number;

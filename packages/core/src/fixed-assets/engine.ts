@@ -12,6 +12,7 @@ import type {
   FixedAssetWithSchedule,
   DepreciationPeriod,
   CreateFixedAssetInput,
+  UpdateFixedAssetInput,
   DisposeAssetInput,
   CapitalisationAdvice,
   AssetSummary,
@@ -910,6 +911,252 @@ export const getAssetSummary = async (
       fullyDepreciated: Number(stats?.fully_depreciated_count ?? 0),
     },
   };
+};
+
+// ---------------------------------------------------------------------------
+// Schedule regeneration — preserves posted entries, regenerates future ones
+// ---------------------------------------------------------------------------
+
+const VALID_DEPRECIATION_METHODS: readonly string[] = [
+  "straight_line", "diminishing_value", "declining_balance", "prime_cost",
+  "macrs", "writing_down_allowance", "aia", "section_179",
+  "bonus_depreciation", "instant_writeoff", "cca", "none",
+];
+
+export const regenerateSchedule = async (
+  db: Database,
+  assetId: string,
+): Promise<void> => {
+  const asset = await db.get<FixedAssetRow>(
+    "SELECT * FROM fixed_assets WHERE id = ?",
+    [assetId],
+  );
+  if (!asset) return;
+
+  const costAmount = Number(asset.cost_amount);
+  const salvageValue = Number(asset.salvage_value);
+  const method = asset.depreciation_method as DepreciationMethod;
+  const usefulLifeMonths = asset.useful_life_months ?? 60;
+  const ledgerId = asset.ledger_id;
+
+  // Get posted entries (these are preserved)
+  const postedRows = await db.all<DepreciationPeriodRow>(
+    "SELECT * FROM depreciation_schedule WHERE asset_id = ? AND posted_at IS NOT NULL ORDER BY period_number",
+    [assetId],
+  );
+
+  // Delete all unposted future schedule rows
+  await db.run(
+    "DELETE FROM depreciation_schedule WHERE asset_id = ? AND posted_at IS NULL",
+    [assetId],
+  );
+
+  const accumulatedPosted = postedRows.reduce((sum, r) => sum + Number(r.depreciation_amount), 0);
+  const currentNBV = costAmount - accumulatedPosted;
+  const periodsPosted = postedRows.length;
+
+  // Already fully depreciated by posted entries
+  if (currentNBV <= salvageValue) return;
+
+  // If no entries have been posted yet, regenerate from scratch
+  if (periodsPosted === 0) {
+    const schedule = generateSchedule(
+      costAmount, salvageValue, usefulLifeMonths,
+      asset.purchase_date, method, asset.jurisdiction,
+      asset.macrs_property_class, asset.capital_allowance_pool,
+      true,
+    );
+
+    const now = nowUtc();
+    for (const period of schedule) {
+      const periodId = generateId();
+      await db.run(
+        `INSERT INTO depreciation_schedule
+          (id, asset_id, ledger_id, jurisdiction, period_date, period_number,
+           financial_year, depreciation_amount, accumulated_depreciation,
+           net_book_value, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          periodId, assetId, ledgerId, asset.jurisdiction,
+          period.periodDate, period.periodNumber, period.financialYear,
+          period.depreciationAmount, period.accumulatedDepreciation,
+          period.netBookValue, now,
+        ],
+      );
+    }
+    return;
+  }
+
+  // Generate future periods from the current point onwards
+  const lastPosted = postedRows[postedRows.length - 1]!;
+  const baseDate = new Date(lastPosted.period_date + "T00:00:00Z");
+  const startPeriodNumber = lastPosted.period_number + 1;
+  const remainingDepreciable = currentNBV - salvageValue;
+  const remainingPeriods = Math.max(usefulLifeMonths - periodsPosted, 1);
+  const taxYearStartMonth = getTaxYearStartMonth(asset.jurisdiction);
+
+  const newPeriods: GeneratedPeriod[] = [];
+  let nbv = currentNBV;
+  let accumulated = accumulatedPosted;
+
+  for (let i = 0; i < remainingPeriods; i++) {
+    const periodNumber = startPeriodNumber + i;
+    const periodDate = addMonths(baseDate, i + 1);
+
+    let amount: number;
+
+    if (method === "straight_line" || method === "prime_cost") {
+      // Spread remaining depreciable evenly over remaining periods
+      amount = Math.floor(remainingDepreciable / remainingPeriods);
+    } else {
+      amount = calculateMonthlyDepreciation(
+        method, costAmount, salvageValue, usefulLifeMonths, nbv, periodNumber,
+        asset.jurisdiction, asset.macrs_property_class, asset.capital_allowance_pool,
+      );
+    }
+
+    if (nbv - amount < salvageValue) {
+      amount = nbv - salvageValue;
+    }
+    if (amount <= 0) break;
+
+    accumulated += amount;
+    nbv -= amount;
+
+    newPeriods.push({
+      periodDate: formatDate(periodDate),
+      periodNumber,
+      financialYear: getFinancialYearLabelForDate(periodDate, taxYearStartMonth),
+      depreciationAmount: amount,
+      accumulatedDepreciation: accumulated,
+      netBookValue: nbv,
+    });
+
+    if (nbv <= salvageValue) break;
+  }
+
+  // Adjust last period for rounding — total (posted + new) must equal cost - salvage
+  if (newPeriods.length > 0) {
+    const last = newPeriods[newPeriods.length - 1]!;
+    const depreciable = costAmount - salvageValue;
+    const adjustment = last.netBookValue - salvageValue;
+    if (adjustment > 0) {
+      last.depreciationAmount += adjustment;
+      last.netBookValue = salvageValue;
+      last.accumulatedDepreciation = depreciable;
+    }
+  }
+
+  // Insert new schedule rows
+  const now = nowUtc();
+  for (const period of newPeriods) {
+    const periodId = generateId();
+    await db.run(
+      `INSERT INTO depreciation_schedule
+        (id, asset_id, ledger_id, jurisdiction, period_date, period_number,
+         financial_year, depreciation_amount, accumulated_depreciation,
+         net_book_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        periodId, assetId, ledgerId, asset.jurisdiction,
+        period.periodDate, period.periodNumber, period.financialYear,
+        period.depreciationAmount, period.accumulatedDepreciation,
+        period.netBookValue, now,
+      ],
+    );
+  }
+};
+
+// ---------------------------------------------------------------------------
+// CRUD — Update
+// ---------------------------------------------------------------------------
+
+export const updateFixedAsset = async (
+  db: Database,
+  assetId: string,
+  input: UpdateFixedAssetInput,
+): Promise<Result<FixedAssetWithSchedule>> => {
+  // Fetch asset
+  const existing = await db.get<FixedAssetRow>(
+    "SELECT * FROM fixed_assets WHERE id = ?",
+    [assetId],
+  );
+  if (!existing) {
+    return {
+      ok: false,
+      error: { code: "FIXED_ASSET_NOT_FOUND", message: `Fixed asset ${assetId} not found` },
+    };
+  }
+
+  // Must be active
+  if (existing.status !== "active") {
+    return {
+      ok: false,
+      error: { code: "FIXED_ASSET_INVALID_STATE", message: `Cannot update ${existing.status} asset` },
+    };
+  }
+
+  // Validate useful_life_months > 0
+  if (input.usefulLifeMonths !== undefined && input.usefulLifeMonths <= 0) {
+    return {
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: "usefulLifeMonths must be greater than 0" },
+    };
+  }
+
+  // Validate depreciation_method
+  if (input.depreciationMethod !== undefined) {
+    if (!VALID_DEPRECIATION_METHODS.includes(input.depreciationMethod)) {
+      return {
+        ok: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `Invalid depreciation method: ${input.depreciationMethod}. Valid methods: ${VALID_DEPRECIATION_METHODS.join(", ")}`,
+        },
+      };
+    }
+  }
+
+  // Build update SET clause
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let scheduleAffected = false;
+
+  if (input.name !== undefined) { sets.push("name = ?"); values.push(input.name); }
+  if (input.description !== undefined) { sets.push("description = ?"); values.push(input.description); }
+  if (input.assetType !== undefined) { sets.push("asset_type = ?"); values.push(input.assetType); }
+  if (input.usefulLifeMonths !== undefined) {
+    sets.push("useful_life_months = ?"); values.push(input.usefulLifeMonths);
+    scheduleAffected = true;
+  }
+  if (input.salvageValueCents !== undefined) {
+    sets.push("salvage_value = ?"); values.push(input.salvageValueCents);
+    scheduleAffected = true;
+  }
+  if (input.depreciationMethod !== undefined) {
+    sets.push("depreciation_method = ?"); values.push(input.depreciationMethod);
+    scheduleAffected = true;
+  }
+
+  if (sets.length === 0) {
+    return {
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: "No fields to update" },
+    };
+  }
+
+  sets.push("updated_at = ?");
+  values.push(nowUtc());
+  values.push(assetId);
+
+  await db.run(`UPDATE fixed_assets SET ${sets.join(", ")} WHERE id = ?`, values);
+
+  // Regenerate schedule if schedule-affecting fields changed
+  if (scheduleAffected) {
+    await regenerateSchedule(db, assetId);
+  }
+
+  return getFixedAsset(db, assetId);
 };
 
 // ---------------------------------------------------------------------------

@@ -622,7 +622,151 @@ describe("Fixed Asset API", () => {
   });
 
   // =========================================================================
-  // 14. POST /run-depreciation creates balanced journal entries
+  // 14. PATCH /:id — update fixed asset
+  // =========================================================================
+
+  describe("PATCH /v1/fixed-assets/:id", () => {
+    it("updates name only, schedule unchanged", async () => {
+      const { auth, assetAcct, accumAcct, expenseAcct } = await setupLedgerWithKey();
+
+      const createRes = await jsonRequest(app, "POST", "/v1/fixed-assets", {
+        name: "Old Name Laptop",
+        costAmount: 120000,
+        purchaseDate: "2025-01-01",
+        depreciationMethod: "straight_line",
+        usefulLifeMonths: 12,
+        salvageValue: 0,
+        assetAccountId: assetAcct.id,
+        accumulatedDepreciationAccountId: accumAcct.id,
+        depreciationExpenseAccountId: expenseAcct.id,
+      }, auth);
+      const asset = (await createRes.json()).data;
+
+      const patchRes = await jsonRequest(app, "PATCH", `/v1/fixed-assets/${asset.id}`, {
+        name: "New Name Laptop",
+      }, auth);
+
+      expect(patchRes.status).toBe(200);
+      const body = await patchRes.json();
+      expect(body.data.name).toBe("New Name Laptop");
+      // Schedule should still have 12 periods (unchanged)
+      expect(body.data.schedule.length).toBe(12);
+      // Amounts unchanged
+      expect(body.data.schedule[0].depreciationAmount).toBe(10000);
+    });
+
+    it("updates useful_life_months, schedule regenerated, posted entries preserved", async () => {
+      const { auth, assetAcct, accumAcct, expenseAcct } = await setupLedgerWithKey();
+
+      const createRes = await jsonRequest(app, "POST", "/v1/fixed-assets", {
+        name: "Schedule Update Laptop",
+        costAmount: 360000,
+        purchaseDate: "2025-01-01",
+        depreciationMethod: "straight_line",
+        usefulLifeMonths: 36,
+        salvageValue: 0,
+        assetAccountId: assetAcct.id,
+        accumulatedDepreciationAccountId: accumAcct.id,
+        depreciationExpenseAccountId: expenseAcct.id,
+      }, auth);
+      const asset = (await createRes.json()).data;
+
+      // Run depreciation to post some entries
+      await jsonRequest(app, "POST", "/v1/fixed-assets/run-depreciation", {}, auth);
+
+      // Count how many were posted
+      const postedBefore = await db.all<{ id: string }>(
+        "SELECT id FROM depreciation_schedule WHERE asset_id = ? AND posted_at IS NOT NULL",
+        [asset.id],
+      );
+      const postedCount = postedBefore.length;
+      expect(postedCount).toBeGreaterThan(0);
+
+      // Now update useful life
+      const patchRes = await jsonRequest(app, "PATCH", `/v1/fixed-assets/${asset.id}`, {
+        usefulLifeMonths: 60,
+      }, auth);
+
+      expect(patchRes.status).toBe(200);
+      const body = await patchRes.json();
+
+      // Posted entries should be preserved
+      const postedAfter = body.data.schedule.filter((p: { postedAt: string | null }) => p.postedAt !== null);
+      expect(postedAfter.length).toBe(postedCount);
+
+      // Total entries = posted + new future entries (60 - posted)
+      expect(body.data.schedule.length).toBe(60);
+
+      // Total depreciation = cost
+      const total = body.data.schedule.reduce((sum: number, p: { depreciationAmount: number }) => sum + p.depreciationAmount, 0);
+      expect(total).toBe(360000);
+    });
+
+    it("returns 400 on disposed asset", async () => {
+      const { auth, assetAcct, accumAcct, expenseAcct, cashAcct, gainAcct, lossAcct } =
+        await setupLedgerWithKey();
+
+      const createRes = await jsonRequest(app, "POST", "/v1/fixed-assets", {
+        name: "Disposed Laptop",
+        costAmount: 100000,
+        purchaseDate: "2025-01-01",
+        depreciationMethod: "straight_line",
+        usefulLifeMonths: 60,
+        salvageValue: 0,
+        assetAccountId: assetAcct.id,
+        accumulatedDepreciationAccountId: accumAcct.id,
+        depreciationExpenseAccountId: expenseAcct.id,
+      }, auth);
+      const asset = (await createRes.json()).data;
+
+      // Dispose the asset
+      await jsonRequest(app, "POST", `/v1/fixed-assets/${asset.id}/dispose`, {
+        disposalDate: "2026-03-16",
+        disposalProceeds: 50000,
+        proceedsAccountId: cashAcct.id,
+        gainAccountId: gainAcct.id,
+        lossAccountId: lossAcct.id,
+      }, auth);
+
+      // Try to update — should fail
+      const patchRes = await jsonRequest(app, "PATCH", `/v1/fixed-assets/${asset.id}`, {
+        name: "Updated Name",
+      }, auth);
+
+      expect(patchRes.status).toBe(400);
+      const body = await patchRes.json();
+      expect(body.error.code).toBe("FIXED_ASSET_INVALID_STATE");
+    });
+
+    it("returns 400 with invalid depreciation_method", async () => {
+      const { auth, assetAcct, accumAcct, expenseAcct } = await setupLedgerWithKey();
+
+      const createRes = await jsonRequest(app, "POST", "/v1/fixed-assets", {
+        name: "Bad Method Laptop",
+        costAmount: 100000,
+        purchaseDate: "2025-01-01",
+        depreciationMethod: "straight_line",
+        usefulLifeMonths: 12,
+        salvageValue: 0,
+        assetAccountId: assetAcct.id,
+        accumulatedDepreciationAccountId: accumAcct.id,
+        depreciationExpenseAccountId: expenseAcct.id,
+      }, auth);
+      const asset = (await createRes.json()).data;
+
+      const patchRes = await jsonRequest(app, "PATCH", `/v1/fixed-assets/${asset.id}`, {
+        depreciationMethod: "banana_method",
+      }, auth);
+
+      expect(patchRes.status).toBe(400);
+      const body = await patchRes.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      expect(body.error.message).toContain("Invalid depreciation method");
+    });
+  });
+
+  // =========================================================================
+  // 18. POST /run-depreciation creates balanced journal entries
   // =========================================================================
 
   describe("POST /v1/fixed-assets/run-depreciation balanced entries", () => {

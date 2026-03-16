@@ -9,13 +9,13 @@ import type { LedgerEngine, Database } from "@kounta/core";
 import {
   adviseOnCapitalisation,
   createFixedAsset,
-  getFixedAsset,
   listFixedAssets,
   getAssetSchedule,
   getPendingDepreciation,
   runDepreciation,
   getAssetSummary,
   disposeFixedAsset,
+  updateFixedAsset,
   getJurisdictionConfig,
   getFinancialYearLabel,
 } from "@kounta/core";
@@ -306,35 +306,16 @@ export function registerFixedAssetTools(
     },
     async (params) => {
       try {
-        // Build update fields
-        const sets: string[] = [];
-        const values: unknown[] = [];
+        const result = await updateFixedAsset(db, params.assetId, {
+          name: params.name,
+          description: params.description,
+          assetType: params.assetType,
+          usefulLifeMonths: params.usefulLifeMonths,
+          salvageValueCents: params.salvageValueCents,
+          depreciationMethod: params.depreciationMethod as DepreciationMethod | undefined,
+        });
 
-        if (params.name !== undefined) { sets.push("name = ?"); values.push(params.name); }
-        if (params.description !== undefined) { sets.push("description = ?"); values.push(params.description); }
-        if (params.usefulLifeMonths !== undefined) { sets.push("useful_life_months = ?"); values.push(params.usefulLifeMonths); }
-        if (params.salvageValueCents !== undefined) { sets.push("salvage_value = ?"); values.push(params.salvageValueCents); }
-        if (params.depreciationMethod !== undefined) { sets.push("depreciation_method = ?"); values.push(params.depreciationMethod); }
-        if (params.assetType !== undefined) { sets.push("asset_type = ?"); values.push(params.assetType); }
-
-        if (sets.length === 0) {
-          return toolErr({ code: "VALIDATION_ERROR", message: "No fields to update", details: [] });
-        }
-
-        sets.push("updated_at = ?");
-        values.push(new Date().toISOString());
-        values.push(params.assetId);
-
-        await db.run(`UPDATE fixed_assets SET ${sets.join(", ")} WHERE id = ?`, values);
-
-        // TODO: When useful_life_months or depreciation_method changes, the depreciation
-        // schedule should be regenerated from the current period onwards. This requires a
-        // new core function (regenerateSchedule) that preserves already-posted entries and
-        // recalculates future periods. For now, only metadata fields are updated.
-
-        // Return updated asset
-        const result = await getFixedAsset(db, params.assetId);
-        if (!result.ok) return toolErr({ code: result.error.code, message: result.error.message, details: [] });
+        if (!result.ok) return toolErr({ code: result.error.code, message: result.error.message, details: result.error.details ?? [] });
 
         return toolOk({
           ...result.value,

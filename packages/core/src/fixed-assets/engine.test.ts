@@ -3,8 +3,12 @@
 // Tests for calculateMonthlyDepreciation, generateSchedule, adviseOnCapitalisation
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect } from "vitest";
-import { calculateMonthlyDepreciation, generateSchedule, adviseOnCapitalisation } from "./engine.js";
+import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { calculateMonthlyDepreciation, generateSchedule, adviseOnCapitalisation, createFixedAsset, regenerateSchedule, getFixedAsset } from "./engine.js";
+import { SqliteDatabase } from "../db/sqlite.js";
+import type { Database } from "../db/database.js";
 
 // ---------------------------------------------------------------------------
 // 1. Jurisdiction config — FY labels via generateSchedule
@@ -613,5 +617,243 @@ describe("Pro-rata first period", () => {
     const schedule = generateSchedule(120000, 0, 12, "2025-01-31", "straight_line", "AU");
     expect(schedule).toHaveLength(12);
     expect(schedule[0]!.depreciationAmount).toBe(10000); // full amount (no pro-rata)
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14. regenerateSchedule (with DB)
+// ---------------------------------------------------------------------------
+
+describe("regenerateSchedule", () => {
+  let db: Database;
+  const ledgerId = "00000000-0000-7000-8000-000000000100";
+  const userId = "00000000-0000-7000-8000-000000000001";
+  const assetAccountId = "00000000-0000-7000-8000-000000000010";
+  const accumAccountId = "00000000-0000-7000-8000-000000000011";
+  const expenseAccountId = "00000000-0000-7000-8000-000000000012";
+
+  beforeEach(async () => {
+    db = await SqliteDatabase.create();
+    // Apply migrations
+    const migration001 = readFileSync(
+      resolve(__dirname, "../db/migrations/001_initial_schema.sqlite.sql"), "utf-8"
+    );
+    const migration006 = readFileSync(
+      resolve(__dirname, "../db/migrations/006_multi_currency.sqlite.sql"), "utf-8"
+    );
+    const migration019 = readFileSync(
+      resolve(__dirname, "../db/migrations/019_fixed_assets.sqlite.sql"), "utf-8"
+    );
+    const schemaWithoutPragmas = migration001
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("PRAGMA"))
+      .join("\n");
+    db.exec(schemaWithoutPragmas);
+    db.exec(migration006);
+    db.exec(migration019);
+
+    // Create user, ledger, and accounts
+    db.run(
+      `INSERT INTO users (id, email, name, auth_provider, auth_provider_id) VALUES (?, ?, ?, ?, ?)`,
+      [userId, "test@test.com", "Test", "test", "test-001"],
+    );
+    db.run(
+      `INSERT INTO ledgers (id, name, currency, owner_id, jurisdiction) VALUES (?, ?, ?, ?, ?)`,
+      [ledgerId, "Test Ledger", "AUD", userId, "AU"],
+    );
+    db.run(
+      `INSERT INTO accounts (id, ledger_id, code, name, type, normal_balance) VALUES (?, ?, ?, ?, ?, ?)`,
+      [assetAccountId, ledgerId, "1500", "Equipment", "asset", "debit"],
+    );
+    db.run(
+      `INSERT INTO accounts (id, ledger_id, code, name, type, normal_balance) VALUES (?, ?, ?, ?, ?, ?)`,
+      [accumAccountId, ledgerId, "1510", "Accum Depr", "asset", "credit"],
+    );
+    db.run(
+      `INSERT INTO accounts (id, ledger_id, code, name, type, normal_balance) VALUES (?, ?, ?, ?, ?, ?)`,
+      [expenseAccountId, ledgerId, "6500", "Depr Expense", "expense", "debit"],
+    );
+  });
+
+  const createTestAsset = async (overrides?: {
+    costAmount?: number;
+    usefulLifeMonths?: number;
+    salvageValue?: number;
+    depreciationMethod?: string;
+    purchaseDate?: string;
+  }) => {
+    const result = await createFixedAsset(db, {
+      ledgerId,
+      name: "Test Laptop",
+      assetType: "laptop",
+      costAmount: overrides?.costAmount ?? 300000,
+      purchaseDate: overrides?.purchaseDate ?? "2025-01-01",
+      depreciationMethod: (overrides?.depreciationMethod ?? "straight_line") as "straight_line",
+      usefulLifeMonths: overrides?.usefulLifeMonths ?? 36,
+      salvageValue: overrides?.salvageValue ?? 0,
+      assetAccountId,
+      accumulatedDepreciationAccountId: accumAccountId,
+      depreciationExpenseAccountId: expenseAccountId,
+      proRataFirstPeriod: false,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Failed to create asset");
+    return result.value;
+  };
+
+  const markPeriodsAsPosted = async (assetId: string, count: number) => {
+    const rows = await db.all<{ id: string; period_number: number }>(
+      "SELECT id, period_number FROM depreciation_schedule WHERE asset_id = ? ORDER BY period_number LIMIT ?",
+      [assetId, count],
+    );
+    const now = new Date().toISOString();
+    for (const row of rows) {
+      await db.run(
+        "UPDATE depreciation_schedule SET posted_at = ? WHERE id = ?",
+        [now, row.id],
+      );
+    }
+  };
+
+  it("no posted entries: deletes old schedule, creates new one matching updated params", async () => {
+    const asset = await createTestAsset({
+      costAmount: 300000, usefulLifeMonths: 36, salvageValue: 0,
+    });
+    // Original: 36 periods of SL, monthly = floor(300000/36) = 8333
+
+    // Change useful life to 12 months
+    await db.run("UPDATE fixed_assets SET useful_life_months = 12 WHERE id = ?", [asset.id]);
+
+    await regenerateSchedule(db, asset.id);
+
+    const result = await getFixedAsset(db, asset.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // New schedule should have 12 periods
+    expect(result.value.schedule).toHaveLength(12);
+    // monthly = floor(300000/12) = 25000
+    expect(result.value.schedule[0]!.depreciationAmount).toBe(25000);
+    // Total = 300000
+    const total = result.value.schedule.reduce((sum, p) => sum + p.depreciationAmount, 0);
+    expect(total).toBe(300000);
+    expect(result.value.schedule[result.value.schedule.length - 1]!.netBookValue).toBe(0);
+  });
+
+  it("6 of 36 posted entries: preserves 6, generates new future entries, total = cost - salvage", async () => {
+    const asset = await createTestAsset({
+      costAmount: 360000, usefulLifeMonths: 36, salvageValue: 0,
+    });
+    // Original SL: monthly = floor(360000/36) = 10000
+
+    // Mark first 6 as posted
+    await markPeriodsAsPosted(asset.id, 6);
+    // Accumulated after 6 posted: 6 * 10000 = 60000, NBV = 300000
+
+    // Change useful life to 60 months
+    await db.run("UPDATE fixed_assets SET useful_life_months = 60 WHERE id = ?", [asset.id]);
+
+    await regenerateSchedule(db, asset.id);
+
+    const result = await getFixedAsset(db, asset.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // 6 posted preserved
+    const posted = result.value.schedule.filter(p => p.postedAt !== null);
+    expect(posted).toHaveLength(6);
+    // Each posted entry = 10000
+    for (const p of posted) {
+      expect(p.depreciationAmount).toBe(10000);
+    }
+
+    // Remaining periods: 60 - 6 = 54
+    const unposted = result.value.schedule.filter(p => p.postedAt === null);
+    expect(unposted).toHaveLength(54);
+
+    // Total across all entries (posted + unposted) = 360000
+    const totalAll = result.value.schedule.reduce((sum, p) => sum + p.depreciationAmount, 0);
+    expect(totalAll).toBe(360000);
+
+    // Last entry NBV = 0
+    expect(result.value.schedule[result.value.schedule.length - 1]!.netBookValue).toBe(0);
+  });
+
+  it("method change SL to DV: future entries use DV calculation from current NBV", async () => {
+    const asset = await createTestAsset({
+      costAmount: 360000, usefulLifeMonths: 36, salvageValue: 0,
+    });
+    // SL monthly = 10000
+
+    // Post first 6
+    await markPeriodsAsPosted(asset.id, 6);
+    // Accumulated = 60000, NBV = 300000
+
+    // Switch to diminishing_value
+    await db.run("UPDATE fixed_assets SET depreciation_method = 'diminishing_value' WHERE id = ?", [asset.id]);
+
+    await regenerateSchedule(db, asset.id);
+
+    const result = await getFixedAsset(db, asset.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // 6 posted preserved with original SL amounts
+    const posted = result.value.schedule.filter(p => p.postedAt !== null);
+    expect(posted).toHaveLength(6);
+    for (const p of posted) {
+      expect(p.depreciationAmount).toBe(10000);
+    }
+
+    // Future entries should use DV calculation
+    const unposted = result.value.schedule.filter(p => p.postedAt === null);
+    expect(unposted.length).toBeGreaterThan(0);
+
+    // DV: rate = 2.0 / 3 / 12 = 0.0555..., first future = floor(300000 * 0.0555) = 16666
+    expect(unposted[0]!.depreciationAmount).toBe(16666);
+
+    // Each subsequent DV entry should be less than the previous (decreasing NBV)
+    // Exclude last period which absorbs the rounding remainder
+    for (let i = 1; i < unposted.length - 1; i++) {
+      expect(unposted[i]!.depreciationAmount).toBeLessThanOrEqual(unposted[i - 1]!.depreciationAmount);
+    }
+
+    // Total (posted + unposted) = cost - salvage
+    const totalAll = result.value.schedule.reduce((sum, p) => sum + p.depreciationAmount, 0);
+    expect(totalAll).toBe(360000);
+  });
+
+  it("life extension 36 to 60 months: more future entries at lower monthly amount", async () => {
+    const asset = await createTestAsset({
+      costAmount: 360000, usefulLifeMonths: 36, salvageValue: 0,
+    });
+    // SL monthly = 10000
+
+    // Post first 6
+    await markPeriodsAsPosted(asset.id, 6);
+    // Accumulated = 60000, NBV = 300000
+
+    // Extend life to 60 months
+    await db.run("UPDATE fixed_assets SET useful_life_months = 60 WHERE id = ?", [asset.id]);
+
+    await regenerateSchedule(db, asset.id);
+
+    const result = await getFixedAsset(db, asset.id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Remaining periods = 60 - 6 = 54
+    const unposted = result.value.schedule.filter(p => p.postedAt === null);
+    expect(unposted).toHaveLength(54);
+
+    // New monthly = floor(300000 / 54) = 5555
+    expect(unposted[0]!.depreciationAmount).toBe(5555);
+
+    // Lower monthly amount than original 10000
+    expect(unposted[0]!.depreciationAmount).toBeLessThan(10000);
+
+    // Total = 360000
+    const totalAll = result.value.schedule.reduce((sum, p) => sum + p.depreciationAmount, 0);
+    expect(totalAll).toBe(360000);
   });
 });
