@@ -7,7 +7,8 @@ import type { TransactionWithLines, AccountWithBalance } from "@kounta/sdk";
 import { PostTransactionButton } from "@/components/post-transaction-button";
 import { ProgressChecklist } from "@/components/progress-checklist";
 import { FirstClassificationModal } from "@/components/first-classification-modal";
-import { fetchRevenueMetrics, fetchPendingDepreciation } from "@/lib/actions";
+import { fetchRevenueMetrics, fetchPendingDepreciation, fetchInvoiceSummary, fetchARAging } from "@/lib/actions";
+import type { InvoiceSummary, ARAgingBucket } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,20 @@ export default async function OverviewPage() {
     // Fixed asset tables may not exist yet
   }
 
+  // Invoice / AR data
+  let invoiceSummary: InvoiceSummary = { totalOutstanding: 0, totalOverdue: 0, totalDraft: 0, totalPaidThisMonth: 0, invoiceCount: 0, overdueCount: 0, averageDaysToPayment: null, currency: "USD" };
+  let arAging: ARAgingBucket[] = [];
+  try {
+    const [summaryResult, agingResult] = await Promise.allSettled([
+      fetchInvoiceSummary(),
+      fetchARAging(),
+    ]);
+    if (summaryResult.status === "fulfilled") invoiceSummary = summaryResult.value;
+    if (agingResult.status === "fulfilled") arAging = agingResult.value;
+  } catch {
+    // Invoice tables may not exist yet
+  }
+
   return (
     <div>
       {/* Greeting */}
@@ -154,6 +169,73 @@ export default async function OverviewPage() {
           >
             Post now &rarr;
           </Link>
+        </div>
+      )}
+
+      {/* Overdue invoices alert */}
+      {invoiceSummary.overdueCount > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid color-mix(in srgb, var(--negative) 30%, transparent)",
+            backgroundColor: "color-mix(in srgb, var(--negative) 8%, var(--surface-1))",
+            marginBottom: 16,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--negative)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)" }}>
+            {invoiceSummary.overdueCount} invoice{invoiceSummary.overdueCount !== 1 ? "s" : ""} overdue ({formatCurrency(invoiceSummary.totalOverdue)})
+          </span>
+          <Link
+            href="/invoices?status=overdue"
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--negative)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            View &rarr;
+          </Link>
+        </div>
+      )}
+
+      {/* AR Aging summary */}
+      {arAging.length > 0 && arAging.some((b) => b.amount > 0) && (
+        <div
+          style={{
+            padding: "16px 20px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface-1)",
+            marginBottom: 16,
+          }}
+        >
+          <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Accounts Receivable</span>
+            <Link href="/invoices" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>View invoices &rarr;</Link>
+          </div>
+          <div style={{ display: "flex", gap: 16 }}>
+            {arAging.map((bucket) => (
+              <div key={bucket.label} style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{bucket.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: bucket.amount > 0 ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                  {formatCurrency(bucket.amount)}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                  {bucket.count} inv{bucket.count !== 1 ? "s" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

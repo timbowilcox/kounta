@@ -8,6 +8,7 @@ import { useSession, signOut } from "next-auth/react";
 const mainNavItems = [
   { href: "/", label: "Overview", icon: OverviewIcon },
   { href: "/transactions", label: "Transactions", icon: TransactionsIcon },
+  { href: "/invoices", label: "Invoices", icon: InvoicesIcon },
   { href: "/bank-feeds", label: "Bank Feeds", icon: BankFeedsIcon },
   { href: "/revenue", label: "Revenue", icon: RevenueIcon },
   { href: "/fixed-assets", label: "Fixed Assets", icon: FixedAssetsIcon },
@@ -266,6 +267,17 @@ function StatementsIcon({ active }: { active: boolean }) {
       <path d="M7.5 17V9" />
       <path d="M12 17V3" />
       <path d="M16.5 17V11" />
+    </svg>
+  );
+}
+
+function InvoicesIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6z" />
+      <path d="M13 2v4h4" />
+      <path d="M7 10h6" />
+      <path d="M7 13h4" />
     </svg>
   );
 }

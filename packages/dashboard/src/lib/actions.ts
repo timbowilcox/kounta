@@ -1134,3 +1134,163 @@ export async function capitalisationCheckAction(input: {
   return json.data;
 }
 
+// --- Invoices (direct fetch — matches fixedAssetFetch pattern) ----------------
+
+async function invoiceFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
+  const session = await auth();
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+  if (!session?.apiKey) throw new Error("No authenticated session");
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.apiKey}`,
+  };
+  if (body) headers["Content-Type"] = "application/json";
+
+  return fetch(`${apiUrl}/v1/invoices${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+}
+
+export interface InvoiceListItem {
+  id: string;
+  invoiceNumber: string;
+  customerName: string;
+  customerEmail: string | null;
+  issueDate: string;
+  dueDate: string;
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  amountPaid: number;
+  amountDue: number;
+  currency: string;
+  status: string;
+  lineItems: { id: string; description: string; quantity: number; unitPrice: number; amount: number; taxRate: number | null; taxAmount: number }[];
+  payments: { id: string; amount: number; paymentDate: string; paymentMethod: string | null; reference: string | null }[];
+  createdAt: string;
+}
+
+export interface InvoiceSummary {
+  totalOutstanding: number;
+  totalOverdue: number;
+  totalDraft: number;
+  totalPaidThisMonth: number;
+  invoiceCount: number;
+  overdueCount: number;
+  averageDaysToPayment: number | null;
+  currency: string;
+}
+
+export interface ARAgingBucket {
+  label: string;
+  amount: number;
+  count: number;
+}
+
+export async function fetchInvoices(status?: string): Promise<InvoiceListItem[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await invoiceFetch(qs);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function fetchInvoiceSummary(): Promise<InvoiceSummary> {
+  const res = await invoiceFetch("/summary");
+  if (!res.ok) {
+    return {
+      totalOutstanding: 0, totalOverdue: 0, totalDraft: 0,
+      totalPaidThisMonth: 0, invoiceCount: 0, overdueCount: 0,
+      averageDaysToPayment: null, currency: "USD",
+    };
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchARAging(): Promise<ARAgingBucket[]> {
+  const res = await invoiceFetch("/aging");
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function fetchInvoice(id: string): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function createInvoiceAction(input: {
+  customerName: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  issueDate: string;
+  dueDate: string;
+  lineItems: { description: string; quantity: number; unitPrice: number; taxRate?: number }[];
+  notes?: string;
+  footer?: string;
+  taxInclusive?: boolean;
+  invoiceNumber?: string;
+}): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch("", "POST", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function updateInvoiceAction(id: string, input: {
+  customerName?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  issueDate?: string;
+  dueDate?: string;
+  lineItems?: { description: string; quantity: number; unitPrice: number; taxRate?: number }[];
+  notes?: string;
+  footer?: string;
+  taxInclusive?: boolean;
+}): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}`, "PATCH", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function sendInvoiceAction(id: string): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}/send`, "POST");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function recordPaymentAction(id: string, input: {
+  amount: number;
+  paymentDate: string;
+  paymentMethod?: string;
+  reference?: string;
+  bankAccountId?: string;
+}): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}/payment`, "POST", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function voidInvoiceAction(id: string): Promise<InvoiceListItem | null> {
+  const res = await invoiceFetch(`/${id}/void`, "POST");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function deleteInvoiceAction(id: string): Promise<boolean> {
+  const res = await invoiceFetch(`/${id}`, "DELETE");
+  return res.ok;
+}
+
