@@ -55,6 +55,10 @@ const monthsDiff = (a: Date, b: Date): number => {
   return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth());
 };
 
+const daysInMonth = (date: Date): number => {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+};
+
 // ---------------------------------------------------------------------------
 // Financial year helpers (imported lazily to avoid circular deps)
 // ---------------------------------------------------------------------------
@@ -158,6 +162,100 @@ interface GeneratedPeriod {
   netBookValue: number;
 }
 
+// ---------------------------------------------------------------------------
+// MACRS schedule — half-year convention
+// ---------------------------------------------------------------------------
+// TODO: Mid-quarter convention is not yet supported (only half-year).
+// The mid-quarter convention applies when more than 40% of all depreciable
+// property placed in service during the tax year is placed in service during
+// the last 3 months. This is not checked or implemented.
+
+const generateMACRSSchedule = (
+  costAmount: number,
+  salvageValue: number,
+  startDate: Date,
+  macrsPropertyClass: string | null | undefined,
+  taxYearStartMonth: number,
+): GeneratedPeriod[] => {
+  const propClass = macrsPropertyClass ?? "5-year";
+  const table = MACRS_TABLES[propClass] ?? MACRS_TABLES["5-year"]!;
+  const depreciable = costAmount - salvageValue;
+  const purchaseMonth0 = startDate.getUTCMonth(); // 0-based (0=Jan)
+
+  // Year 1: months from purchase month through December
+  const year1Months = 12 - purchaseMonth0;
+  // Final recovery year is always 6 months (Jan–Jun) under the half-year convention,
+  // regardless of when in the year the asset was placed in service.
+  // TODO: Mid-quarter convention would change this to 1.5 months for Q4 assets.
+  const finalYearMonths = 6;
+
+  const periods: GeneratedPeriod[] = [];
+  let accumulated = 0;
+  let currentNBV = costAmount;
+  let periodCounter = 0;
+
+  for (let yearIdx = 0; yearIdx < table.length; yearIdx++) {
+    const isFirstYear = yearIdx === 0;
+    const isLastYear = yearIdx === table.length - 1;
+
+    let yearAmount: number;
+    let monthsThisYear: number;
+
+    if (isLastYear) {
+      // Final recovery year: use remaining depreciable amount
+      yearAmount = depreciable - accumulated;
+      monthsThisYear = finalYearMonths;
+    } else {
+      yearAmount = Math.floor(costAmount * table[yearIdx]! / 100);
+      monthsThisYear = isFirstYear ? year1Months : 12;
+    }
+
+    if (yearAmount <= 0 || monthsThisYear <= 0) continue;
+
+    const monthlyAmount = Math.floor(yearAmount / monthsThisYear);
+    let yearAccumulated = 0;
+
+    for (let m = 0; m < monthsThisYear; m++) {
+      periodCounter++;
+      const periodDate = addMonths(startDate, periodCounter);
+
+      // Last month of this year: absorb rounding remainder for the year
+      let amount = (m === monthsThisYear - 1)
+        ? yearAmount - yearAccumulated
+        : monthlyAmount;
+
+      // Don't go below salvage value
+      if (currentNBV - amount < salvageValue) {
+        amount = currentNBV - salvageValue;
+      }
+      if (amount <= 0) break;
+
+      yearAccumulated += amount;
+      accumulated += amount;
+      currentNBV -= amount;
+
+      periods.push({
+        periodDate: formatDate(periodDate),
+        periodNumber: periodCounter,
+        financialYear: getFinancialYearLabelForDate(periodDate, taxYearStartMonth),
+        depreciationAmount: amount,
+        accumulatedDepreciation: accumulated,
+        netBookValue: currentNBV,
+      });
+
+      if (currentNBV <= salvageValue) break;
+    }
+
+    if (currentNBV <= salvageValue) break;
+  }
+
+  return periods;
+};
+
+// ---------------------------------------------------------------------------
+// generateSchedule — main entry point
+// ---------------------------------------------------------------------------
+
 export const generateSchedule = (
   costAmount: number,
   salvageValue: number,
@@ -167,16 +265,42 @@ export const generateSchedule = (
   jurisdiction: string,
   macrsPropertyClass?: string | null,
   capitalAllowancePool?: string | null,
+  proRataFirstPeriod: boolean = true,
 ): GeneratedPeriod[] => {
   if (method === "none") return [];
+
+  const depreciable = costAmount - salvageValue;
+  const startDate = new Date(purchaseDate + "T00:00:00Z");
+  const taxYearStartMonth = getTaxYearStartMonth(jurisdiction);
+
+  // MACRS uses its own half-year convention schedule generation
+  if (method === "macrs") {
+    return generateMACRSSchedule(costAmount, salvageValue, startDate, macrsPropertyClass, taxYearStartMonth);
+  }
 
   const periods: GeneratedPeriod[] = [];
   let accumulated = 0;
   let currentNBV = costAmount;
-  const depreciable = costAmount - salvageValue;
-  const maxPeriods = method === "instant_writeoff" || method === "section_179" || method === "aia" ? 1 : usefulLifeMonths || 360;
-  const startDate = new Date(purchaseDate + "T00:00:00Z");
-  const taxYearStartMonth = getTaxYearStartMonth(jurisdiction);
+  const maxPeriods = (method === "instant_writeoff" || method === "section_179" || method === "aia") ? 1 : usefulLifeMonths || 360;
+
+  // Calculate pro-rata factor for first period.
+  // Pro-rata divides the purchase month's remaining days by total days in that month.
+  // Example: purchased March 15, 31 days in March, 16 remaining → factor = 16/31.
+  let proRataFactor = 1.0;
+  if (proRataFirstPeriod && maxPeriods > 1) {
+    const totalDays = daysInMonth(startDate);
+    const dayOfMonth = startDate.getUTCDate();
+    const daysRemaining = totalDays - dayOfMonth;
+    if (daysRemaining > 0 && daysRemaining < totalDays) {
+      proRataFactor = daysRemaining / totalDays;
+    }
+    // Purchases in the first ~2 days of a month get a full first period.
+    // Without this threshold, a Jan 1 purchase would get factor=30/31≈0.968
+    // which is misleadingly close to 1.0 and confuses users.
+    if (proRataFactor >= 0.95) {
+      proRataFactor = 1.0;
+    }
+  }
 
   for (let i = 1; i <= maxPeriods; i++) {
     const periodDate = addMonths(startDate, i);
@@ -184,6 +308,11 @@ export const generateSchedule = (
       method, costAmount, salvageValue, usefulLifeMonths, currentNBV, i,
       jurisdiction, macrsPropertyClass, capitalAllowancePool,
     );
+
+    // Apply pro-rata to first period
+    if (i === 1 && proRataFactor < 1.0) {
+      amount = Math.floor(amount * proRataFactor);
+    }
 
     // Don't go below salvage value
     if (currentNBV - amount < salvageValue) {
@@ -206,12 +335,15 @@ export const generateSchedule = (
     if (currentNBV <= salvageValue) break;
   }
 
-  // Adjust last period for rounding
+  // Adjust last period for rounding — ensure total = depreciable exactly.
+  // For linear methods (straight_line, prime_cost), always absorb the residual
+  // so that cost - salvage is fully depreciated (this includes any pro-rata shortfall).
+  // For non-linear methods (DV, WDA, CCA), only absorb small rounding errors.
   if (periods.length > 0) {
     const last = periods[periods.length - 1]!;
     const adjustment = last.netBookValue - salvageValue;
-    if (adjustment > 0 && adjustment < depreciable * 0.01) {
-      // Small rounding error — absorb it
+    const isLinearMethod = method === "straight_line" || method === "prime_cost";
+    if (adjustment > 0 && (isLinearMethod || adjustment < depreciable * 0.01)) {
       last.depreciationAmount += adjustment;
       last.netBookValue = salvageValue;
       last.accumulatedDepreciation = depreciable;
@@ -397,6 +529,7 @@ export const createFixedAsset = async (
     input.costAmount, salvageValue, usefulLifeMonths ?? 1,
     input.purchaseDate, method, jurisdiction,
     macrsPropertyClass, input.capitalAllowancePool,
+    input.proRataFirstPeriod ?? true,
   );
 
   await db.transaction(async () => {
