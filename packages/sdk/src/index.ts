@@ -126,6 +126,20 @@ export type {
   RevenueEntryStatus,
   RevenueFrequency,
 
+  // Fixed Assets
+  FixedAsset,
+  FixedAssetWithSchedule,
+  DepreciationPeriod,
+  CreateFixedAssetInput,
+  DisposeAssetInput,
+  CapitalisationAdvice,
+  AssetSummary,
+  DepreciationRunResult,
+  DisposalResult,
+  DepreciationMethod,
+  AssetStatus,
+  CapitalAllowancePool,
+
 } from "@kounta/core";
 
 export type {
@@ -185,6 +199,15 @@ import type {
   RevenueMetrics,
   MrrHistoryEntry,
   ProcessingResult,
+  FixedAsset,
+  FixedAssetWithSchedule,
+  DepreciationPeriod,
+  CreateFixedAssetInput,
+  DisposeAssetInput,
+  CapitalisationAdvice,
+  AssetSummary,
+  DepreciationRunResult,
+  DisposalResult,
 } from "@kounta/core";
 
 import type {
@@ -287,6 +310,7 @@ export class Kounta {
   readonly periods: PeriodsModule;
   readonly stripeConnect: StripeConnectModule;
   readonly revenue: RevenueModule;
+  readonly fixedAssets: FixedAssetsModule;
 
   constructor(config: KountaConfig) {
     this._apiKey = config.apiKey;
@@ -312,6 +336,7 @@ export class Kounta {
     this.periods = new PeriodsModule(this);
     this.stripeConnect = new StripeConnectModule(this);
     this.revenue = new RevenueModule(this);
+    this.fixedAssets = new FixedAssetsModule(this);
   }
 
   // -------------------------------------------------------------------------
@@ -1279,5 +1304,62 @@ class RevenueModule {
   async getMrrHistory(months?: number): Promise<MrrHistoryEntry[]> {
     const qs = buildQuery({ months });
     return this.c.request("GET", `/v1/revenue/mrr-history${qs}`);
+  }
+}
+
+// ── Fixed Assets ────────────────────────────────────────────────────────────
+
+class FixedAssetsModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List fixed assets. */
+  async list(opts?: { status?: string; cursor?: string; limit?: number }): Promise<PaginatedResult<FixedAsset>> {
+    const qs = buildQuery({ status: opts?.status, cursor: opts?.cursor, limit: opts?.limit });
+    return this.c.requestPaginated<FixedAsset>(`/v1/fixed-assets${qs}`);
+  }
+
+  /** Create a fixed asset with auto-generated depreciation schedule. */
+  async create(input: CreateFixedAssetInput): Promise<FixedAssetWithSchedule> {
+    return this.c.request("POST", "/v1/fixed-assets", { body: input });
+  }
+
+  /** Get a fixed asset with its full depreciation schedule. */
+  async get(assetId: string): Promise<FixedAssetWithSchedule> {
+    return this.c.request("GET", `/v1/fixed-assets/${assetId}`);
+  }
+
+  /** Get the depreciation schedule for an asset. */
+  async getSchedule(assetId: string): Promise<{ asset: FixedAsset; schedule: DepreciationPeriod[] }> {
+    return this.c.request("GET", `/v1/fixed-assets/${assetId}/schedule`);
+  }
+
+  /** Get asset register summary. */
+  async getSummary(): Promise<AssetSummary> {
+    return this.c.request("GET", "/v1/fixed-assets/summary");
+  }
+
+  /** Get pending depreciation entries. */
+  async getPending(): Promise<{ pendingCount: number; totalAmount: number; entries: unknown[] }> {
+    return this.c.request("GET", "/v1/fixed-assets/pending");
+  }
+
+  /** Check if an amount should be capitalised. */
+  async checkCapitalisation(input: {
+    amount: number;
+    asset_type: string;
+    purchase_date: string;
+    annual_turnover?: number;
+  }): Promise<CapitalisationAdvice & { jurisdiction: string }> {
+    return this.c.request("POST", "/v1/fixed-assets/capitalisation-check", { body: input });
+  }
+
+  /** Run depreciation — post all pending entries. */
+  async runDepreciation(): Promise<DepreciationRunResult> {
+    return this.c.request("POST", "/v1/fixed-assets/run-depreciation");
+  }
+
+  /** Dispose of a fixed asset. */
+  async dispose(assetId: string, input: DisposeAssetInput): Promise<DisposalResult> {
+    return this.c.request("POST", `/v1/fixed-assets/${assetId}/dispose`, { body: input });
   }
 }

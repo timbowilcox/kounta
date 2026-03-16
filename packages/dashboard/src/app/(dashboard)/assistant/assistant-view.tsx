@@ -332,7 +332,7 @@ export function AssistantView({ initialConversations }: Props) {
                   <line x1="12" y1="9" x2="12" y2="13" />
                   <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
-                Confirm {pendingConfirmation.toolName === "post_transaction" ? "Transaction" : "Reversal"}
+                Confirm {pendingConfirmation.toolName === "post_transaction" ? "Transaction" : pendingConfirmation.toolName === "reverse_transaction" ? "Reversal" : pendingConfirmation.toolName === "run_depreciation" ? "Depreciation" : "Action"}
               </div>
               <pre className="font-mono" style={{ margin: 0, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
                 {JSON.stringify(pendingConfirmation.input, null, 2)}

@@ -85,7 +85,7 @@ function buildSystemPrompt(ledgerContext?: { currency?: string; name?: string })
 // Tool definitions
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction", "create_recurring_entry"]);
+const WRITE_TOOLS = new Set(["post_transaction", "reverse_transaction", "create_recurring_entry", "run_depreciation"]);
 
 const tools: Anthropic.Tool[] = [
   {
@@ -269,6 +269,59 @@ const tools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // --- Fixed Assets ---
+  {
+    name: "list_fixed_assets",
+    description: "List all fixed assets in the ledger with current net book value and depreciation status.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["active", "disposed", "fully_depreciated", "all"], description: "Filter by asset status (default: active)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_asset_summary",
+    description: "Get a summary of the fixed asset register: total cost, net book value, accumulated depreciation, pending entries, and depreciation this financial year.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_pending_depreciation",
+    description: "Get all depreciation entries that are due but not yet posted. Use this at month-end to see what needs to be posted.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "check_capitalisation",
+    description: "Check whether a purchase should be capitalised as a fixed asset or expensed immediately. Takes into account jurisdiction rules (AU instant write-off, US Section 179, etc.).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        amount: { type: "number", description: "Purchase amount in cents" },
+        assetType: { type: "string", description: "Type of asset (e.g. laptop, motor_vehicle_car, office_furniture)" },
+        purchaseDate: { type: "string", description: "Purchase date (YYYY-MM-DD)" },
+        annualTurnover: { type: "number", description: "Business annual turnover in cents (for AU instant write-off eligibility)" },
+      },
+      required: ["amount", "assetType", "purchaseDate"],
+    },
+  },
+  {
+    name: "run_depreciation",
+    description: "Post all pending depreciation journal entries. Each entry debits Depreciation Expense and credits Accumulated Depreciation. Safe to run multiple times. This is a write operation that requires user confirmation.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -389,6 +442,41 @@ async function executeTool(
         }),
       };
 
+    case "list_fixed_assets":
+      return {
+        output: await client.fixedAssets.list({
+          status: (input.status as string) ?? "active",
+        }),
+      };
+
+    case "get_asset_summary":
+      return { output: await client.fixedAssets.getSummary() };
+
+    case "get_pending_depreciation":
+      return { output: await client.fixedAssets.getPending() };
+
+    case "check_capitalisation":
+      return {
+        output: await client.fixedAssets.checkCapitalisation({
+          amount: input.amount as number,
+          asset_type: input.assetType as string,
+          purchase_date: input.purchaseDate as string,
+          annual_turnover: input.annualTurnover as number | undefined,
+        }),
+      };
+
+    case "run_depreciation":
+      // Write tool — return confirmation instead of executing
+      return {
+        output: {
+          confirmation_required: true,
+          action: "run_depreciation",
+          description: "Post all pending depreciation journal entries",
+          details: {},
+        },
+        isWriteConfirmation: true,
+      };
+
     default:
       return { output: { error: `Unknown tool: ${toolName}` } };
   }
@@ -435,6 +523,9 @@ export async function executeConfirmedWrite(
         nextRunDate: input.nextRunDate as string,
         autoReverse: (input.autoReverse as boolean) ?? false,
       });
+
+    case "run_depreciation":
+      return client.fixedAssets.runDepreciation();
 
     default:
       throw new Error(`Not a write tool: ${toolName}`);

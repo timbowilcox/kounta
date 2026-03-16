@@ -46,6 +46,22 @@ const a = (
   tags,
 });
 
+/** Contra-asset account (asset type, credit normal balance). */
+const contra = (
+  code: string,
+  name: string,
+  tags: readonly string[] = [],
+  parentCode: string | null = null,
+): TemplateAccount => ({
+  code,
+  name,
+  type: "asset" as AccountType,
+  normalBalance: "credit" as NormalBalance,
+  parentCode,
+  isSystem: false,
+  tags,
+});
+
 // ---------------------------------------------------------------------------
 // 1. SaaS
 // ---------------------------------------------------------------------------
@@ -55,6 +71,7 @@ const saasAccounts: TemplateAccount[] = [
   a("1100", "Accounts Receivable", "asset", ["current"]),
   a("1200", "Prepaid Expenses", "asset", ["current"]),
   a("1500", "Equipment & Hardware", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Deferred Revenue", "liability", ["current"]),
   a("2200", "Accrued Expenses", "liability", ["current"]),
@@ -69,6 +86,7 @@ const saasAccounts: TemplateAccount[] = [
   a("6100", "Marketing & Advertising", "expense"),
   a("6200", "Research & Development", "expense"),
   a("6300", "General & Administrative", "expense"),
+  a("6400", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -105,6 +123,7 @@ const agencyAccounts: TemplateAccount[] = [
   a("1100", "Accounts Receivable", "asset", ["current"]),
   a("1200", "Work in Progress", "asset", ["current"]),
   a("1500", "Office Equipment", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Deferred Retainers", "liability", ["current"]),
   a("2200", "Payroll Liabilities", "liability", ["current"]),
@@ -119,6 +138,7 @@ const agencyAccounts: TemplateAccount[] = [
   a("6100", "Software & Tools", "expense"),
   a("6200", "Marketing & Business Development", "expense"),
   a("6300", "General & Administrative", "expense"),
+  a("6400", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -131,6 +151,7 @@ const ecommerceAccounts: TemplateAccount[] = [
   a("1200", "Inventory", "asset", ["current"]),
   a("1300", "Prepaid Expenses", "asset", ["current"]),
   a("1500", "Warehouse Equipment", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Sales Tax Payable", "liability", ["current"]),
   a("2200", "Gift Card Liability", "liability", ["current"]),
@@ -146,6 +167,7 @@ const ecommerceAccounts: TemplateAccount[] = [
   a("6100", "Marketing & Advertising", "expense"),
   a("6200", "Platform & Marketplace Fees", "expense"),
   a("6300", "General & Administrative", "expense"),
+  a("6400", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -156,6 +178,7 @@ const creatorAccounts: TemplateAccount[] = [
   a("1000", "Cash", "asset", ["cash", "current"]),
   a("1100", "Accounts Receivable", "asset", ["current"]),
   a("1500", "Equipment & Gear", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Taxes Payable", "liability", ["current"]),
   a("3000", "Owner's Equity", "equity"),
@@ -170,6 +193,7 @@ const creatorAccounts: TemplateAccount[] = [
   a("6000", "Software & Subscriptions", "expense"),
   a("6100", "Marketing & Promotion", "expense"),
   a("6200", "General & Administrative", "expense"),
+  a("6300", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -205,6 +229,7 @@ const propertyAccounts: TemplateAccount[] = [
   a("1100", "Rent Receivable", "asset", ["current"]),
   a("1200", "Security Deposits Receivable", "asset", ["current"]),
   a("1500", "Properties", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("1600", "Building Improvements", "asset", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Tenant Security Deposits", "liability", ["current"]),
@@ -221,6 +246,7 @@ const propertyAccounts: TemplateAccount[] = [
   a("6200", "Property Taxes", "expense"),
   a("6300", "Utilities", "expense"),
   a("6400", "Mortgage Interest", "expense"),
+  a("6500", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -232,6 +258,7 @@ const nonprofitAccounts: TemplateAccount[] = [
   a("1100", "Grants Receivable", "asset", ["current"]),
   a("1200", "Pledges Receivable", "asset", ["current"]),
   a("1500", "Fixed Assets", "asset", ["non-current"]),
+  contra("1510", "Accumulated Depreciation", ["non-current"]),
   a("2000", "Accounts Payable", "liability", ["current"]),
   a("2100", "Accrued Expenses", "liability", ["current"]),
   a("2200", "Deferred Grant Revenue", "liability", ["current"]),
@@ -246,6 +273,7 @@ const nonprofitAccounts: TemplateAccount[] = [
   a("6000", "Program Expenses", "expense"),
   a("6100", "Fundraising Expenses", "expense"),
   a("6200", "Management & General", "expense"),
+  a("6300", "Depreciation Expense", "expense"),
 ];
 
 // ---------------------------------------------------------------------------

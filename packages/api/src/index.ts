@@ -19,7 +19,7 @@ import type { Database } from "@kounta/core";
 import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@kounta/core";
 import type { AttachmentStorage } from "@kounta/core";
 import { createApp } from "./app.js";
-import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition } from "@kounta/core";
+import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition, runDepreciation } from "@kounta/core";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -132,6 +132,21 @@ const main = async () => {
     } catch (err) {
       console.error("Revenue recognition scheduler error:", err);
     }
+
+    // Process depreciation entries hourly — posts any pending entries whose
+    // period_date has passed. Safe to run repeatedly; already-posted entries
+    // are skipped.
+    try {
+      const ledgers = await engine.getDb().all<{ id: string }>("SELECT id FROM ledgers");
+      for (const ledger of ledgers) {
+        const depResult = await runDepreciation(engine.getDb(), engine, ledger.id);
+        if (depResult.posted > 0) {
+          console.log(`Depreciation: posted ${depResult.posted} entries for ledger ${ledger.id} ($${(depResult.totalAmount / 100).toFixed(2)})`);
+        }
+      }
+    } catch (err) {
+      console.error("Depreciation scheduler error:", err);
+    }
   };
 
   // Run once at startup (after a short delay to let the server warm up)
@@ -228,6 +243,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       ["016_revenue_recognition.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'revenue_schedules'"],
       ["017_revenue_notifications.sql", "SELECT 1 FROM pg_enum WHERE enumlabel = 'monthly_recognition_summary' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')"],
       ["018_oauth.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'oauth_clients'"],
+      ["019_fixed_assets.sql", "SELECT 1 FROM information_schema.tables WHERE table_name = 'fixed_assets'"],
     ];
 
     for (const [migName, probeQuery] of probes) {
@@ -268,6 +284,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "016_revenue_recognition.sql",
     "017_revenue_notifications.sql",
     "018_oauth.sql",
+    "019_fixed_assets.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -373,6 +390,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     "016_revenue_recognition.sqlite.sql",
     "017_revenue_notifications.sqlite.sql",
     "018_oauth.sqlite.sql",
+    "019_fixed_assets.sqlite.sql",
   ];
 
   for (const file of migrationFiles) {

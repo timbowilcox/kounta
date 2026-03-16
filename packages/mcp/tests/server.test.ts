@@ -60,10 +60,11 @@ function parseToolResult(result: { content: unknown[] }): unknown {
 // ---------------------------------------------------------------------------
 
 describe("Tool discovery", () => {
-  it("lists all 44 tools", async () => {
+  it("lists all 52 tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "check_capitalisation",
       "classify_bank_transaction",
       "classify_transaction",
       "complete_setup",
@@ -72,11 +73,16 @@ describe("Tool discovery", () => {
       "convert_amount",
       "create_account",
       "create_classification_rule",
+      "create_fixed_asset",
       "create_recurring_entry",
       "create_revenue_schedule",
+      "dispose_fixed_asset",
       "enable_currency",
       "generate_insights",
+      "get_asset_register_summary",
       "get_deferred_revenue",
+      "get_depreciation_due",
+      "get_depreciation_schedule",
       "get_import_batch",
       "get_mrr",
       "get_notification",
@@ -91,6 +97,7 @@ describe("Tool discovery", () => {
       "list_bank_transactions",
       "list_classification_rules",
       "list_exchange_rates",
+      "list_fixed_assets",
       "list_merchant_aliases",
       "list_notifications",
       "list_recurring_entries",
@@ -101,6 +108,7 @@ describe("Tool discovery", () => {
       "resume_recurring_entry",
       "revalue_accounts",
       "reverse_transaction",
+      "run_depreciation",
       "search_transactions",
       "set_exchange_rate",
       "setup_ledger",

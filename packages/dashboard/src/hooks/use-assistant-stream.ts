@@ -59,6 +59,15 @@ export const TOOL_LABELS: Record<string, string> = {
   reverse_transaction: "Preparing reversal",
   list_templates: "Listing templates",
   get_usage: "Checking usage",
+  list_recurring_entries: "Listing recurring entries",
+  create_recurring_entry: "Creating recurring entry",
+  get_revenue_metrics: "Fetching revenue metrics",
+  list_revenue_schedules: "Listing revenue schedules",
+  list_fixed_assets: "Listing fixed assets",
+  get_asset_summary: "Fetching asset register summary",
+  get_pending_depreciation: "Checking pending depreciation",
+  check_capitalisation: "Checking capitalisation treatment",
+  run_depreciation: "Posting depreciation entries",
 };
 
 // ---------------------------------------------------------------------------

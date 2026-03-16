@@ -919,3 +919,124 @@ export async function revokeOAuthConnection(clientId: string): Promise<boolean> 
   return res.ok;
 }
 
+// ---------------------------------------------------------------------------
+// Fixed Assets
+// ---------------------------------------------------------------------------
+
+async function fixedAssetFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
+  const session = await auth();
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+  if (!session?.apiKey) throw new Error("No authenticated session");
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${session.apiKey}`,
+  };
+  if (body) headers["Content-Type"] = "application/json";
+
+  return fetch(`${apiUrl}/v1/fixed-assets${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+}
+
+export interface FixedAssetSummaryItem {
+  id: string;
+  name: string;
+  assetType: string | null;
+  costAmount: number;
+  purchaseDate: string;
+  depreciationMethod: string;
+  status: string;
+  currency: string;
+  netBookValue?: number;
+  accumulatedDepreciation?: number;
+  nextDepreciationDate?: string | null;
+}
+
+export interface AssetRegisterSummary {
+  totalAssets: number;
+  totalCost: number;
+  totalNbv: number;
+  totalAccumulated: number;
+  pendingEntries: number;
+  pendingAmount: number;
+  nextDepreciationDate: string | null;
+  currentFinancialYear: string;
+  depreciationThisFy: number;
+  depreciationLastFy: number;
+  assetsByStatus: {
+    active: number;
+    disposed: number;
+    fullyDepreciated: number;
+  };
+}
+
+export async function fetchFixedAssets(
+  status?: string,
+): Promise<FixedAssetSummaryItem[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await fixedAssetFetch(`${qs}`);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export async function fetchAssetSummary(): Promise<AssetRegisterSummary> {
+  const res = await fixedAssetFetch("/summary");
+  if (!res.ok) {
+    return {
+      totalAssets: 0, totalCost: 0, totalNbv: 0, totalAccumulated: 0,
+      pendingEntries: 0, pendingAmount: 0, nextDepreciationDate: null,
+      currentFinancialYear: "", depreciationThisFy: 0, depreciationLastFy: 0,
+      assetsByStatus: { active: 0, disposed: 0, fullyDepreciated: 0 },
+    };
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchPendingDepreciation(): Promise<{
+  pendingCount: number;
+  totalAmount: number;
+  entries: { assetName: string; amount: number; periodDate: string }[];
+}> {
+  const res = await fixedAssetFetch("/pending");
+  if (!res.ok) return { pendingCount: 0, totalAmount: 0, entries: [] };
+  const json = await res.json();
+  return json.data;
+}
+
+export async function createFixedAssetAction(input: {
+  name: string;
+  assetType: string;
+  costAmount: number;
+  purchaseDate: string;
+  depreciationMethod?: string;
+  usefulLifeMonths?: number;
+  salvageValue?: number;
+  assetAccountId: string;
+  accumulatedDepreciationAccountId?: string;
+  depreciationExpenseAccountId?: string;
+  description?: string;
+}): Promise<unknown | null> {
+  const res = await fixedAssetFetch("", "POST", input);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+
+export async function runDepreciationAction(): Promise<{
+  posted: number;
+  totalAmount: number;
+  assetsAffected: number;
+} | null> {
+  const res = await fixedAssetFetch("/run-depreciation", "POST");
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data;
+}
+

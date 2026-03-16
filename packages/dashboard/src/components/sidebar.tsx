@@ -10,6 +10,7 @@ const mainNavItems = [
   { href: "/transactions", label: "Transactions", icon: TransactionsIcon },
   { href: "/bank-feeds", label: "Bank Feeds", icon: BankFeedsIcon },
   { href: "/revenue", label: "Revenue", icon: RevenueIcon },
+  { href: "/fixed-assets", label: "Fixed Assets", icon: FixedAssetsIcon },
   { href: "/statements", label: "Statements", icon: StatementsIcon },
   { href: "/notifications", label: "Insights", icon: InsightsIcon },
 ];
@@ -288,6 +289,18 @@ function RevenueIcon({ active }: { active: boolean }) {
     <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 16l4-5 4 3 4-6 4 3" />
       <path d="M18 16H2V4" />
+    </svg>
+  );
+}
+
+function FixedAssetsIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={active ? "var(--text-primary)" : "var(--text-tertiary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 17h14" />
+      <path d="M4 17V7l6-4 6 4v10" />
+      <path d="M8 17v-5h4v5" />
+      <path d="M7 9.5h1.5" />
+      <path d="M11.5 9.5H13" />
     </svg>
   );
 }
