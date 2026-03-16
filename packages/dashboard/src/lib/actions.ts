@@ -1209,22 +1209,30 @@ export async function createFixedAssetAction(input: {
   accumulatedDepreciationAccountId?: string;
   depreciationExpenseAccountId?: string;
   description?: string;
-}): Promise<unknown | null> {
+}): Promise<ActionResult<unknown>> {
   const res = await fixedAssetFetch("", "POST", input);
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: null };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
-export async function runDepreciationAction(): Promise<{
+export async function runDepreciationAction(): Promise<ActionResult<{
   posted: number;
   totalAmount: number;
   assetsAffected: number;
-} | null> {
+}>> {
   const res = await fixedAssetFetch("/run-depreciation", "POST");
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: { posted: 0, totalAmount: 0, assetsAffected: 0 } };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
 export interface CapitalisationCheckResult {
@@ -1386,22 +1394,30 @@ export async function updateInvoiceAction(id: string, input: {
   return json.data;
 }
 
-export async function sendInvoiceAction(id: string, sendEmail: boolean = false): Promise<InvoiceListItem | null> {
+export async function sendInvoiceAction(id: string, sendEmail: boolean = false): Promise<ActionResult<InvoiceListItem>> {
   const res = await invoiceFetch(`/${id}/send`, "POST", { sendEmail });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: null as unknown as InvoiceListItem };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
 /** Send email for an already-approved invoice. Upgrades status from 'approved' to 'sent'. */
-export async function emailInvoiceAction(id: string): Promise<InvoiceListItem | null> {
+export async function emailInvoiceAction(id: string): Promise<ActionResult<InvoiceListItem>> {
   const res = await invoiceFetch(`/${id}/email`, "POST");
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: null as unknown as InvoiceListItem };
+  }
   // Re-fetch the full invoice to get updated status
   const detailRes = await invoiceFetch(`/${id}`);
-  if (!detailRes.ok) return null;
+  if (!detailRes.ok) return { ok: true, data: null as unknown as InvoiceListItem };
   const json = await detailRes.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
 export async function recordPaymentAction(id: string, input: {
@@ -1410,11 +1426,15 @@ export async function recordPaymentAction(id: string, input: {
   paymentMethod?: string;
   reference?: string;
   bankAccountId?: string;
-}): Promise<InvoiceListItem | null> {
+}): Promise<ActionResult<InvoiceListItem>> {
   const res = await invoiceFetch(`/${id}/payment`, "POST", input);
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: null as unknown as InvoiceListItem };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 
 export async function voidInvoiceAction(id: string): Promise<InvoiceListItem | null> {
@@ -1482,10 +1502,14 @@ export async function createCustomerAction(input: {
   taxId?: string;
   paymentTerms?: string;
   notes?: string;
-}): Promise<CustomerListItem | null> {
+}): Promise<ActionResult<CustomerListItem>> {
   const res = await customerFetch("", "POST", input);
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const tierErr = await parseTierError(res);
+    if (tierErr) return { ok: false, error: tierErr };
+    return { ok: true, data: null as unknown as CustomerListItem };
+  }
   const json = await res.json();
-  return json.data;
+  return { ok: true, data: json.data };
 }
 

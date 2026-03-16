@@ -461,7 +461,7 @@ function AddAssetModal({
         const costCents = dollarsToCents(costDollars);
         const salvageCents = dollarsToCents(salvageDollars || "0");
 
-        const result = await createFixedAssetAction({
+        const actionResult = await createFixedAssetAction({
           name: name.trim(),
           assetType,
           costAmount: costCents,
@@ -474,7 +474,14 @@ function AddAssetModal({
           depreciationExpenseAccountId: expenseAccountId || undefined,
         });
 
-        if (!result) {
+        if (!actionResult.ok) {
+          setError(actionResult.error.type === "tier_limit"
+            ? `${actionResult.error.message}. Upgrade your plan to continue.`
+            : actionResult.error.message);
+          return;
+        }
+
+        if (!actionResult.data) {
           setError("Failed to create asset. Check all fields and try again.");
           return;
         }
@@ -1275,9 +1282,13 @@ export function FixedAssetsView({ initialAssets, initialSummary, accounts }: Pro
 
   const handleRunDepreciation = () => {
     startTransition(async () => {
-      const result = await runDepreciationAction();
-      if (result) {
-        setDepResult(result);
+      const actionResult = await runDepreciationAction();
+      if (!actionResult.ok) {
+        setDepResult(null);
+        return;
+      }
+      if (actionResult.data.posted > 0) {
+        setDepResult(actionResult.data);
         refresh();
         setTimeout(() => setDepResult(null), 5000);
       }

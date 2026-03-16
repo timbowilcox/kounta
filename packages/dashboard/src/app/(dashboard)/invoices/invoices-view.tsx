@@ -217,9 +217,15 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
 
   const handleSend = (id: string, sendEmail: boolean = false) => {
     startTransition(async () => {
-      const result = await sendInvoiceAction(id, sendEmail);
-      if (result) {
-        setDetailInvoice(result);
+      const actionResult = await sendInvoiceAction(id, sendEmail);
+      if (!actionResult.ok) {
+        setTierError(actionResult.error.type === "tier_limit"
+          ? `${actionResult.error.message}. Upgrade your plan to continue.`
+          : actionResult.error.message);
+        return;
+      }
+      if (actionResult.data) {
+        setDetailInvoice(actionResult.data);
         refresh();
       }
     });
@@ -228,9 +234,15 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
   const handleEmailInvoice = (id: string) => {
     if (!canEmail) { setShowEmailUpgrade(true); return; }
     startTransition(async () => {
-      const result = await emailInvoiceAction(id);
-      if (result) {
-        setDetailInvoice(result);
+      const actionResult = await emailInvoiceAction(id);
+      if (!actionResult.ok) {
+        setTierError(actionResult.error.type === "tier_limit"
+          ? `${actionResult.error.message}. Upgrade your plan to continue.`
+          : actionResult.error.message);
+        return;
+      }
+      if (actionResult.data) {
+        setDetailInvoice(actionResult.data);
         refresh();
       }
     });
@@ -256,6 +268,7 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
     });
   };
 
+  const [tierError, setTierError] = useState<string | null>(null);
   const [showPdfUpgrade, setShowPdfUpgrade] = useState(false);
   const [showEmailUpgrade, setShowEmailUpgrade] = useState(false);
   const canPdf = currentTier !== "free";
@@ -476,6 +489,14 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
             refresh();
           }}
         />
+      )}
+
+      {/* Tier error banner */}
+      {tierError && (
+        <div style={{ padding: "12px 16px", backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 13, color: "#ef4444" }}>{tierError}</span>
+          <button onClick={() => setTierError(null)} style={{ background: "none", border: "none", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>&times;</button>
+        </div>
       )}
 
       {/* PDF upgrade prompt */}
@@ -704,8 +725,8 @@ function CreateInvoiceModal({
       }
 
       if (mode === "approve" || mode === "approve-email") {
-        const sent = await sendInvoiceAction(result.id, mode === "approve-email");
-        onCreated(sent ?? result);
+        const sendResult = await sendInvoiceAction(result.id, mode === "approve-email");
+        onCreated(sendResult.ok && sendResult.data ? sendResult.data : result);
       } else {
         onCreated(result);
       }
@@ -1332,17 +1353,23 @@ function RecordPaymentModal({
   const handleSubmit = () => {
     setError(null);
     startTransition(async () => {
-      const result = await recordPaymentAction(invoice.id, {
+      const actionResult = await recordPaymentAction(invoice.id, {
         amount: amountCents,
         paymentDate,
         paymentMethod: paymentMethod || undefined,
         reference: reference || undefined,
       });
-      if (!result) {
+      if (!actionResult.ok) {
+        setError(actionResult.error.type === "tier_limit"
+          ? `${actionResult.error.message}. Upgrade your plan to continue.`
+          : actionResult.error.message);
+        return;
+      }
+      if (!actionResult.data) {
         setError("Failed to record payment.");
         return;
       }
-      onRecorded(result);
+      onRecorded(actionResult.data);
     });
   };
 
