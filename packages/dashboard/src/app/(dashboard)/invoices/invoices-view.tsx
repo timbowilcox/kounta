@@ -413,6 +413,7 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
           editInvoice={editInvoice}
           taxLabel={taxLabel}
           taxRate={taxRate}
+          accounts={accounts}
           onClose={() => { setShowCreate(false); setEditInvoice(null); }}
           onCreated={(inv) => {
             setShowCreate(false);
@@ -501,43 +502,51 @@ function CreateInvoiceModal({
   editInvoice,
   taxLabel,
   taxRate,
+  accounts,
   onClose,
   onCreated,
 }: {
   editInvoice: InvoiceListItem | null;
   taxLabel: string;
   taxRate: number;
+  accounts: AccountWithBalance[];
   onClose: () => void;
   onCreated: (inv: InvoiceListItem | null) => void;
 }) {
   const isEdit = !!editInvoice;
 
+  const [invoiceNumber, setInvoiceNumber] = useState(editInvoice?.invoiceNumber ?? "");
   const [customerName, setCustomerName] = useState(editInvoice?.customerName ?? "");
   const [customerEmail, setCustomerEmail] = useState(editInvoice?.customerEmail ?? "");
-  const [issueDate, setIssueDate] = useState(editInvoice?.issueDate ?? todayISO());
-  const [dueDate, setDueDate] = useState(editInvoice?.dueDate ?? plus30());
+  const [issueDate, setIssueDate] = useState(editInvoice?.issueDate?.slice(0, 10) ?? todayISO());
+  const [dueDate, setDueDate] = useState(editInvoice?.dueDate?.slice(0, 10) ?? plus30());
   const [notes, setNotes] = useState("");
   const [taxInclusive, setTaxInclusive] = useState(false);
+
+  // TODO: Filter by account type instead of code prefix when custom CoA editing lands.
+  const revenueAccounts = accounts.filter((a) => a.type === "revenue" || (a.code && a.code.startsWith("4")));
 
   interface LineItemForm {
     description: string;
     quantity: string;
     unitPriceDollars: string;
+    accountId: string;
   }
 
-  const defaultLines: LineItemForm[] = editInvoice
+  const defaultLines: LineItemForm[] = editInvoice && editInvoice.lineItems.length > 0
     ? editInvoice.lineItems.map((li) => ({
         description: li.description,
         quantity: String(li.quantity),
         unitPriceDollars: centsToDollars(li.unitPrice),
+        accountId: "",
       }))
-    : [{ description: "", quantity: "1", unitPriceDollars: "" }];
+    : [{ description: "", quantity: "1", unitPriceDollars: "", accountId: "" }];
 
   const [lineItems, setLineItems] = useState<LineItemForm[]>(defaultLines);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const addLine = () => setLineItems([...lineItems, { description: "", quantity: "1", unitPriceDollars: "" }]);
+  const addLine = () => setLineItems([...lineItems, { description: "", quantity: "1", unitPriceDollars: "", accountId: "" }]);
   const removeLine = (i: number) => setLineItems(lineItems.filter((_, idx) => idx !== i));
   const updateLine = (i: number, field: keyof LineItemForm, value: string) => {
     const updated = [...lineItems];
@@ -574,11 +583,13 @@ function CreateInvoiceModal({
         customerEmail: customerEmail || undefined,
         issueDate,
         dueDate,
+        invoiceNumber: invoiceNumber || undefined,
         lineItems: lineItems.map((li) => ({
           description: li.description,
           quantity: parseFloat(li.quantity) || 1,
           unitPrice: dollarsToCents(li.unitPriceDollars),
           taxRate: hasTax ? taxRate : undefined,
+          accountId: li.accountId || undefined,
         })),
         notes: notes || undefined,
         taxInclusive,
@@ -619,7 +630,7 @@ function CreateInvoiceModal({
       <div
         style={{
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-          width: 640, maxHeight: "85vh", overflowY: "auto",
+          width: 720, maxHeight: "85vh", overflowY: "auto",
           backgroundColor: "var(--surface-1)", borderRadius: 8,
           border: "1px solid var(--border)", zIndex: 101,
           padding: 24,
@@ -638,6 +649,17 @@ function CreateInvoiceModal({
           >
             &#10005;
           </button>
+        </div>
+
+        {/* Invoice number */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Invoice number</label>
+          <input
+            style={{ ...inputStyle, width: 200, fontFamily: "var(--font-mono)" }}
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            placeholder="Auto-generated"
+          />
         </div>
 
         {/* Customer */}
@@ -671,10 +693,11 @@ function CreateInvoiceModal({
             {/* Header */}
             <div style={{ display: "flex", backgroundColor: "var(--surface-2)", padding: "6px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-tertiary)" }}>
               <div style={{ flex: 3 }}>Description</div>
-              <div style={{ width: 70, textAlign: "center" }}>Qty</div>
-              <div style={{ width: 100, textAlign: "right" }}>Unit Price</div>
-              <div style={{ width: 100, textAlign: "right" }}>Amount</div>
-              <div style={{ width: 32 }} />
+              <div style={{ width: 60, textAlign: "center" }}>Qty</div>
+              <div style={{ width: 90, textAlign: "right" }}>Unit Price</div>
+              <div style={{ width: 90, textAlign: "right" }}>Amount</div>
+              <div style={{ width: 130, textAlign: "left", paddingLeft: 8 }}>Account</div>
+              <div style={{ width: 28 }} />
             </div>
             {/* Rows */}
             {lineItems.map((li, i) => {
@@ -689,14 +712,14 @@ function CreateInvoiceModal({
                       placeholder="Description"
                     />
                   </div>
-                  <div style={{ width: 70, paddingRight: 8 }}>
+                  <div style={{ width: 60, paddingRight: 8 }}>
                     <input
                       style={{ ...inputStyle, height: 32, backgroundColor: "transparent", border: "none", textAlign: "center" }}
                       value={li.quantity}
                       onChange={(e) => updateLine(i, "quantity", e.target.value)}
                     />
                   </div>
-                  <div style={{ width: 100, paddingRight: 8 }}>
+                  <div style={{ width: 90, paddingRight: 8 }}>
                     <input
                       style={{ ...inputStyle, height: 32, backgroundColor: "transparent", border: "none", textAlign: "right", fontFamily: "var(--font-mono)" }}
                       value={li.unitPriceDollars}
@@ -704,10 +727,22 @@ function CreateInvoiceModal({
                       placeholder="0.00"
                     />
                   </div>
-                  <div style={{ width: 100, textAlign: "right", fontSize: 13, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                  <div style={{ width: 90, textAlign: "right", fontSize: 13, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
                     {formatCurrency(amt)}
                   </div>
-                  <div style={{ width: 32, textAlign: "center" }}>
+                  <div style={{ width: 130, paddingLeft: 8 }}>
+                    <select
+                      style={{ ...inputStyle, height: 32, fontSize: 11, backgroundColor: "transparent", border: "none", padding: "0 4px" }}
+                      value={li.accountId}
+                      onChange={(e) => updateLine(i, "accountId", e.target.value)}
+                    >
+                      <option value="">Default</option>
+                      {revenueAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.code ? `${a.code} ${a.name}` : a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ width: 28, textAlign: "center" }}>
                     {lineItems.length > 1 && (
                       <button
                         onClick={() => removeLine(i)}
@@ -782,9 +817,19 @@ function CreateInvoiceModal({
         <div className="flex justify-end" style={{ gap: 8 }}>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
           {isEdit ? (
-            <button className="btn-primary" disabled={!isValid || isPending} onClick={() => handleSubmit("draft")}>
-              {isPending ? "Saving..." : "Update"}
-            </button>
+            <>
+              <button className="btn-secondary" disabled={!isValid || isPending} onClick={() => handleSubmit("draft")}>
+                {isPending ? "Saving..." : "Update"}
+              </button>
+              <button className="btn-secondary" disabled={!isValid || isPending} onClick={() => handleSubmit("approve")}>
+                {isPending ? "Approving..." : "Approve"}
+              </button>
+              {customerEmail.trim() && (
+                <button className="btn-primary" disabled={!isValid || isPending} onClick={() => handleSubmit("approve-email")}>
+                  {isPending ? "Sending..." : "Approve & email"}
+                </button>
+              )}
+            </>
           ) : (
             <>
               <button className="btn-secondary" disabled={!isValid || isPending} onClick={() => handleSubmit("draft")}>
@@ -798,6 +843,7 @@ function CreateInvoiceModal({
                 disabled={!isValid || isPending || !customerEmail.trim()}
                 onClick={() => handleSubmit("approve-email")}
                 title={!customerEmail.trim() ? "Enter customer email to send" : undefined}
+                style={!customerEmail.trim() ? { opacity: 0.5 } : undefined}
               >
                 {isPending ? "Sending..." : "Approve & email"}
               </button>
@@ -840,6 +886,7 @@ function InvoiceDetailDrawer({
   const canPay = ["sent", "overdue", "partially_paid"].includes(invoice.status);
   const canVoid = ["sent", "overdue"].includes(invoice.status);
   const isTerminal = ["paid", "void"].includes(invoice.status);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <>
@@ -854,6 +901,7 @@ function InvoiceDetailDrawer({
           position: "fixed", top: 0, right: 0, bottom: 0, width: 520,
           backgroundColor: "var(--surface-1)", borderLeft: "1px solid var(--border)",
           zIndex: 101, overflowY: "auto", padding: 24,
+          display: "flex", flexDirection: "column",
         }}
       >
         {/* Header */}
@@ -900,17 +948,6 @@ function InvoiceDetailDrawer({
                 {invoice.customerEmail && (
                   <button className="btn-primary" onClick={() => onSend(true)} disabled={isPending}>Approve &amp; email</button>
                 )}
-                <button
-                  onClick={onDelete}
-                  disabled={isPending}
-                  style={{
-                    height: 36, padding: "0 12px", borderRadius: 6, fontSize: 13, fontWeight: 500,
-                    backgroundColor: "transparent", border: "1px solid rgba(239,68,68,0.3)", color: "var(--negative)",
-                    cursor: "pointer",
-                  }}
-                >
-                  Delete
-                </button>
               </>
             )}
             {canPay && (
@@ -993,7 +1030,7 @@ function InvoiceDetailDrawer({
         </div>
 
         {/* Payment history */}
-        <div>
+        <div style={{ marginBottom: 20 }}>
           <h3 style={{ fontSize: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-tertiary)", marginBottom: 8 }}>Payment History</h3>
           {invoice.payments.length === 0 ? (
             <div style={{ padding: "16px 12px", fontSize: 13, color: "var(--text-disabled)", border: "1px solid var(--border)", borderRadius: 6, textAlign: "center" }}>
@@ -1024,6 +1061,44 @@ function InvoiceDetailDrawer({
             </div>
           )}
         </div>
+
+        {/* Spacer pushes delete to bottom */}
+        <div style={{ flex: 1 }} />
+
+        {/* Delete — bottom of drawer, draft only */}
+        {isDraft && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            {confirmDelete ? (
+              <div className="flex items-center" style={{ gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Delete this invoice?</span>
+                <button
+                  onClick={() => { setConfirmDelete(false); onDelete(); }}
+                  disabled={isPending}
+                  style={{
+                    height: 32, padding: "0 12px", borderRadius: 6, fontSize: 13, fontWeight: 500,
+                    backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--negative)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Yes, delete
+                </button>
+                <button className="btn-secondary" onClick={() => setConfirmDelete(false)} style={{ height: 32 }}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                style={{
+                  background: "none", border: "none", padding: 0,
+                  fontSize: 13, color: "var(--negative)", cursor: "pointer",
+                }}
+              >
+                Delete invoice
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

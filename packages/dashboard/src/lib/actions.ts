@@ -1233,7 +1233,7 @@ export async function createInvoiceAction(input: {
   customerAddress?: string;
   issueDate: string;
   dueDate: string;
-  lineItems: { description: string; quantity: number; unitPrice: number; taxRate?: number }[];
+  lineItems: { description: string; quantity: number; unitPrice: number; taxRate?: number; accountId?: string }[];
   notes?: string;
   footer?: string;
   taxInclusive?: boolean;
@@ -1251,7 +1251,7 @@ export async function updateInvoiceAction(id: string, input: {
   customerAddress?: string;
   issueDate?: string;
   dueDate?: string;
-  lineItems?: { description: string; quantity: number; unitPrice: number; taxRate?: number }[];
+  lineItems?: { description: string; quantity: number; unitPrice: number; taxRate?: number; accountId?: string }[];
   notes?: string;
   footer?: string;
   taxInclusive?: boolean;
