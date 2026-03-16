@@ -171,13 +171,19 @@ invoiceRoutes.get("/:id/pdf", async (c) => {
     currency: invoice.currency,
   };
 
-  const pdfBuffer = await generateInvoicePDF(invoice, pdfConfig);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateInvoicePDF(invoice, pdfConfig);
+  } catch (err) {
+    console.error("[pdf] Generation failed:", err);
+    return errorResponse(c, { code: "PDF_GENERATION_FAILED", message: "Failed to generate invoice PDF" });
+  }
 
   return new Response(pdfBuffer, {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.pdf"`,
+      "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
       "Content-Length": String(pdfBuffer.length),
     },
   });
