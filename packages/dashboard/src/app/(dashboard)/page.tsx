@@ -244,37 +244,6 @@ export default async function OverviewPage() {
         </div>
       )}
 
-      {/* AR Aging summary */}
-      {arAging.length > 0 && arAging.some((b) => b.amount > 0) && (
-        <div
-          style={{
-            padding: "16px 20px",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--surface-1)",
-            marginBottom: 16,
-          }}
-        >
-          <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Accounts Receivable</span>
-            <Link href="/invoices" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>View invoices &rarr;</Link>
-          </div>
-          <div style={{ display: "flex", gap: 16 }}>
-            {arAging.map((bucket) => (
-              <div key={bucket.label} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{bucket.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: bucket.amount > 0 ? "var(--text-primary)" : "var(--text-tertiary)" }}>
-                  {formatCurrency(bucket.amount)}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                  {bucket.count} inv{bucket.count !== 1 ? "s" : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Metric cards */}
       <div className="grid grid-cols-4" style={{ gap: 16, marginBottom: 32 }}>
         <MetricCard
@@ -308,6 +277,7 @@ export default async function OverviewPage() {
 
       {/* Quick actions */}
       <div style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12 }}>Quick Actions</h2>
         <div className="flex" style={{ gap: 12 }}>
           <QuickActionButton
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>}
@@ -326,12 +296,44 @@ export default async function OverviewPage() {
         </div>
       </div>
 
+      {/* AR Aging summary */}
+      {arAging.length > 0 && arAging.some((b) => b.amount > 0) && (
+        <div
+          style={{
+            padding: "16px 20px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface-1)",
+            marginBottom: 32,
+          }}
+        >
+          <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Accounts Receivable</span>
+            <Link href="/invoices" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>View invoices &rarr;</Link>
+          </div>
+          <div style={{ display: "flex", gap: 16 }}>
+            {arAging.map((bucket) => (
+              <div key={bucket.label} style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>{bucket.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: bucket.amount > 0 ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                  {formatCurrency(bucket.amount)}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                  {bucket.count} inv{bucket.count !== 1 ? "s" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recent transactions */}
       <div className="card" style={{ padding: 0 }}>
         <div
           className="flex items-center justify-between"
           style={{ padding: "16px 20px" }}
         >
+          <h2 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", margin: 0 }}>Recent Transactions</h2>
           <Link href="/transactions" className="btn-ghost" style={{ fontSize: 12, height: 28, padding: "0 8px" }}>
             View all &rarr;
           </Link>
