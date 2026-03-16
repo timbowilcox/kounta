@@ -438,6 +438,14 @@ export function registerFixedAssetTools(
           `- Default Depreciation: ${config.defaultDepreciationMethod}`,
           `- Capitalisation Threshold: $${(config.capitalisationThreshold / 100).toFixed(2)}`,
           `- Available Methods: ${config.depreciationMethods.join(", ")}`,
+          ``,
+          `**Step 3: Invoicing**`,
+          `If you bill clients for services, products, or consulting, use Kounta's invoicing to track what's owed and what's been paid.`,
+          ``,
+          `1. Use create_invoice to draft an invoice with line items and pricing`,
+          `2. Use send_invoice to approve it — this posts the accounting entry and optionally emails the PDF to your customer`,
+          `3. When payment arrives (via bank feed or manually), use record_invoice_payment to close it out`,
+          `4. Use get_ar_aging to see who owes you money and how overdue they are`,
         ];
 
         return toolOk({

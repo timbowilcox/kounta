@@ -422,6 +422,26 @@ export class Kounta {
     return (await res.json()) as PaginatedResult<T>;
   }
 
+  /**
+   * @internal Issue a request that returns raw binary data (e.g. PDF).
+   */
+  async requestRaw(method: string, path: string): Promise<ArrayBuffer> {
+    const headers: Record<string, string> = {
+      ...this.authHeader("apiKey"),
+    };
+
+    const res = await this._fetch(`${this._baseUrl}${path}`, { method, headers });
+
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => ({
+        error: { code: "UNKNOWN", message: res.statusText },
+      }))) as { error: { code: string; message: string; details?: unknown[]; requestId?: string } };
+      throw new KountaApiError(res.status, errBody.error);
+    }
+
+    return res.arrayBuffer();
+  }
+
   /** @internal Produce the Authorization header for the given auth mode. */
   private authHeader(mode: "apiKey" | "admin"): Record<string, string> {
     if (mode === "admin") {
@@ -1450,5 +1470,15 @@ class InvoicesModule {
   /** Get AR aging report. */
   async getAging(): Promise<ARAgingBucket[]> {
     return this.c.request("GET", "/v1/invoices/aging");
+  }
+
+  /** Download invoice as PDF. Returns the raw PDF as an ArrayBuffer. */
+  async getPDF(invoiceId: string): Promise<ArrayBuffer> {
+    return this.c.requestRaw("GET", `/v1/invoices/${invoiceId}/pdf`);
+  }
+
+  /** Send invoice email with PDF attachment to the customer. */
+  async sendEmail(invoiceId: string): Promise<{ sent: boolean; to: string; invoiceNumber: string }> {
+    return this.c.request("POST", `/v1/invoices/${invoiceId}/email`);
   }
 }

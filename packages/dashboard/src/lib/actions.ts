@@ -1294,3 +1294,16 @@ export async function deleteInvoiceAction(id: string): Promise<boolean> {
   return res.ok;
 }
 
+/** Fetch invoice PDF as base64 string for client-side download. */
+export async function fetchInvoicePDFBase64(id: string): Promise<{ base64: string; filename: string } | null> {
+  const res = await invoiceFetch(`/${id}/pdf`);
+  if (!res.ok) return null;
+  const buffer = await res.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+  // Extract filename from Content-Disposition header
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="(.+?)"/);
+  const filename = filenameMatch?.[1] ?? `invoice-${id}.pdf`;
+  return { base64, filename };
+}
+

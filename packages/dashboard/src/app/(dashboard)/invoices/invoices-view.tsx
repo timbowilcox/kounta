@@ -12,6 +12,7 @@ import {
   recordPaymentAction,
   voidInvoiceAction,
   deleteInvoiceAction,
+  fetchInvoicePDFBase64,
 } from "@/lib/actions";
 import type {
   InvoiceListItem,
@@ -226,6 +227,29 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
     });
   };
 
+  const handleDownloadPDF = (id: string) => {
+    startTransition(async () => {
+      const result = await fetchInvoicePDFBase64(id);
+      if (!result) return;
+      const link = document.createElement("a");
+      link.href = `data:application/pdf;base64,${result.base64}`;
+      link.download = result.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+  };
+
+  const [previewPDF, setPreviewPDF] = useState<string | null>(null);
+
+  const handlePreviewPDF = (id: string) => {
+    startTransition(async () => {
+      const result = await fetchInvoicePDFBase64(id);
+      if (!result) return;
+      setPreviewPDF(`data:application/pdf;base64,${result.base64}`);
+    });
+  };
+
   const filtered = invoices;
 
   return (
@@ -310,7 +334,7 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {["Invoice #", "Customer", "Issue Date", "Due Date", "Total", "Amount Due", "Status"].map((h) => (
+                {["Invoice #", "Customer", "Issue Date", "Due Date", "Total", "Amount Due", "Status", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -356,6 +380,26 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
                   <td style={{ padding: "10px 16px" }}>
                     <StatusBadge status={inv.status} />
                   </td>
+                  <td style={{ padding: "10px 8px", width: 36 }}>
+                    {inv.status !== "draft" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownloadPDF(inv.id); }}
+                        title="Download PDF"
+                        style={{
+                          width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                          backgroundColor: "transparent", border: "none", borderRadius: 4,
+                          color: "var(--text-tertiary)", cursor: "pointer",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="12" y1="18" x2="12" y2="12" />
+                          <polyline points="9 15 12 18 15 15" />
+                        </svg>
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -390,6 +434,8 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
           onDelete={() => handleDelete(detailInvoice.id)}
           onEdit={() => { setEditInvoice(detailInvoice); setDetailInvoice(null); }}
           onRecordPayment={() => setShowPayment(true)}
+          onDownloadPDF={() => handleDownloadPDF(detailInvoice.id)}
+          onPreviewPDF={() => handlePreviewPDF(detailInvoice.id)}
         />
       )}
 
@@ -404,6 +450,44 @@ export function InvoicesView({ initialInvoices, initialSummary, initialAging, ac
             refresh();
           }}
         />
+      )}
+
+      {/* PDF preview modal */}
+      {previewPDF && (
+        <>
+          <div
+            onClick={() => setPreviewPDF(null)}
+            style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 200 }}
+          />
+          <div
+            style={{
+              position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+              width: "80vw", height: "85vh",
+              backgroundColor: "var(--surface-1)", borderRadius: 8,
+              border: "1px solid var(--border)", zIndex: 201,
+              display: "flex", flexDirection: "column",
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>Invoice Preview</span>
+              <button
+                onClick={() => setPreviewPDF(null)}
+                style={{
+                  width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                  backgroundColor: "transparent", border: "none", borderRadius: 6,
+                  color: "var(--text-tertiary)", cursor: "pointer", fontSize: 16,
+                }}
+              >
+                &#10005;
+              </button>
+            </div>
+            <iframe
+              src={previewPDF}
+              style={{ flex: 1, border: "none", borderRadius: "0 0 8px 8px" }}
+              title="Invoice PDF Preview"
+            />
+          </div>
+        </>
       )}
     </div>
   );
@@ -730,6 +814,8 @@ function InvoiceDetailDrawer({
   onDelete,
   onEdit,
   onRecordPayment,
+  onDownloadPDF,
+  onPreviewPDF,
 }: {
   invoice: InvoiceListItem;
   isPending: boolean;
@@ -739,6 +825,8 @@ function InvoiceDetailDrawer({
   onDelete: () => void;
   onEdit: () => void;
   onRecordPayment: () => void;
+  onDownloadPDF: () => void;
+  onPreviewPDF: () => void;
 }) {
   const isDraft = invoice.status === "draft";
   const canPay = ["sent", "overdue", "partially_paid"].includes(invoice.status);
@@ -830,6 +918,27 @@ function InvoiceDetailDrawer({
                 Void
               </button>
             )}
+          </div>
+        )}
+
+        {/* PDF actions */}
+        {!isDraft && (
+          <div className="flex" style={{ gap: 8, marginBottom: 20 }}>
+            <button className="btn-secondary" onClick={onDownloadPDF} disabled={isPending} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download PDF
+            </button>
+            <button className="btn-secondary" onClick={onPreviewPDF} disabled={isPending} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Preview
+            </button>
           </div>
         )}
 

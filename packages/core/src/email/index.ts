@@ -27,7 +27,9 @@ export { generateWeeklyDigest } from "./templates/weekly-digest.js";
 export { generateMonthlyClose } from "./templates/monthly-close.js";
 export { generateUrgentAlert } from "./templates/urgent-alert.js";
 export { generateWelcomeEmail, generateClassifyPrompt, generateFirstSnapshot } from "./templates/onboarding.js";
-export { formatAmount, formatAmountShort } from "./templates/layout.js";
+export { emailLayout, formatAmount, formatAmountShort } from "./templates/layout.js";
+export { generateInvoiceEmail } from "./templates/invoice.js";
+export type { InvoiceEmailData } from "./templates/invoice.js";
 
 export type {
   EmailPreferences,

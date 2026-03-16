@@ -39,6 +39,7 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
+    "pdfkit": "^0.18.0",
     "pg": "^8.13.0",
     "resend": "^6.9.3",
     "sql.js": "^1.14.1",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pdfkit": "^0.17.5",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
