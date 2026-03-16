@@ -7,7 +7,7 @@ import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, accepted, success, paginated } from "../lib/responses.js";
 import { enforcePlanLimit, UPGRADE_URL } from "../middleware/plan.js";
-import { planLimitExceededError } from "@kounta/core";
+import { planLimitExceededError, getJurisdictionConfig } from "@kounta/core";
 
 export const transactionRoutes = new Hono<Env>();
 
@@ -97,6 +97,66 @@ transactionRoutes.post("/", async (c) => {
       }
     }
   } catch { /* Receipt prompt is best-effort — never block transaction creation */ }
+
+  // Capitalisation check — notify when large expenses may need to be capitalised
+  try {
+    const tx = result.value;
+
+    // Skip depreciation entries (posted by the depreciation scheduler)
+    const isDepreciation = tx.idempotencyKey?.startsWith("depreciation-") || tx.memo?.startsWith("Depreciation:");
+
+    // Skip transactions linked to recurring entries
+    const db = engine.getDb();
+    const recurringLink = await db.get<{ id: string }>(
+      "SELECT id FROM recurring_entry_log WHERE transaction_id = ? LIMIT 1",
+      [tx.id],
+    );
+    const isRecurring = !!recurringLink;
+
+    if (!isDepreciation && !isRecurring) {
+      // Account name keywords to exclude (legitimate recurring large expenses)
+      const EXCLUDE_KEYWORDS = /\b(rent|insurance|subscription|lease|payroll|salary|wages|tax|utilities)\b/i;
+
+      // Get jurisdiction config for threshold
+      const ledgerRow = await db.get<{ jurisdiction: string }>(
+        "SELECT jurisdiction FROM ledgers WHERE id = ?",
+        [ledgerId],
+      );
+      const jurisdiction = ledgerRow?.jurisdiction ?? "AU";
+      const jConfig = getJurisdictionConfig(jurisdiction);
+      const threshold = jConfig.capitalisationThreshold;
+
+      if (threshold > 0) {
+        // Find expense debits exceeding the threshold
+        const expenseDebits = tx.lines.filter((l) => l.direction === "debit" && l.amount >= threshold);
+        for (const line of expenseDebits) {
+          const acctResult = await engine.getAccount(line.accountId);
+          if (!acctResult.ok || acctResult.value.type !== "expense") continue;
+
+          // Skip accounts with excluded keywords in the name
+          if (EXCLUDE_KEYWORDS.test(acctResult.value.name)) continue;
+
+          const apiKeyInfo = c.get("apiKeyInfo");
+          if (!apiKeyInfo) break;
+
+          const amountDisplay = `$${(line.amount / 100).toFixed(2)}`;
+          const thresholdDisplay = `$${(threshold / 100).toFixed(2)}`;
+          await engine.createNotification({
+            ledgerId: ledgerId!,
+            userId: apiKeyInfo.userId,
+            type: "capitalisation_check",
+            severity: "warning",
+            title: "Large expense — should this be capitalised?",
+            body: `${amountDisplay} posted to ${acctResult.value.name}. Amounts over ${thresholdDisplay} may need to be recorded as fixed assets. Use check_capitalisation to verify.`,
+            data: { transactionId: tx.id, accountId: line.accountId, amount: line.amount, threshold },
+            actionType: "navigate",
+            actionData: { url: "/fixed-assets" },
+          });
+          break; // One notification per transaction
+        }
+      }
+    }
+  } catch { /* Capitalisation check is best-effort — never block transaction creation */ }
 
   // Add usage header
   const newCount = (enforcement.count ?? 0) + 1;

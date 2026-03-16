@@ -13,6 +13,7 @@ export type NotificationType =
   | "monthly_recognition_summary"
   | "schedule_completion"
   | "large_deferred_balance"
+  | "capitalisation_check"
   | "system";
 
 export type NotificationSeverity = "info" | "warning" | "critical";

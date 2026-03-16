@@ -7,7 +7,7 @@ import type { TransactionWithLines, AccountWithBalance } from "@kounta/sdk";
 import { PostTransactionButton } from "@/components/post-transaction-button";
 import { ProgressChecklist } from "@/components/progress-checklist";
 import { FirstClassificationModal } from "@/components/first-classification-modal";
-import { fetchRevenueMetrics } from "@/lib/actions";
+import { fetchRevenueMetrics, fetchPendingDepreciation } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +88,14 @@ export default async function OverviewPage() {
   const hasRevSchedules = revMetrics.activeSchedules > 0;
   const hasData = accountsList.length > 0;
 
+  // Pending depreciation entries
+  let pendingDepreciation = { pendingCount: 0, totalAmount: 0, entries: [] as { assetName: string; amount: number; periodDate: string }[] };
+  try {
+    pendingDepreciation = await fetchPendingDepreciation();
+  } catch {
+    // Fixed asset tables may not exist yet
+  }
+
   return (
     <div>
       {/* Greeting */}
@@ -112,6 +120,42 @@ export default async function OverviewPage() {
 
       {/* First classification modal — shown after bank sync */}
       <FirstClassificationModal ledgerId={ledgerId} currency={ledger.currency} />
+
+      {/* Depreciation pending alert */}
+      {pendingDepreciation.pendingCount > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+            backgroundColor: "color-mix(in srgb, var(--warning) 8%, var(--surface-1))",
+            marginBottom: 16,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)" }}>
+            {pendingDepreciation.pendingCount} depreciation {pendingDepreciation.pendingCount === 1 ? "entry" : "entries"} pending ({formatCurrency(pendingDepreciation.totalAmount)})
+          </span>
+          <Link
+            href="/fixed-assets"
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--warning)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Post now &rarr;
+          </Link>
+        </div>
+      )}
 
       {/* Metric cards */}
       <div className="grid grid-cols-4" style={{ gap: 16, marginBottom: 32 }}>

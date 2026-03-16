@@ -1,0 +1,5 @@
+-- ---------------------------------------------------------------------------
+-- 020: Add capitalisation_check notification type
+-- ---------------------------------------------------------------------------
+-- SQLite uses TEXT for notification_type — no schema change needed.
+-- The application-level NotificationType union already includes 'capitalisation_check'.
