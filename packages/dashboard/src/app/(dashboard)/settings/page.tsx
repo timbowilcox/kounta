@@ -1,6 +1,6 @@
 import { getSessionClient } from "@/lib/kounta";
-import { fetchBillingStatus, fetchApiKeys, fetchClosedPeriods } from "@/lib/actions";
-import type { ClosedPeriodSummary } from "@/lib/actions";
+import { fetchBillingStatus, fetchApiKeys, fetchClosedPeriods, fetchJurisdictions, fetchJurisdictionSettings } from "@/lib/actions";
+import type { ClosedPeriodSummary, JurisdictionOption, JurisdictionSettings } from "@/lib/actions";
 import { SettingsView } from "./settings-view";
 import type { ApiKeySafe, AccountWithBalance } from "@kounta/sdk";
 import { redirect } from "next/navigation";
@@ -38,12 +38,20 @@ export default async function SettingsPage() {
   let fiscalYearStart = 1;
   let closedThrough: string | null = null;
   let closedPeriods: ClosedPeriodSummary[] = [];
+  let jurisdictions: JurisdictionOption[] = [];
+  let jurisdictionSettings: JurisdictionSettings = { jurisdiction: "AU", taxId: null, taxBasis: "accrual" };
   try {
     fiscalYearStart = (ledger as any).fiscalYearStart ?? 1;
     closedThrough = (ledger as any).closedThrough ?? null;
   } catch {}
   try {
     closedPeriods = await fetchClosedPeriods();
+  } catch {}
+  try {
+    [jurisdictions, jurisdictionSettings] = await Promise.all([
+      fetchJurisdictions(),
+      fetchJurisdictionSettings(),
+    ]);
   } catch {}
 
   return (
@@ -57,6 +65,8 @@ export default async function SettingsPage() {
       closedThrough={closedThrough}
       closedPeriods={closedPeriods}
       accounts={accounts as AccountWithBalance[]}
+      jurisdictions={jurisdictions}
+      jurisdictionSettings={jurisdictionSettings}
     />
   );
 }

@@ -675,6 +675,79 @@ export async function updateLedgerAction(updates: { name?: string; fiscalYearSta
   }
 }
 
+// --- Jurisdiction Settings ---------------------------------------------------
+
+export interface JurisdictionOption {
+  code: string;
+  name: string;
+  currency: string;
+  currencySymbol: string;
+  taxAuthority: string;
+  vatName: string;
+  vatRate: number;
+  taxIdLabel: string;
+  defaultDepreciationMethod: string;
+  capitalisationThreshold: number;
+}
+
+export async function fetchJurisdictions(): Promise<JurisdictionOption[]> {
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+  const res = await fetch(`${apiUrl}/v1/jurisdictions`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+export interface JurisdictionSettings {
+  jurisdiction: string;
+  taxId: string | null;
+  taxBasis: string;
+}
+
+export async function fetchJurisdictionSettings(): Promise<JurisdictionSettings> {
+  const session = await auth();
+  if (!session?.apiKey) return { jurisdiction: "AU", taxId: null, taxBasis: "accrual" };
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/jurisdiction`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${session.apiKey}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return { jurisdiction: "AU", taxId: null, taxBasis: "accrual" };
+  const json = await res.json();
+  return json.data;
+}
+
+export async function updateJurisdictionAction(updates: {
+  jurisdiction?: string;
+  taxId?: string | null;
+  taxBasis?: string;
+}): Promise<boolean> {
+  const session = await auth();
+  if (!session?.apiKey) return false;
+
+  const { ledgerId } = await getSessionClient();
+  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+
+  const res = await fetch(`${apiUrl}/v1/ledgers/${ledgerId}/jurisdiction`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${session.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(updates),
+    cache: "no-store",
+  });
+
+  return res.ok;
+}
+
 // --- Stripe Connect -------------------------------------------------------
 
 export interface StripeConnectStatus {

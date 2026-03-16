@@ -7,7 +7,7 @@
 
 import { auth } from "@/lib/auth";
 import { getSessionClient } from "@/lib/kounta";
-import { chatWithAssistant, isAssistantAvailable, type SSEEvent } from "@/lib/assistant";
+import { chatWithAssistant, isAssistantAvailable, type SSEEvent, type JurisdictionContext } from "@/lib/assistant";
 import { fetchBillingStatus } from "@/lib/actions";
 
 export const runtime = "nodejs";
@@ -84,12 +84,60 @@ export async function POST(request: Request) {
 
       try {
         // Fetch ledger info for system prompt context
-        let ledgerContext: { currency?: string; name?: string } | undefined;
+        let ledgerContext: { currency?: string; name?: string; jurisdiction?: JurisdictionContext } | undefined;
+        let fyStartMonth = 1;
         try {
           const ledger = await client.ledgers.get(ledgerId);
           ledgerContext = { currency: ledger.currency, name: ledger.name };
+          fyStartMonth = (ledger as unknown as Record<string, unknown>).fiscalYearStart as number ?? 1;
         } catch {
           // Non-critical — assistant works without ledger context
+        }
+
+        // Fetch jurisdiction context (non-critical)
+        try {
+          const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+          const [jSettingsRes, jListRes] = await Promise.all([
+            fetch(`${apiUrl}/v1/ledgers/${ledgerId}/jurisdiction`, {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${session.apiKey}`,
+              },
+            }),
+            fetch(`${apiUrl}/v1/jurisdictions`, { cache: "no-store" }),
+          ]);
+
+          if (jSettingsRes.ok && jListRes.ok) {
+            const settings = (await jSettingsRes.json()).data as { jurisdiction: string; taxId: string | null; taxBasis: string };
+            const allJurisdictions = (await jListRes.json()).data as Array<{
+              code: string; name: string; taxAuthority: string; vatName: string;
+              vatRate: number; defaultDepreciationMethod: string; capitalisationThreshold: number;
+            }>;
+            const jConfig = allJurisdictions.find((j) => j.code === settings.jurisdiction);
+            if (jConfig) {
+              const now = new Date();
+              const currentMonth = now.getMonth() + 1;
+              const fyYear = currentMonth >= fyStartMonth ? now.getFullYear() : now.getFullYear() - 1;
+              const fyLabel = fyStartMonth === 1
+                ? `${fyYear}`
+                : `${fyYear}/${fyYear + 1}`;
+
+              if (!ledgerContext) ledgerContext = {};
+              ledgerContext.jurisdiction = {
+                code: jConfig.code,
+                name: jConfig.name,
+                taxAuthority: jConfig.taxAuthority,
+                vatName: jConfig.vatName,
+                vatRate: jConfig.vatRate,
+                taxBasis: settings.taxBasis,
+                financialYearLabel: fyLabel,
+                defaultDepreciationMethod: jConfig.defaultDepreciationMethod,
+                capitalisationThreshold: jConfig.capitalisationThreshold,
+              };
+            }
+          }
+        } catch {
+          // Non-critical — assistant works without jurisdiction context
         }
 
         const updatedMessages = await chatWithAssistant({

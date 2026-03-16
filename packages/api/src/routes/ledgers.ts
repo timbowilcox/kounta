@@ -85,3 +85,70 @@ ledgerRoutes.patch("/:ledgerId", apiKeyAuth, async (c) => {
 
   return success(c, result.value);
 });
+
+/** GET /v1/ledgers/:ledgerId/jurisdiction — Get jurisdiction settings */
+ledgerRoutes.get("/:ledgerId/jurisdiction", apiKeyAuth, async (c) => {
+  const db = c.get("engine").getDb();
+  const ledgerId = c.req.param("ledgerId");
+
+  const row = await db.get<{ jurisdiction: string; tax_id: string | null; tax_basis: string; fiscal_year_start: number }>(
+    "SELECT jurisdiction, tax_id, tax_basis, fiscal_year_start FROM ledgers WHERE id = ?",
+    [ledgerId],
+  );
+
+  return success(c, {
+    jurisdiction: row?.jurisdiction ?? "AU",
+    taxId: row?.tax_id ?? null,
+    taxBasis: row?.tax_basis ?? "accrual",
+    fiscalYearStart: row?.fiscal_year_start ?? 1,
+  });
+});
+
+/** PATCH /v1/ledgers/:ledgerId/jurisdiction — Update jurisdiction settings */
+ledgerRoutes.patch("/:ledgerId/jurisdiction", apiKeyAuth, async (c) => {
+  const db = c.get("engine").getDb();
+  const ledgerId = c.req.param("ledgerId");
+  const body = await c.req.json() as {
+    jurisdiction?: string;
+    taxId?: string | null;
+    taxBasis?: string;
+  };
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  if (body.jurisdiction !== undefined) {
+    sets.push("jurisdiction = ?");
+    params.push(body.jurisdiction);
+  }
+  if (body.taxId !== undefined) {
+    sets.push("tax_id = ?");
+    params.push(body.taxId);
+  }
+  if (body.taxBasis !== undefined) {
+    sets.push("tax_basis = ?");
+    params.push(body.taxBasis);
+  }
+
+  if (sets.length === 0) {
+    return c.json({ error: { code: "VALIDATION_ERROR", message: "No fields to update", details: [] } }, 400);
+  }
+
+  sets.push("updated_at = ?");
+  params.push(new Date().toISOString());
+  params.push(ledgerId);
+
+  await db.run(`UPDATE ledgers SET ${sets.join(", ")} WHERE id = ?`, params);
+
+  // Return updated jurisdiction data
+  const row = await db.get<{ jurisdiction: string; tax_id: string | null; tax_basis: string }>(
+    "SELECT jurisdiction, tax_id, tax_basis FROM ledgers WHERE id = ?",
+    [ledgerId],
+  );
+
+  return success(c, {
+    jurisdiction: row?.jurisdiction ?? "AU",
+    taxId: row?.tax_id ?? null,
+    taxBasis: row?.tax_basis ?? "accrual",
+  });
+});

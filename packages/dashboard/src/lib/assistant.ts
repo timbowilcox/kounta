@@ -53,8 +53,28 @@ Guidelines:
 - If a question is ambiguous, ask a clarifying question rather than guessing.
 - Use accounting terminology correctly but explain it simply when the user seems unfamiliar.`;
 
+// ---------------------------------------------------------------------------
+// Jurisdiction context for system prompt
+// ---------------------------------------------------------------------------
+
+export interface JurisdictionContext {
+  code: string;
+  name: string;
+  taxAuthority: string;
+  vatName: string;
+  vatRate: number;
+  taxBasis: string;
+  financialYearLabel: string;
+  defaultDepreciationMethod: string;
+  capitalisationThreshold: number;
+}
+
 /** Build system prompt with dynamic context (date, time, ledger info). */
-function buildSystemPrompt(ledgerContext?: { currency?: string; name?: string }): string {
+function buildSystemPrompt(ledgerContext?: {
+  currency?: string;
+  name?: string;
+  jurisdiction?: JurisdictionContext;
+}): string {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-AU", {
     weekday: "long",
@@ -76,6 +96,24 @@ function buildSystemPrompt(ledgerContext?: { currency?: string; name?: string })
   }
   if (ledgerContext?.currency) {
     contextBlock += `\nThe ledger currency is ${ledgerContext.currency}.`;
+  }
+
+  if (ledgerContext?.jurisdiction) {
+    const j = ledgerContext.jurisdiction;
+    contextBlock += `\n\nJurisdiction context:`;
+    contextBlock += `\n- Jurisdiction: ${j.name} (${j.code})`;
+    contextBlock += `\n- Tax authority: ${j.taxAuthority}`;
+    contextBlock += `\n- Current financial year: ${j.financialYearLabel}`;
+    contextBlock += `\n- Tax basis: ${j.taxBasis}`;
+    contextBlock += `\n- ${j.vatName} rate: ${j.vatRate}%`;
+    contextBlock += `\n- Default depreciation method: ${j.defaultDepreciationMethod.replace(/_/g, " ")}`;
+    if (j.capitalisationThreshold > 0) {
+      contextBlock += `\n- Capitalisation threshold: $${(j.capitalisationThreshold / 100).toLocaleString()}`;
+    }
+    if (j.code === "AU") {
+      contextBlock += `\n- Instant asset write-off: Available for small businesses (turnover < $10M) for assets under $20,000 (current threshold — use check_capitalisation for exact rules).`;
+    }
+    contextBlock += `\n\nWhen advising on asset purchases, always use check_capitalisation first. When asked about depreciation rates or tax rules, use the available tools rather than relying on training data which may be outdated.`;
   }
 
   return BASE_SYSTEM_PROMPT + contextBlock;
@@ -589,7 +627,7 @@ export async function chatWithAssistant(opts: {
   ledgerId: string;
   conversationId: string;
   plan: string;
-  ledgerContext?: { currency?: string; name?: string };
+  ledgerContext?: { currency?: string; name?: string; jurisdiction?: JurisdictionContext };
   onEvent: (event: SSEEvent) => void;
 }): Promise<ConversationMessage[]> {
   const { messages, apiKey, ledgerId, conversationId, plan, ledgerContext, onEvent } = opts;

@@ -342,14 +342,23 @@ function AddAssetModal({
   // Auto-select accounts based on code patterns
   useEffect(() => {
     if (!isOpen) return;
+    // TODO: This filters by account code range which works for all built-in
+    // templates but will break for users with custom chart of accounts numbering.
+    // When custom CoA editing lands, filter by account type/subtype instead of code prefix.
     if (!assetAccountId) {
       const match = accounts.find((a) => a.type === "asset" && /^15/.test(a.code));
       if (match) setAssetAccountId(match.id);
     }
+    // TODO: This filters by account code range which works for all built-in
+    // templates but will break for users with custom chart of accounts numbering.
+    // When custom CoA editing lands, filter by account type/subtype instead of code prefix.
     if (!accumAccountId) {
       const match = accounts.find((a) => a.type === "asset" && a.normalBalance === "credit" && /^15|^16/.test(a.code));
       if (match) setAccumAccountId(match.id);
     }
+    // TODO: This filters by account code range which works for all built-in
+    // templates but will break for users with custom chart of accounts numbering.
+    // When custom CoA editing lands, filter by account type/subtype instead of code prefix.
     if (!expenseAccountId) {
       const match = accounts.find((a) => a.type === "expense" && /^6[0-4]/.test(a.code) && /depreciation/i.test(a.name));
       if (match) setExpenseAccountId(match.id);

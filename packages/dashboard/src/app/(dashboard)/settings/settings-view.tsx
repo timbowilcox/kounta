@@ -4,9 +4,9 @@ import { useState, useTransition, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { formatDate } from "@/lib/format";
-import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction, fetchStripeStatus, disconnectStripe, syncStripe, getStripeAuthorizeUrl, updateUserNameAction, fetchOAuthConnections, revokeOAuthConnection } from "@/lib/actions";
+import { createApiKey, revokeApiKey, fetchApiKeys, createCheckoutSession, createPortalSession, fetchEmailPreferences, updateEmailPreferences, fetchRecurringEntries, deleteRecurringEntryAction, pauseRecurringEntryAction, resumeRecurringEntryAction, updateLedgerAction, reopenPeriodAction, fetchStripeStatus, disconnectStripe, syncStripe, getStripeAuthorizeUrl, updateUserNameAction, fetchOAuthConnections, revokeOAuthConnection, updateJurisdictionAction } from "@/lib/actions";
 import type { StripeConnectStatus, OAuthConnection } from "@/lib/actions";
-import type { EmailPreferences, ClosedPeriodSummary } from "@/lib/actions";
+import type { EmailPreferences, ClosedPeriodSummary, JurisdictionOption, JurisdictionSettings } from "@/lib/actions";
 import { CopyButton } from "@/components/copy-button";
 import type { ApiKeySafe, AccountWithBalance } from "@kounta/sdk";
 import type { BillingStatus } from "@/lib/actions";
@@ -26,6 +26,8 @@ interface Props {
   closedThrough: string | null;
   closedPeriods: ClosedPeriodSummary[];
   accounts: AccountWithBalance[];
+  jurisdictions: JurisdictionOption[];
+  jurisdictionSettings: JurisdictionSettings;
 }
 
 // ── Template display names ──────────────────────────────────────────────────
@@ -73,7 +75,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates, fiscalYearStart, closedThrough, closedPeriods, accounts }: Props) {
+export function SettingsView({ ledger, billing, initialKeys, currencies, exchangeRates, fiscalYearStart, closedThrough, closedPeriods, accounts, jurisdictions, jurisdictionSettings }: Props) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as SettingsTab) || "general";
   const [activeTab, setActiveTab] = useState<SettingsTab>(TABS.some(t => t.key === initialTab) ? initialTab : "general");
@@ -125,7 +127,7 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
       </div>
 
       {/* Tab content */}
-      {activeTab === "general" && <GeneralTab ledger={ledger} fiscalYearStart={fiscalYearStart} closedThrough={closedThrough} closedPeriods={closedPeriods} />}
+      {activeTab === "general" && <GeneralTab ledger={ledger} fiscalYearStart={fiscalYearStart} closedThrough={closedThrough} closedPeriods={closedPeriods} jurisdictions={jurisdictions} jurisdictionSettings={jurisdictionSettings} />}
       {activeTab === "accounts" && <AccountsView accounts={accounts} />}
       {activeTab === "currencies" && <CurrenciesTab currencies={currencies} exchangeRates={exchangeRates} />}
       {activeTab === "api-keys" && <ApiKeysTab initialKeys={initialKeys} />}
@@ -141,7 +143,7 @@ export function SettingsView({ ledger, billing, initialKeys, currencies, exchang
 
 const MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: { ledger: Props["ledger"]; fiscalYearStart: number; closedThrough: string | null; closedPeriods: ClosedPeriodSummary[] }) {
+function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods, jurisdictions, jurisdictionSettings }: { ledger: Props["ledger"]; fiscalYearStart: number; closedThrough: string | null; closedPeriods: ClosedPeriodSummary[]; jurisdictions: JurisdictionOption[]; jurisdictionSettings: JurisdictionSettings }) {
   const { data: session, update } = useSession();
   const router = useRouter();
   const [fyStart, setFyStart] = useState(fiscalYearStart);
@@ -149,6 +151,52 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
   const [fySaved, setFySaved] = useState(false);
   const [periods, setPeriods] = useState(closedPeriods);
   const [reopening, setReopening] = useState<string | null>(null);
+
+  // Jurisdiction editing
+  const [jurisdiction, setJurisdiction] = useState(jurisdictionSettings.jurisdiction);
+  const [taxId, setTaxId] = useState(jurisdictionSettings.taxId ?? "");
+  const [taxBasis, setTaxBasis] = useState(jurisdictionSettings.taxBasis);
+  const [jurisdictionSaving, setJurisdictionSaving] = useState(false);
+  const [jurisdictionSaved, setJurisdictionSaved] = useState(false);
+
+  const jurisdictionDirty =
+    jurisdiction !== jurisdictionSettings.jurisdiction ||
+    taxId !== (jurisdictionSettings.taxId ?? "") ||
+    taxBasis !== jurisdictionSettings.taxBasis;
+
+  const TAX_ID_LABELS: Record<string, string> = {
+    AU: "ABN", US: "EIN", UK: "UTR", NZ: "IRD Number", CA: "BN", SG: "UEN",
+  };
+
+  const currentJurisdictionConfig = jurisdictions.find((j) => j.code === jurisdiction);
+  const taxIdLabel = TAX_ID_LABELS[jurisdiction] ?? currentJurisdictionConfig?.taxIdLabel ?? "Tax ID";
+
+  // Financial year label
+  const getFyLabel = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    if (fyStart === 1) return String(year);
+    const fyMonth = fyStart - 1; // 0-based
+    const fyStartDate = new Date(year, fyMonth, 1);
+    if (now >= fyStartDate) {
+      return `${year}-${String(year + 1).slice(2)}`;
+    }
+    return `${year - 1}-${String(year).slice(2)}`;
+  };
+
+  const handleJurisdictionSave = async () => {
+    setJurisdictionSaving(true);
+    const ok = await updateJurisdictionAction({
+      jurisdiction,
+      taxId: taxId.trim() || null,
+      taxBasis,
+    });
+    setJurisdictionSaving(false);
+    if (ok) {
+      setJurisdictionSaved(true);
+      setTimeout(() => setJurisdictionSaved(false), 2000);
+    }
+  };
 
   // Display name editing
   const [displayName, setDisplayName] = useState(session?.user?.name ?? "");
@@ -403,6 +451,111 @@ function GeneralTab({ ledger, fiscalYearStart, closedThrough, closedPeriods }: {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Jurisdiction & Tax */}
+      <div className="card">
+        <div className="section-label" style={{ marginBottom: 16 }}>Jurisdiction &amp; Tax</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          {/* Jurisdiction */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
+              Jurisdiction
+            </label>
+            <select
+              className="input"
+              value={jurisdiction}
+              onChange={(e) => setJurisdiction(e.target.value)}
+              style={{ fontSize: 13, width: "100%" }}
+            >
+              {jurisdictions.map((j) => (
+                <option key={j.code} value={j.code}>{j.name}</option>
+              ))}
+              {jurisdictions.length === 0 && <option value={jurisdiction}>{jurisdiction}</option>}
+            </select>
+          </div>
+
+          {/* Tax ID */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
+              {taxIdLabel}
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={taxId}
+              onChange={(e) => setTaxId(e.target.value)}
+              placeholder={`Enter ${taxIdLabel}...`}
+              style={{
+                fontSize: 13,
+                backgroundColor: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                padding: "8px 12px",
+                color: "var(--text-primary)",
+                outline: "none",
+                width: "100%",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+            />
+          </div>
+
+          {/* Tax Basis */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
+              Tax Basis
+            </label>
+            <select
+              className="input"
+              value={taxBasis}
+              onChange={(e) => setTaxBasis(e.target.value)}
+              style={{ fontSize: 13, width: "100%" }}
+            >
+              <option value="accrual">Accrual</option>
+              <option value="cash">Cash</option>
+            </select>
+          </div>
+
+          {/* Financial Year (read-only derived) */}
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>
+              Current Financial Year
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
+              FY{getFyLabel()}
+            </div>
+            {currentJurisdictionConfig && (
+              <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
+                {currentJurisdictionConfig.taxAuthority} &middot; {currentJurisdictionConfig.vatName} {currentJurisdictionConfig.vatRate}%
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Save button */}
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          {jurisdictionDirty && !jurisdictionSaved && (
+            <button
+              onClick={handleJurisdictionSave}
+              disabled={jurisdictionSaving}
+              className="btn-primary"
+              style={{
+                height: 32,
+                padding: "0 16px",
+                fontSize: 13,
+                animation: "fadeIn 150ms ease",
+              }}
+            >
+              {jurisdictionSaving ? "Saving..." : "Save"}
+            </button>
+          )}
+          {jurisdictionSaved && (
+            <span style={{ fontSize: 13, color: "var(--positive)", animation: "fade-in 150ms ease" }}>
+              Saved ✓
+            </span>
+          )}
         </div>
       </div>
 
