@@ -412,13 +412,28 @@ function CreateLedgerModal({ onClose, onCreated }: { onClose: () => void; onCrea
           </select>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            onClick={onClose}
+            disabled={isPending}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              backgroundColor: "transparent",
+              color: "var(--text-tertiary)",
+              fontSize: 13,
+              fontWeight: 500,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
           <button
             onClick={handleCreate}
             disabled={isPending || !name.trim()}
             style={{
-              flex: 1,
-              padding: "8px 16px",
+              padding: "8px 20px",
               borderRadius: 8,
               backgroundColor: isPending ? "var(--surface-1)" : "var(--accent)",
               color: "#fff",
@@ -430,23 +445,6 @@ function CreateLedgerModal({ onClose, onCreated }: { onClose: () => void; onCrea
             }}
           >
             {isPending ? "Creating\u2026" : "Create"}
-          </button>
-          <button
-            onClick={onClose}
-            disabled={isPending}
-            style={{
-              flex: 1,
-              padding: "8px 16px",
-              borderRadius: 8,
-              backgroundColor: "transparent",
-              color: "var(--text-tertiary)",
-              fontSize: 13,
-              fontWeight: 500,
-              border: "1px solid var(--border)",
-              cursor: "pointer",
-            }}
-          >
-            Cancel
           </button>
         </div>
       </div>

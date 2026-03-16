@@ -806,6 +806,13 @@ function ApiKeysTab({ initialKeys, currentTier = "free" }: { initialKeys: ApiKey
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [mcpExpanded, setMcpExpanded] = useState(false);
+  const [showRevoked, setShowRevoked] = useState(false);
+
+  // Filter out dashboard session keys (internal, not user-created)
+  const userKeys = keys.filter((k) => !k.name.startsWith("dashboard-"));
+  const activeKeys = userKeys.filter((k) => k.status === "active");
+  const revokedKeys = userKeys.filter((k) => k.status === "revoked");
+  const displayKeys = showRevoked ? userKeys : activeKeys;
 
   const handleCreate = () => {
     if (!newKeyName.trim()) return;
@@ -837,53 +844,81 @@ function ApiKeysTab({ initialKeys, currentTier = "free" }: { initialKeys: ApiKey
             Create new key
           </button>
         </div>
-        <div className="card" style={{ padding: 0 }}>
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="table-header">Name</th>
-                <th className="table-header">Key</th>
-                <th className="table-header">Created</th>
-                <th className="table-header">Last Used</th>
-                <th className="table-header text-right">Status</th>
-                <th className="table-header text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((key) => (
-                <tr key={key.id} className="table-row">
-                  <td className="table-cell" style={{ fontSize: 13, fontWeight: 500 }}>{key.name}</td>
-                  <td className="table-cell font-mono" style={{ fontSize: 12, color: "var(--accent)" }}>{key.prefix}...</td>
-                  <td className="table-cell" style={{ fontSize: 13 }}>{formatDate(key.createdAt)}</td>
-                  <td className="table-cell" style={{ fontSize: 13 }}>{key.lastUsedAt ? formatDate(key.lastUsedAt) : "Never"}</td>
-                  <td className="table-cell text-right">
-                    <span className={"badge " + (key.status === "active" ? "badge-green" : "badge-red")}>{key.status}</span>
-                  </td>
-                  <td className="table-cell text-right">
-                    {key.status === "active" && (
-                      confirmRevoke === key.id ? (
-                        <span className="flex items-center justify-end gap-2">
-                          <span style={{ fontSize: 12, color: "var(--negative)" }}>Confirm?</span>
-                          <button style={{ fontSize: 12, fontWeight: 500, color: "var(--negative)", background: "none", border: "none", cursor: "pointer" }} onClick={() => handleRevoke(key.id)}>Yes</button>
-                          <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setConfirmRevoke(null)}>No</button>
-                        </span>
-                      ) : (
-                        <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setConfirmRevoke(key.id)}>Revoke</button>
-                      )
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {keys.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="table-cell text-center" style={{ fontSize: 13, color: "var(--text-tertiary)", padding: 48 }}>
-                    No API keys yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+
+        {activeKeys.length === 0 && !showRevoked ? (
+          <div className="card" style={{ padding: 48, textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", marginBottom: 6 }}>No API keys yet</div>
+            <p style={{ fontSize: 13, color: "var(--text-tertiary)", maxWidth: 360, margin: "0 auto 20px" }}>
+              Create an API key to connect your app to Kounta via the REST API or SDK.
+            </p>
+            <button className="btn-primary" style={{ fontSize: 13 }} onClick={() => setShowCreateModal(true)}>
+              Create new key
+            </button>
+            {revokedKeys.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={() => setShowRevoked(true)}
+                  style={{ fontSize: 12, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}
+                >
+                  Show revoked keys ({revokedKeys.length})
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="card" style={{ padding: 0 }}>
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="table-header">Name</th>
+                    <th className="table-header">Key</th>
+                    <th className="table-header">Created</th>
+                    <th className="table-header">Last Used</th>
+                    <th className="table-header" style={{ textAlign: "right" }}>Status</th>
+                    <th className="table-header" style={{ textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayKeys.map((key) => (
+                    <tr key={key.id} className="table-row" style={{ opacity: key.status === "revoked" ? 0.5 : 1 }}>
+                      <td className="table-cell" style={{ fontSize: 13, fontWeight: 500 }}>{key.name}</td>
+                      <td className="table-cell font-mono" style={{ fontSize: 12, color: "var(--accent)" }}>{key.prefix}...</td>
+                      <td className="table-cell" style={{ fontSize: 13 }}>{formatDate(key.createdAt)}</td>
+                      <td className="table-cell" style={{ fontSize: 13 }}>{key.lastUsedAt ? formatDate(key.lastUsedAt) : "Never"}</td>
+                      <td className="table-cell" style={{ textAlign: "right" }}>
+                        <span className={"badge " + (key.status === "active" ? "badge-green" : "badge-red")}>{key.status}</span>
+                      </td>
+                      <td className="table-cell" style={{ textAlign: "right" }}>
+                        {key.status === "active" && (
+                          confirmRevoke === key.id ? (
+                            <span className="flex items-center justify-end gap-2">
+                              <span style={{ fontSize: 12, color: "var(--negative)" }}>Confirm?</span>
+                              <button style={{ fontSize: 12, fontWeight: 500, color: "var(--negative)", background: "none", border: "none", cursor: "pointer" }} onClick={() => handleRevoke(key.id)}>Yes</button>
+                              <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setConfirmRevoke(null)}>No</button>
+                            </span>
+                          ) : (
+                            <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setConfirmRevoke(key.id)}>Revoke</button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {revokedKeys.length > 0 && (
+              <div style={{ marginTop: 8, textAlign: "center" }}>
+                <button
+                  onClick={() => setShowRevoked(!showRevoked)}
+                  style={{ fontSize: 12, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2 }}
+                >
+                  {showRevoked ? "Hide revoked keys" : `Show revoked keys (${revokedKeys.length})`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* MCP Guide collapsible */}
