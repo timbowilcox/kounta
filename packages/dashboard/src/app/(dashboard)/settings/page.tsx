@@ -16,8 +16,9 @@ export default async function SettingsPage() {
     client = sc.client;
     ledgerId = sc.ledgerId;
   } catch {
-    // Session missing apiKey/ledgerId — force re-auth
-    redirect("/signin?callbackUrl=/settings");
+    // Session missing apiKey/ledgerId — redirect home (middleware will
+    // route to onboarding or signin as appropriate)
+    redirect("/");
   }
 
   const [ledger, billing, tierUsage, apiKeys, currenciesRaw, exchangeRatesRaw, accounts] = await Promise.all([

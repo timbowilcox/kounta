@@ -123,8 +123,14 @@ provisionRoutes.post("/provision", adminAuth, async (c) => {
   // Check if user needs onboarding (new user with no completed onboarding)
   let needsOnboarding = false;
   if (needsTemplate) {
-    const onboardingState = await getOnboardingState(engine.getDb(), user.id);
-    needsOnboarding = !onboardingState?.completedAt;
+    try {
+      const onboardingState = await getOnboardingState(engine.getDb(), user.id);
+      needsOnboarding = !onboardingState?.completedAt;
+    } catch (err) {
+      // If onboarding state can't be read (e.g. table missing), assume onboarding needed
+      console.error("[provision] Failed to check onboarding state:", err);
+      needsOnboarding = true;
+    }
   }
 
   return success(c, {

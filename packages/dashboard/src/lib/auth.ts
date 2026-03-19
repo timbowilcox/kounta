@@ -54,11 +54,36 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         return token;
       }
 
+      // Retry provisioning on subsequent requests if initial provision failed
+      // (token exists but has no apiKey — user is authenticated but broken)
+      if (!account && !profile && token.email && !token.apiKey) {
+        console.log("[auth] Retrying provision for user:", token.email);
+        try {
+          const result = await provisionUser({
+            email: token.email,
+            name: (token.name as string) ?? "Kounta User",
+            authProvider: (token.authProvider as string) ?? "unknown",
+            authProviderId: (token.authProviderId as string) ?? (token.sub ?? "unknown"),
+          });
+          token.apiKey = result.apiKey;
+          token.ledgerId = result.ledgerId;
+          token.userId = result.userId;
+          token.needsTemplate = result.needsTemplate;
+          token.needsOnboarding = result.needsOnboarding;
+        } catch (err) {
+          console.error("[auth] Provision retry failed:", err);
+        }
+      }
+
       // On initial sign-in, provision the user in the Kounta API
       if (account && profile) {
         const provider = account.provider;
         const providerId = String(account.providerAccountId);
         const email = token.email ?? `${provider}-${providerId}@kounta.internal`;
+
+        // Persist provider info on token for retry logic
+        token.authProvider = provider;
+        token.authProviderId = providerId;
 
         // Capture the real display name from OAuth profile
         // GitHub: profile.name (can be null), fallback to profile.login
@@ -86,6 +111,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           token.needsOnboarding = result.needsOnboarding;
         } catch (err) {
           console.error("[auth] Provision failed:", err);
+          // If provision fails, mark as needing onboarding so the user
+          // doesn't land on a broken dashboard with no API key
+          token.needsOnboarding = true;
         }
       }
       return token;

@@ -29,8 +29,14 @@ export default auth((req) => {
   }
 
   // Redirect users who need onboarding to the onboarding flow
-  const session = req.auth as { needsOnboarding?: boolean };
+  const session = req.auth as { needsOnboarding?: boolean; apiKey?: string };
   if (session.needsOnboarding && pathname !== "/onboarding") {
+    return NextResponse.redirect(new URL("/onboarding", req.nextUrl.origin));
+  }
+
+  // If user is authenticated but has no API key (provision failed),
+  // redirect to onboarding so they can retry — not to a broken dashboard
+  if (!session.apiKey && pathname !== "/onboarding") {
     return NextResponse.redirect(new URL("/onboarding", req.nextUrl.origin));
   }
 
