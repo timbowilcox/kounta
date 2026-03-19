@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import {
   createOnboardingState,
   updateOnboardingStateAction,
@@ -114,6 +115,7 @@ function detectCountry(): string {
 // ---------------------------------------------------------------------------
 
 export function OnboardingFlow() {
+  const { update: updateSession } = useSession();
   const [step, setStep] = useState<Step>("business_type");
   const [data, setData] = useState<OnboardingData>({
     businessType: "",
@@ -168,6 +170,8 @@ export function OnboardingFlow() {
           setSetupSteps((prev) => [...prev, result.steps[i]]);
         }
       }
+      // Clear the needsOnboarding flag in the JWT so middleware stops redirecting
+      await updateSession({ needsOnboarding: false, needsTemplate: false });
     } catch (e) {
       console.error("Setup failed:", e);
     }
@@ -175,7 +179,7 @@ export function OnboardingFlow() {
     setIsSettingUp(false);
     // Auto-advance after a brief pause
     setTimeout(() => setStep("connect"), 1200);
-  }, [data]);
+  }, [data, updateSession]);
 
   // ----- Step 4: Done -----
   const handleFinish = useCallback(() => {

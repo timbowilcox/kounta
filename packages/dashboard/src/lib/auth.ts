@@ -32,11 +32,24 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, account, profile, trigger, session: updateData }) {
-      // Handle session update (e.g. display name change from Settings)
+      // Handle session update (e.g. display name change, onboarding complete)
       if (trigger === "update" && updateData) {
         const data = updateData as Record<string, unknown>;
         if (data.name && typeof data.name === "string") {
           token.name = data.name;
+        }
+        if (data.needsOnboarding === false) {
+          token.needsOnboarding = false;
+        }
+        if (data.needsTemplate === false) {
+          token.needsTemplate = false;
+        }
+        // Allow switching ledger/apiKey from session update
+        if (data.ledgerId && typeof data.ledgerId === "string") {
+          token.ledgerId = data.ledgerId;
+        }
+        if (data.apiKey && typeof data.apiKey === "string") {
+          token.apiKey = data.apiKey;
         }
         return token;
       }
