@@ -24,6 +24,8 @@ import { registerRevenueTools } from "./tools/revenue.js";
 import { registerFixedAssetTools } from "./tools/fixed-assets.js";
 import { registerInvoiceTools } from "./tools/invoices.js";
 import { registerCustomerTools } from "./tools/customers.js";
+import { registerBillTools } from "./tools/bills.js";
+import { registerVendorTools } from "./tools/vendors.js";
 import { registerResources } from "./resources/index.js";
 import { registerPrompts } from "./prompts/index.js";
 
@@ -62,6 +64,8 @@ export function createMcpServer(
   registerFixedAssetTools(server, engine, db);
   registerInvoiceTools(server, engine, db);
   registerCustomerTools(server, engine, db);
+  registerBillTools(server, engine, db);
+  registerVendorTools(server, engine, db);
 
   // Resources
   registerResources(server, engine);

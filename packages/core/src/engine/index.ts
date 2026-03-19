@@ -145,6 +145,26 @@ import { backfillAll as backfillAllFn } from "../stripe/backfill.js";
 import type { StripeConnection, CreateStripeConnectionInput } from "../stripe/types.js";
 import { getUsageSummary as getUsageSummaryFn, checkLimit as checkLimitFn, incrementUsage as incrementUsageFn } from "../tiers/usage.js";
 import { sendEmail as sendEmailFn } from "../email/sender.js";
+import {
+  createBill as createBillFn,
+  updateBill as updateBillFn,
+  approveBill as approveBillFn,
+  recordBillPayment as recordBillPaymentFn,
+  voidBill as voidBillFn,
+  getBill as getBillFn,
+  listBills as listBillsFn,
+  getBillSummary as getBillSummaryFn,
+  getAPAging as getAPAgingFn,
+} from "../bills/engine.js";
+import type { CreateBillInput, UpdateBillInput, RecordBillPaymentInput } from "../bills/types.js";
+import {
+  createVendor as createVendorFn,
+  updateVendor as updateVendorFn,
+  getVendor as getVendorFn,
+  listVendors as listVendorsFn,
+  deleteVendor as deleteVendorFn,
+} from "../bills/vendors.js";
+import type { CreateVendorInput, UpdateVendorInput } from "../bills/vendors.js";
 import { generateId, nowUtc } from "./id.js";
 import type {
   RecurringEntry,
@@ -1838,6 +1858,97 @@ export class LedgerEngine {
       [assetId],
     );
     return !!row && row.ledger_id === ledgerId;
+  }
+
+  // -------------------------------------------------------------------------
+  // Bill wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async listBills(ledgerId: string, filters?: { status?: string; vendorName?: string; vendorId?: string; dateFrom?: string; dateTo?: string; cursor?: string; limit?: number }) {
+    return listBillsFn(this.db, ledgerId, filters);
+  }
+
+  async getBill(billId: string) {
+    return getBillFn(this.db, billId);
+  }
+
+  async createBill(ledgerId: string, userId: string, input: CreateBillInput) {
+    return createBillFn(this.db, ledgerId, userId, input);
+  }
+
+  async updateBill(billId: string, input: UpdateBillInput) {
+    return updateBillFn(this.db, billId, input);
+  }
+
+  async approveBill(billId: string, ledgerId: string, userId: string) {
+    return approveBillFn(this.db, this as LedgerEngine, billId, ledgerId, userId);
+  }
+
+  async recordBillPayment(billId: string, ledgerId: string, userId: string, input: RecordBillPaymentInput) {
+    return recordBillPaymentFn(this.db, this as LedgerEngine, billId, ledgerId, userId, input);
+  }
+
+  async voidBill(billId: string, ledgerId: string, userId: string) {
+    return voidBillFn(this.db, this as LedgerEngine, billId, ledgerId, userId);
+  }
+
+  async deleteBillDraft(billId: string, ledgerId: string) {
+    const existing = await this.db.get<{ ledger_id: string; status: string }>(
+      "SELECT ledger_id, status FROM bills WHERE id = ?",
+      [billId],
+    );
+    if (!existing || existing.ledger_id !== ledgerId) {
+      return err(createError(ErrorCode.BILL_NOT_FOUND, `Bill not found: ${billId}`));
+    }
+    if (existing.status !== "draft") {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "Only draft bills can be deleted"));
+    }
+
+    await this.db.run("DELETE FROM bill_line_items WHERE bill_id = ?", [billId]);
+    await this.db.run("DELETE FROM bill_payments WHERE bill_id = ?", [billId]);
+    await this.db.run("DELETE FROM bills WHERE id = ?", [billId]);
+
+    return ok({ deleted: true, id: billId });
+  }
+
+  async verifyBillBelongsToLedger(billId: string, ledgerId: string): Promise<boolean> {
+    const row = await this.db.get<{ ledger_id: string }>(
+      "SELECT ledger_id FROM bills WHERE id = ?",
+      [billId],
+    );
+    return !!row && row.ledger_id === ledgerId;
+  }
+
+  async getBillSummary(ledgerId: string) {
+    return getBillSummaryFn(this.db, ledgerId);
+  }
+
+  async getAPAging(ledgerId: string) {
+    return getAPAgingFn(this.db, ledgerId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Vendor wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async listVendors(ledgerId: string, filters?: { search?: string; isActive?: boolean; cursor?: string; limit?: number }) {
+    return listVendorsFn(this.db, ledgerId, filters);
+  }
+
+  async createVendor(ledgerId: string, input: CreateVendorInput) {
+    return createVendorFn(this.db, ledgerId, input);
+  }
+
+  async getVendor(vendorId: string) {
+    return getVendorFn(this.db, vendorId);
+  }
+
+  async updateVendor(vendorId: string, input: UpdateVendorInput) {
+    return updateVendorFn(this.db, vendorId, input);
+  }
+
+  async deleteVendor(vendorId: string) {
+    return deleteVendorFn(this.db, vendorId);
   }
 
   // -------------------------------------------------------------------------

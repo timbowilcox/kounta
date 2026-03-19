@@ -157,6 +157,22 @@ export type {
   CreateCustomerInput,
   UpdateCustomerInput,
 
+  // Bills (Accounts Payable)
+  Bill,
+  BillLineItem,
+  BillPayment,
+  BillStatus,
+  CreateBillInput,
+  UpdateBillInput,
+  RecordBillPaymentInput,
+  BillSummary,
+  APAgingBucket,
+
+  // Vendors
+  Vendor,
+  CreateVendorInput,
+  UpdateVendorInput,
+
   // Payment Terms
   PaymentTermsCode,
   PaymentTermsConfig,
@@ -240,6 +256,15 @@ import type {
   Customer,
   CreateCustomerInput,
   UpdateCustomerInput,
+  Bill,
+  CreateBillInput,
+  UpdateBillInput,
+  RecordBillPaymentInput,
+  BillSummary,
+  APAgingBucket,
+  Vendor,
+  CreateVendorInput,
+  UpdateVendorInput,
 } from "@kounta/core";
 
 import type {
@@ -345,6 +370,8 @@ export class Kounta {
   readonly fixedAssets: FixedAssetsModule;
   readonly invoices: InvoicesModule;
   readonly customers: CustomersModule;
+  readonly bills: BillsModule;
+  readonly vendors: VendorsModule;
   readonly usage: UsageModule;
   readonly tiers: TiersModule;
 
@@ -375,6 +402,8 @@ export class Kounta {
     this.fixedAssets = new FixedAssetsModule(this);
     this.invoices = new InvoicesModule(this);
     this.customers = new CustomersModule(this);
+    this.bills = new BillsModule(this);
+    this.vendors = new VendorsModule(this);
     this.usage = new UsageModule(this);
     this.tiers = new TiersModule(this);
   }
@@ -1557,6 +1586,100 @@ class CustomersModule {
     }[];
   }> {
     return this.c.request("GET", `/v1/customers/${customerId}/statement`);
+  }
+}
+
+// ── Bills (Accounts Payable) ─────────────────────────────────────────────────
+
+class BillsModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List bills with optional filters. */
+  async list(opts?: { status?: string; vendor?: string; cursor?: string; limit?: number }): Promise<PaginatedResult<Bill>> {
+    const qs = buildQuery({ status: opts?.status, vendor: opts?.vendor, cursor: opts?.cursor, limit: opts?.limit });
+    return this.c.requestPaginated<Bill>(`/v1/bills${qs}`);
+  }
+
+  /** Create a new bill (starts in draft status). */
+  async create(input: Omit<CreateBillInput, "ledgerId">): Promise<Bill> {
+    return this.c.request("POST", "/v1/bills", { body: input });
+  }
+
+  /** Get a bill with line items and payments. */
+  async get(billId: string): Promise<Bill> {
+    return this.c.request("GET", `/v1/bills/${billId}`);
+  }
+
+  /** Update a draft bill. */
+  async update(billId: string, input: UpdateBillInput): Promise<Bill> {
+    return this.c.request("PATCH", `/v1/bills/${billId}`, { body: input });
+  }
+
+  /** Approve a bill — posts the AP journal entry. */
+  async approve(billId: string): Promise<Bill> {
+    return this.c.request("POST", `/v1/bills/${billId}/approve`);
+  }
+
+  /** Record a payment against a bill. */
+  async recordPayment(billId: string, input: RecordBillPaymentInput): Promise<Bill> {
+    return this.c.request("POST", `/v1/bills/${billId}/payment`, { body: input });
+  }
+
+  /** Void a bill — reverses the AP journal entry if posted. */
+  async void(billId: string): Promise<Bill> {
+    return this.c.request("POST", `/v1/bills/${billId}/void`);
+  }
+
+  /** Delete a draft bill (no accounting impact). */
+  async delete(billId: string): Promise<{ deleted: boolean; id: string }> {
+    return this.c.request("DELETE", `/v1/bills/${billId}`);
+  }
+
+  /** Get bill summary (totals, counts, averages). */
+  async getSummary(): Promise<BillSummary> {
+    return this.c.request("GET", "/v1/bills/summary");
+  }
+
+  /** Get AP aging report. */
+  async getAging(): Promise<APAgingBucket[]> {
+    return this.c.request("GET", "/v1/bills/aging");
+  }
+}
+
+// ── Vendors ──────────────────────────────────────────────────────────────────
+
+class VendorsModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List vendors with optional search and active filter. */
+  async list(opts?: { search?: string; active?: boolean; cursor?: string; limit?: number }): Promise<PaginatedResult<Vendor>> {
+    const qs = buildQuery({ search: opts?.search, active: opts?.active, cursor: opts?.cursor, limit: opts?.limit });
+    return this.c.requestPaginated<Vendor>(`/v1/vendors${qs}`);
+  }
+
+  /** Create a new vendor. */
+  async create(input: CreateVendorInput): Promise<Vendor> {
+    return this.c.request("POST", "/v1/vendors", { body: input });
+  }
+
+  /** Get a vendor by ID. */
+  async get(vendorId: string): Promise<Vendor> {
+    return this.c.request("GET", `/v1/vendors/${vendorId}`);
+  }
+
+  /** Update a vendor. */
+  async update(vendorId: string, input: UpdateVendorInput): Promise<Vendor> {
+    return this.c.request("PATCH", `/v1/vendors/${vendorId}`, { body: input });
+  }
+
+  /** Delete or deactivate a vendor. */
+  async delete(vendorId: string): Promise<Vendor> {
+    return this.c.request("DELETE", `/v1/vendors/${vendorId}`);
+  }
+
+  /** List bills for a vendor. */
+  async bills(vendorId: string): Promise<PaginatedResult<Bill>> {
+    return this.c.requestPaginated<Bill>(`/v1/vendors/${vendorId}/bills`);
   }
 }
 

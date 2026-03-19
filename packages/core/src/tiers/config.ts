@@ -16,6 +16,8 @@ export const TIER_CONFIGS = {
       maxInvoicesPerMonth: 5,
       maxCustomers: 3,
       maxFixedAssets: 3,
+      maxBillsPerMonth: 5,
+      maxVendors: 3,
     },
     features: {
       apiAccess: false,
@@ -44,6 +46,8 @@ export const TIER_CONFIGS = {
       maxInvoicesPerMonth: null,
       maxCustomers: null,
       maxFixedAssets: null,
+      maxBillsPerMonth: null,
+      maxVendors: null,
     },
     features: {
       apiAccess: true,
@@ -72,6 +76,8 @@ export const TIER_CONFIGS = {
       maxInvoicesPerMonth: null,
       maxCustomers: null,
       maxFixedAssets: null,
+      maxBillsPerMonth: null,
+      maxVendors: null,
     },
     features: {
       apiAccess: true,
@@ -100,6 +106,8 @@ export const TIER_CONFIGS = {
       maxInvoicesPerMonth: null,
       maxCustomers: null,
       maxFixedAssets: null,
+      maxBillsPerMonth: null,
+      maxVendors: null,
     },
     features: {
       apiAccess: true,

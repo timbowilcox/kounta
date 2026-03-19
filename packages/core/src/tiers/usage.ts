@@ -76,7 +76,7 @@ export async function getOrCreateUsageRecord(
 // Increment usage
 // ---------------------------------------------------------------------------
 
-type UsageField = "transactions_count" | "invoices_count" | "customers_count" | "fixed_assets_count";
+type UsageField = "transactions_count" | "invoices_count" | "customers_count" | "fixed_assets_count" | "bills_count" | "vendors_count";
 
 /**
  * Whitelist of column names that can be used in dynamic SQL.
@@ -88,6 +88,8 @@ const VALID_FIELDS: ReadonlySet<UsageField> = new Set<UsageField>([
   "invoices_count",
   "customers_count",
   "fixed_assets_count",
+  "bills_count",
+  "vendors_count",
 ] as const);
 
 /** Type guard ensuring a field name is safe for SQL interpolation. */
@@ -220,6 +222,8 @@ const RESOURCE_TO_FIELD: Record<string, UsageField> = {
   invoices: "invoices_count",
   customers: "customers_count",
   fixed_assets: "fixed_assets_count",
+  bills: "bills_count",
+  vendors: "vendors_count",
 };
 
 const RESOURCE_TO_LIMIT: Record<string, TierLimit> = {
@@ -227,6 +231,8 @@ const RESOURCE_TO_LIMIT: Record<string, TierLimit> = {
   invoices: "maxInvoicesPerMonth",
   customers: "maxCustomers",
   fixed_assets: "maxFixedAssets",
+  bills: "maxBillsPerMonth",
+  vendors: "maxVendors",
   ledgers: "maxLedgers",
 };
 
@@ -290,16 +296,16 @@ export async function checkLimit(
     };
   }
 
-  // Account-wide resources (customers, fixed_assets, invoices) — aggregate
+  // Account-wide resources (customers, fixed_assets, vendors) — aggregate lifetime
   const field = RESOURCE_TO_FIELD[resource];
   if (!field) {
     return { allowed: true, used: 0, limit: null, message: "Unknown resource" };
   }
 
-  // For customers and fixed_assets, check lifetime count (not periodic)
-  if (resource === "customers" || resource === "fixed_assets") {
+  // For customers, fixed_assets, and vendors, check lifetime count (not periodic)
+  if (resource === "customers" || resource === "fixed_assets" || resource === "vendors") {
     // SAFETY: table name is derived from a hardcoded string comparison, never from user input.
-    const table = resource === "customers" ? "customers" : "fixed_assets";
+    const table = resource === "customers" ? "customers" : resource === "vendors" ? "vendors" : "fixed_assets";
     // Use JOIN instead of subquery for better index utilisation
     const row = await db.get<{ cnt: number }>(
       `SELECT COUNT(*) as cnt FROM ${table} t JOIN ledgers l ON t.ledger_id = l.id WHERE l.owner_id = ?`,
@@ -307,7 +313,7 @@ export async function checkLimit(
     );
     const used = row?.cnt ?? 0;
     const allowed = used < limit;
-    const label = resource === "customers" ? "customers" : "fixed assets";
+    const label = resource === "customers" ? "customers" : resource === "vendors" ? "vendors" : "fixed assets";
     return {
       allowed,
       used,
@@ -318,8 +324,25 @@ export async function checkLimit(
     };
   }
 
-  // Invoices — check current period aggregate
+  // Invoices and bills — check current period aggregate
   const { periodStart } = getCurrentUsagePeriod();
+  if (resource === "bills") {
+    const row = await db.get<{ cnt: number }>(
+      `SELECT COALESCE(SUM(bills_count), 0) as cnt FROM usage_tracking WHERE user_id = ? AND period_start = ?`,
+      [userId, periodStart],
+    );
+    const used = row?.cnt ?? 0;
+    const allowed = used < limit;
+    return {
+      allowed,
+      used,
+      limit,
+      message: allowed
+        ? `${used}/${limit} bills this month`
+        : `Bill limit reached (${used}/${limit} this month). Upgrade for more.`,
+    };
+  }
+
   const row = await db.get<{ cnt: number }>(
     `SELECT COALESCE(SUM(invoices_count), 0) as cnt FROM usage_tracking WHERE user_id = ? AND period_start = ?`,
     [userId, periodStart],
