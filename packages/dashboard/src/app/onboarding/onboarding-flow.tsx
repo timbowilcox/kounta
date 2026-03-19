@@ -6,6 +6,8 @@ import {
   createOnboardingState,
   updateOnboardingStateAction,
   executeOnboardingSetup,
+  updateUserNameAction,
+  updateLedgerAction,
 } from "@/lib/actions";
 import type { SetupResult } from "@/lib/actions";
 
@@ -13,9 +15,12 @@ import type { SetupResult } from "@/lib/actions";
 // Types
 // ---------------------------------------------------------------------------
 
-type Step = "business_type" | "business_details" | "setup" | "connect";
+type Step = "about_you" | "business_type" | "business_details" | "setup" | "connect";
 
 interface OnboardingData {
+  firstName: string;
+  lastName: string;
+  companyName: string;
   businessType: string;
   currency: string;
   businessAge: string;
@@ -115,9 +120,12 @@ function detectCountry(): string {
 // ---------------------------------------------------------------------------
 
 export function OnboardingFlow() {
-  const { update: updateSession } = useSession();
-  const [step, setStep] = useState<Step>("business_type");
+  const { data: session, update: updateSession } = useSession();
+  const [step, setStep] = useState<Step>("about_you");
   const [data, setData] = useState<OnboardingData>({
+    firstName: "",
+    lastName: "",
+    companyName: "",
     businessType: "",
     currency: "",
     businessAge: "",
@@ -129,30 +137,42 @@ export function OnboardingFlow() {
   const [setupSteps, setSetupSteps] = useState<string[]>([]);
   const [isSettingUp, setIsSettingUp] = useState(false);
 
-  // Auto-detect locale on mount
+  // Auto-detect locale and pre-fill name from OAuth profile
   useEffect(() => {
+    const oauthName = session?.user?.name ?? "";
+    const parts = oauthName.trim().split(/\s+/);
+    const detectedFirst = parts[0] ?? "";
+    const detectedLast = parts.slice(1).join(" ");
+
     setData((d) => ({
       ...d,
+      firstName: d.firstName || detectedFirst,
+      lastName: d.lastName || detectedLast,
       currency: d.currency || detectCurrency(),
       country: d.country || detectCountry(),
     }));
     createOnboardingState().catch(() => {});
+  }, [session?.user?.name]);
+
+  const stepIndex = ["about_you", "business_type", "business_details", "setup", "connect"].indexOf(step);
+
+  // ----- Step 1: About You -----
+  const handleAboutYouComplete = useCallback(() => {
+    setStep("business_type");
   }, []);
 
-  const stepIndex = ["business_type", "business_details", "setup", "connect"].indexOf(step);
-
-  // ----- Step 1: Business Type -----
+  // ----- Step 2: Business Type -----
   const handleBusinessType = useCallback(async (type: string) => {
     setData((d) => ({ ...d, businessType: type }));
-    await updateOnboardingStateAction({ businessType: type, completedSteps: ["business_type"] as unknown as string[] }).catch(() => {});
+    await updateOnboardingStateAction({ businessType: type, completedSteps: ["about_you", "business_type"] as unknown as string[] }).catch(() => {});
     setStep("business_details");
   }, []);
 
-  // ----- Step 2: Continue to setup -----
+  // ----- Step 3: Continue to setup -----
   const handleDetailsComplete = useCallback(async () => {
     await updateOnboardingStateAction({
       ...data,
-      completedSteps: ["business_type", "business_details"] as unknown as string[],
+      completedSteps: ["about_you", "business_type", "business_details"] as unknown as string[],
     }).catch(() => {});
     setStep("setup");
     setIsSettingUp(true);
@@ -165,7 +185,21 @@ export function OnboardingFlow() {
           setSetupSteps((prev) => [...prev, result.steps[i]]);
         }
       }
-      await updateSession({ needsOnboarding: false, needsTemplate: false });
+
+      // Save user display name and ledger (company) name
+      const fullName = [data.firstName.trim(), data.lastName.trim()].filter(Boolean).join(" ");
+      if (fullName) {
+        await updateUserNameAction(fullName).catch(() => {});
+      }
+      if (data.companyName.trim()) {
+        await updateLedgerAction({ name: data.companyName.trim() }).catch(() => {});
+      }
+
+      await updateSession({
+        needsOnboarding: false,
+        needsTemplate: false,
+        ...(fullName ? { name: fullName } : {}),
+      });
     } catch (e) {
       console.error("Setup failed:", e);
     }
@@ -187,7 +221,7 @@ export function OnboardingFlow() {
           <img src="/logo.svg" alt="Kounta" style={{ height: "1.32rem" }} />
         </div>
         <div className="onboarding-progress">
-          {[0, 1, 2, 3].map((i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
               className={`onboarding-progress-dot ${i <= stepIndex ? "active" : ""}`}
@@ -199,8 +233,15 @@ export function OnboardingFlow() {
 
       {/* Content */}
       <div className="onboarding-content page-content">
+        {step === "about_you" && (
+          <AboutYouStep
+            data={data}
+            onChange={(updates) => setData((d) => ({ ...d, ...updates }))}
+            onContinue={handleAboutYouComplete}
+          />
+        )}
         {step === "business_type" && (
-          <BusinessTypeStep onSelect={handleBusinessType} />
+          <BusinessTypeStep onSelect={handleBusinessType} onBack={() => setStep("about_you")} />
         )}
         {step === "business_details" && (
           <BusinessDetailsStep
@@ -316,6 +357,28 @@ export function OnboardingFlow() {
           color: var(--accent);
         }
 
+        /* Text input */
+        .ob-input {
+          width: 100%;
+          padding: 0.5rem 0.75rem;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
+          background: var(--surface-1);
+          color: var(--text-primary);
+          font-size: 0.8125rem;
+          font-family: var(--font-sans);
+          outline: none;
+          height: 2.25rem;
+          transition: border-color 150ms ease;
+        }
+        .ob-input::placeholder {
+          color: var(--text-disabled);
+        }
+        .ob-input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(235, 228, 220, 0.1);
+        }
+
         /* Select */
         .ob-select {
           width: 100%;
@@ -388,20 +451,96 @@ export function OnboardingFlow() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: Business Type
+// Step 1: About You
 // ---------------------------------------------------------------------------
 
-function BusinessTypeStep({ onSelect }: { onSelect: (type: string) => void }) {
+function AboutYouStep({
+  data,
+  onChange,
+  onContinue,
+}: {
+  data: OnboardingData;
+  onChange: (updates: Partial<OnboardingData>) => void;
+  onContinue: () => void;
+}) {
+  const isValid = data.firstName.trim().length > 0 && data.companyName.trim().length > 0;
+
   return (
     <div>
       <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.375rem" }}>
         Welcome to Kounta
       </h1>
-      <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
         Let&apos;s set up your books in about 3 minutes.
       </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <div style={{ flex: 1 }}>
+            <Field label="First name">
+              <input
+                type="text"
+                value={data.firstName}
+                onChange={(e) => onChange({ firstName: e.target.value })}
+                placeholder="Jane"
+                className="ob-input"
+                autoFocus
+              />
+            </Field>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Field label="Last name">
+              <input
+                type="text"
+                value={data.lastName}
+                onChange={(e) => onChange({ lastName: e.target.value })}
+                placeholder="Smith"
+                className="ob-input"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <Field label="Company name">
+          <input
+            type="text"
+            value={data.companyName}
+            onChange={(e) => onChange({ companyName: e.target.value })}
+            placeholder="Acme Inc."
+            className="ob-input"
+          />
+        </Field>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2rem" }}>
+        <button
+          onClick={onContinue}
+          disabled={!isValid}
+          className="btn-primary"
+          style={{
+            opacity: isValid ? 1 : 0.4,
+            cursor: isValid ? "pointer" : "not-allowed",
+          }}
+        >
+          Continue &rarr;
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Business Type
+// ---------------------------------------------------------------------------
+
+function BusinessTypeStep({ onSelect, onBack }: { onSelect: (type: string) => void; onBack: () => void }) {
+  return (
+    <div>
+      <h1 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+        What kind of business?
+      </h1>
       <p style={{ fontSize: "0.8125rem", color: "var(--text-tertiary)", marginBottom: "1.5rem" }}>
-        What kind of business are you running?
+        We&apos;ll set up your chart of accounts and categories to match.
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -417,6 +556,12 @@ function BusinessTypeStep({ onSelect }: { onSelect: (type: string) => void }) {
             </div>
           </button>
         ))}
+      </div>
+
+      <div style={{ marginTop: "1.5rem" }}>
+        <button onClick={onBack} className="btn-ghost">
+          &larr; Back
+        </button>
       </div>
     </div>
   );
