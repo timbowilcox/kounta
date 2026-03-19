@@ -144,15 +144,17 @@ export interface StripeEventRow {
 // Mappers
 // ---------------------------------------------------------------------------
 
+import { decryptToken } from "../crypto/tokens.js";
+
 export const toStripeConnection = (row: StripeConnectionRow): StripeConnection => ({
   id: row.id,
   userId: row.user_id,
   ledgerId: row.ledger_id,
   stripeAccountId: row.stripe_account_id,
-  accessToken: row.access_token,
-  refreshToken: row.refresh_token,
+  accessToken: decryptToken(row.access_token),
+  refreshToken: row.refresh_token ? decryptToken(row.refresh_token) : null,
   stripePublishableKey: row.stripe_publishable_key,
-  webhookSecret: row.webhook_secret,
+  webhookSecret: row.webhook_secret ? decryptToken(row.webhook_secret) : null,
   status: row.status as StripeConnectionStatus,
   lastSyncedAt: row.last_synced_at,
   createdAt: row.created_at,

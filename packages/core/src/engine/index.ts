@@ -109,7 +109,42 @@ import type {
   ListClassificationRulesOptions,
   MerchantAlias,
 } from "../classification/types.js";
-import { matchBankDepositToInvoices } from "../invoicing/engine.js";
+import {
+  matchBankDepositToInvoices,
+  listInvoices as listInvoicesFn,
+  getInvoiceSummary as getInvoiceSummaryFn,
+  getARAging as getARAgingFn,
+  getInvoice as getInvoiceFn,
+  createInvoice as createInvoiceFn,
+  updateInvoice as updateInvoiceFn,
+  sendInvoice as sendInvoiceFn,
+  recordPayment as recordPaymentFn,
+  voidInvoice as voidInvoiceFn,
+} from "../invoicing/engine.js";
+import type { CreateInvoiceInput, UpdateInvoiceInput, RecordPaymentInput } from "../invoicing/types.js";
+import {
+  listFixedAssets as listFixedAssetsFn,
+  getFixedAsset as getFixedAssetFn,
+  createFixedAsset as createFixedAssetFn,
+  updateFixedAsset as updateFixedAssetFn,
+  getAssetSchedule as getAssetScheduleFn,
+  getPendingDepreciation as getPendingDepreciationFn,
+  runDepreciation as runDepreciationFn,
+  getAssetSummary as getAssetSummaryFn,
+  disposeFixedAsset as disposeFixedAssetFn,
+} from "../fixed-assets/engine.js";
+import type { CreateFixedAssetInput, UpdateFixedAssetInput, DisposeAssetInput } from "../fixed-assets/types.js";
+import {
+  getConnectionByLedger as getConnectionByLedgerFn,
+  createConnection as createConnectionFn,
+  disconnectConnection as disconnectConnectionFn,
+} from "../stripe/connection.js";
+import { handleEvent as handleEventFn } from "../stripe/webhook.js";
+import { ensureStripeAccounts as ensureStripeAccountsFn } from "../stripe/accounts.js";
+import { backfillAll as backfillAllFn } from "../stripe/backfill.js";
+import type { StripeConnection, CreateStripeConnectionInput } from "../stripe/types.js";
+import { getUsageSummary as getUsageSummaryFn, checkLimit as checkLimitFn, incrementUsage as incrementUsageFn } from "../tiers/usage.js";
+import { sendEmail as sendEmailFn } from "../email/sender.js";
 import { generateId, nowUtc } from "./id.js";
 import type {
   RecurringEntry,
@@ -160,6 +195,9 @@ interface LedgerRow {
   status: string;
   owner_id: string;
   closed_through: string | null;
+  jurisdiction: string;
+  tax_id: string | null;
+  tax_basis: string;
   created_at: string;
   updated_at: string;
 }
@@ -460,6 +498,9 @@ const toLedger = (row: LedgerRow): Ledger => ({
   status: row.status as Ledger["status"],
   ownerId: row.owner_id,
   closedThrough: row.closed_through,
+  jurisdiction: row.jurisdiction ?? "AU",
+  taxId: row.tax_id ?? null,
+  taxBasis: row.tax_basis ?? "accrual",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -904,6 +945,14 @@ export class LedgerEngine {
     if (!row) {
       return err(createError(ErrorCode.INTERNAL_ERROR, "Failed to create account"));
     }
+
+    const auditId = generateId();
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'account', ?, 'created', 'system', 'engine', ?, ?)`,
+      [auditId, params.ledgerId, id, JSON.stringify(toAccount(row)), now]
+    );
+
     return ok(toAccount(row));
   }
 
@@ -928,12 +977,14 @@ export class LedgerEngine {
       [ledgerId]
     );
 
-    const accounts: AccountWithBalance[] = [];
-    for (const row of rows) {
+    // Batch compute all balances in a single query (avoids N+1)
+    const rawBalances = await this.computeBalancesBatch(rows.map((r) => r.id));
+
+    const accounts: AccountWithBalance[] = rows.map((row) => {
       const account = toAccount(row);
-      const balance = await this.computeBalance(row.id, account.normalBalance);
-      accounts.push({ ...account, balance });
-    }
+      const balance = this.getSignedBalance(rawBalances, row.id, account.normalBalance);
+      return { ...account, balance };
+    });
 
     return ok(accounts);
   }
@@ -949,8 +1000,11 @@ export class LedgerEngine {
       return err(createError(ErrorCode.VALIDATION_ERROR, parsed.error.message));
     }
 
-    // Verify ledger exists
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [input.ledgerId]);
+    // Verify ledger exists (select only needed columns)
+    const ledger = await this.db.get<Pick<LedgerRow, "id" | "currency" | "closed_through">>(
+      "SELECT id, currency, closed_through FROM ledgers WHERE id = ?",
+      [input.ledgerId],
+    );
     if (!ledger) {
       return err(ledgerNotFoundError(input.ledgerId));
     }
@@ -975,8 +1029,8 @@ export class LedgerEngine {
     // Resolve account codes to IDs and validate all accounts belong to this ledger
     const resolvedLines: Array<{ accountId: string; line: PostLineInput }> = [];
     for (const line of input.lines) {
-      const account = await this.db.get<AccountRow>(
-        "SELECT * FROM accounts WHERE ledger_id = ? AND code = ?",
+      const account = await this.db.get<Pick<AccountRow, "id" | "status">>(
+        "SELECT id, status FROM accounts WHERE ledger_id = ? AND code = ?",
         [input.ledgerId, line.accountCode]
       );
       if (!account) {
@@ -991,27 +1045,42 @@ export class LedgerEngine {
     // Generate idempotency key if not provided
     const idempotencyKey = input.idempotencyKey ?? generateId();
 
-    // Idempotency check — if this key already exists, return the original transaction
-    const existingTxn = await this.db.get<TransactionRow>(
-      "SELECT * FROM transactions WHERE ledger_id = ? AND idempotency_key = ?",
-      [input.ledgerId, idempotencyKey]
-    );
-
-    if (existingTxn) {
-      // If the key exists, verify the parameters match (simplified: just return existing)
-      // A full implementation would compare all input fields for true idempotency conflict detection.
-      const existingLines = await this.db.all<LineItemRow>(
-        "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
-        [existingTxn.id]
-      );
-      return ok({
-        ...toTransaction(existingTxn),
-        lines: existingLines.map(toLineItem),
-      } as TransactionWithLines);
-    }
-
-    // All validations passed — insert within a DB transaction
+    // All validations passed — insert within a DB transaction (includes atomic idempotency check)
+    try {
     const result = await this.db.transaction(async () => {
+      // Atomic idempotency check — inside the transaction to prevent race conditions.
+      // The UNIQUE(ledger_id, idempotency_key) constraint provides a DB-level safety net,
+      // but checking here gives a graceful return instead of a constraint violation error.
+      const existingTxn = await this.db.get<TransactionRow>(
+        "SELECT * FROM transactions WHERE ledger_id = ? AND idempotency_key = ?",
+        [input.ledgerId, idempotencyKey]
+      );
+
+      if (existingTxn) {
+        // Compare key parameters to detect key reuse with different data
+        const existingLines = await this.db.all<LineItemRow>(
+          "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
+          [existingTxn.id]
+        );
+
+        const paramMismatch =
+          existingTxn.date !== input.date ||
+          existingTxn.memo !== input.memo ||
+          existingLines.length !== input.lines.length;
+
+        if (paramMismatch) {
+          throw Object.assign(
+            new Error(`Idempotency key "${idempotencyKey}" already used with different parameters`),
+            { code: "IDEMPOTENCY_CONFLICT" },
+          );
+        }
+
+        return {
+          ...toTransaction(existingTxn),
+          lines: existingLines.map(toLineItem),
+        } as TransactionWithLines;
+      }
+
       const txnId = generateId();
       const now = nowUtc();
       const sourceType = input.sourceType ?? "api";
@@ -1094,6 +1163,12 @@ export class LedgerEngine {
     });
 
     return ok(result);
+  } catch (e: unknown) {
+    if (e instanceof Error && "code" in e && (e as Error & { code: string }).code === "IDEMPOTENCY_CONFLICT") {
+      return err(createError(ErrorCode.VALIDATION_ERROR, e.message));
+    }
+    throw e;
+  }
   }
 
   // -------------------------------------------------------------------------
@@ -1143,17 +1218,13 @@ export class LedgerEngine {
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const nextCursor = hasMore ? pageRows[pageRows.length - 1]!.id : null;
 
-    const transactions: TransactionWithLines[] = [];
-    for (const row of pageRows) {
-      const lines = await this.db.all<LineItemRow>(
-        "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
-        [row.id]
-      );
-      transactions.push({
-        ...toTransaction(row),
-        lines: lines.map(toLineItem),
-      } as TransactionWithLines);
-    }
+    // Batch fetch all line items in a single query (avoids N+1)
+    const lineItemsMap = await this.fetchLineItemsBatch(pageRows.map((r) => r.id));
+
+    const transactions: TransactionWithLines[] = pageRows.map((row) => ({
+      ...toTransaction(row),
+      lines: lineItemsMap.get(row.id) ?? [],
+    } as TransactionWithLines));
 
     return ok({ data: transactions, nextCursor });
   }
@@ -1297,26 +1368,115 @@ export class LedgerEngine {
     return normalBalance === "credit" ? -rawBalance : rawBalance;
   }
 
-  private async computeBalanceInPeriod(
-    accountId: string,
-    normalBalance: NormalBalance,
+  /**
+   * Compute balances for multiple accounts in a single query.
+   * Avoids the N+1 problem when generating financial statements.
+   */
+  private async computeBalancesBatch(
+    accountIds: string[],
+    asOfDate?: string,
+  ): Promise<Map<string, number>> {
+    if (accountIds.length === 0) return new Map();
+
+    const placeholders = accountIds.map(() => "?").join(", ");
+    let sql: string;
+    let params: unknown[];
+
+    if (asOfDate) {
+      sql = `SELECT li.account_id,
+               COALESCE(SUM(CASE WHEN li.direction = 'debit' THEN li.amount ELSE 0 END), 0) -
+               COALESCE(SUM(CASE WHEN li.direction = 'credit' THEN li.amount ELSE 0 END), 0) AS balance
+             FROM line_items li
+             JOIN transactions t ON t.id = li.transaction_id
+             WHERE li.account_id IN (${placeholders}) AND t.date <= ? AND t.status != 'pending'
+             GROUP BY li.account_id`;
+      params = [...accountIds, asOfDate];
+    } else {
+      sql = `SELECT li.account_id,
+               COALESCE(SUM(CASE WHEN li.direction = 'debit' THEN li.amount ELSE 0 END), 0) -
+               COALESCE(SUM(CASE WHEN li.direction = 'credit' THEN li.amount ELSE 0 END), 0) AS balance
+             FROM line_items li
+             JOIN transactions t ON t.id = li.transaction_id
+             WHERE li.account_id IN (${placeholders}) AND t.status != 'pending'
+             GROUP BY li.account_id`;
+      params = [...accountIds];
+    }
+
+    const rows = await this.db.all<{ account_id: string; balance: number | string }>(sql, params);
+    const result = new Map<string, number>();
+    for (const row of rows) {
+      result.set(row.account_id, Number(row.balance));
+    }
+    return result;
+  }
+
+  /**
+   * Compute period balances for multiple accounts in a single query.
+   * Avoids the N+1 problem when generating income statements and cash flow.
+   */
+  private async computeBalancesInPeriodBatch(
+    accountIds: string[],
     startDate: string,
     endDate: string,
-  ): Promise<number> {
-    const sql = `SELECT
+  ): Promise<Map<string, number>> {
+    if (accountIds.length === 0) return new Map();
+
+    const placeholders = accountIds.map(() => "?").join(", ");
+    const sql = `SELECT li.account_id,
                    COALESCE(SUM(CASE WHEN li.direction = 'debit' THEN li.amount ELSE 0 END), 0) -
                    COALESCE(SUM(CASE WHEN li.direction = 'credit' THEN li.amount ELSE 0 END), 0) AS balance
                  FROM line_items li
                  JOIN transactions t ON t.id = li.transaction_id
-                 WHERE li.account_id = ? AND t.date >= ? AND t.date <= ? AND t.status != 'pending'`;
+                 WHERE li.account_id IN (${placeholders}) AND t.date >= ? AND t.date <= ? AND t.status != 'pending'
+                 GROUP BY li.account_id`;
 
-    const row = await this.db.get<BalanceRow>(sql, [accountId, startDate, endDate]);
-    const rawBalance = Number(row?.balance ?? 0);
+    const rows = await this.db.all<{ account_id: string; balance: number | string }>(
+      sql,
+      [...accountIds, startDate, endDate],
+    );
+    const result = new Map<string, number>();
+    for (const row of rows) {
+      result.set(row.account_id, Number(row.balance));
+    }
+    return result;
+  }
+
+  /**
+   * Get the signed balance for an account from a raw balance map.
+   * Adjusts sign based on normal_balance (credit-normal accounts are inverted).
+   */
+  private getSignedBalance(rawBalances: Map<string, number>, accountId: string, normalBalance: NormalBalance): number {
+    const rawBalance = rawBalances.get(accountId) ?? 0;
     return normalBalance === "credit" ? -rawBalance : rawBalance;
   }
 
+  /**
+   * Fetch line items for multiple transactions in a single query.
+   * Returns a map of transaction_id -> LineItem[].
+   * Avoids the N+1 problem when listing transactions.
+   */
+  private async fetchLineItemsBatch(transactionIds: string[]): Promise<Map<string, LineItem[]>> {
+    if (transactionIds.length === 0) return new Map();
+
+    const placeholders = transactionIds.map(() => "?").join(", ");
+    const rows = await this.db.all<LineItemRow>(
+      `SELECT * FROM line_items WHERE transaction_id IN (${placeholders}) ORDER BY transaction_id, created_at`,
+      transactionIds,
+    );
+
+    const result = new Map<string, LineItem[]>();
+    for (const row of rows) {
+      const txnId = row.transaction_id;
+      if (!result.has(txnId)) {
+        result.set(txnId, []);
+      }
+      result.get(txnId)!.push(toLineItem(row));
+    }
+    return result;
+  }
+
   private async getAccountCodeById(accountId: string): Promise<string> {
-    const row = await this.db.get<AccountRow>("SELECT code FROM accounts WHERE id = ?", [accountId]);
+    const row = await this.db.get<Pick<AccountRow, "code">>("SELECT code FROM accounts WHERE id = ?", [accountId]);
     if (!row) {
       throw new Error(`Account not found: ${accountId}`);
     }
@@ -1414,7 +1574,373 @@ export class LedgerEngine {
     await this.db.run("UPDATE api_keys SET status = 'revoked' WHERE id = ?", [keyId]);
 
     const updated = await this.db.get<ApiKeyRow>("SELECT * FROM api_keys WHERE id = ?", [keyId]);
+
+    const auditId = generateId();
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'api_key', ?, 'revoked', 'system', 'engine', ?, ?)`,
+      [auditId, row.ledger_id, keyId, JSON.stringify(toApiKey(updated!)), new Date().toISOString()]
+    );
+
     return ok(toApiKey(updated!));
+  }
+
+  // -------------------------------------------------------------------------
+  // Ledger lifecycle
+  // -------------------------------------------------------------------------
+
+  async softDeleteLedger(ledgerId: string, userId: string): Promise<Result<{ id: string; status: string }>> {
+    const ledgerResult = await this.getLedger(ledgerId);
+    if (!ledgerResult.ok) return ledgerResult;
+
+    if (ledgerResult.value.ownerId !== userId) {
+      return err(createError(ErrorCode.FORBIDDEN, "User does not own this ledger"));
+    }
+
+    const ledgersResult = await this.findLedgersByOwner(userId);
+    if (ledgersResult.ok && ledgersResult.value.length <= 1) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "Cannot delete your only ledger"));
+    }
+
+    const now = new Date().toISOString();
+    await this.db.run("UPDATE ledgers SET status = 'deleted', updated_at = ? WHERE id = ?", [now, ledgerId]);
+
+    const keysResult = await this.listApiKeys(ledgerId);
+    if (keysResult.ok) {
+      for (const key of keysResult.value) {
+        if (key.status === "active") {
+          await this.revokeApiKey(key.id);
+        }
+      }
+    }
+
+    const auditId = generateId();
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'ledger', ?, 'deleted', 'user', ?, ?, ?)`,
+      [auditId, ledgerId, ledgerId, userId, JSON.stringify({ id: ledgerId, status: "deleted" }), now]
+    );
+
+    return ok({ id: ledgerId, status: "deleted" });
+  }
+
+  // -------------------------------------------------------------------------
+  // Jurisdiction
+  // -------------------------------------------------------------------------
+
+  async getLedgerJurisdiction(ledgerId: string): Promise<Result<{ jurisdiction: string; taxId: string | null; taxBasis: string; fiscalYearStart: number }>> {
+    const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!row) return err(ledgerNotFoundError(ledgerId));
+
+    return ok({
+      jurisdiction: row.jurisdiction ?? "AU",
+      taxId: row.tax_id ?? null,
+      taxBasis: row.tax_basis ?? "accrual",
+      fiscalYearStart: row.fiscal_year_start,
+    });
+  }
+
+  async updateLedgerJurisdiction(
+    ledgerId: string,
+    updates: { jurisdiction?: string; taxId?: string | null; taxBasis?: string },
+  ): Promise<Result<{ jurisdiction: string; taxId: string | null; taxBasis: string }>> {
+    const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!row) return err(ledgerNotFoundError(ledgerId));
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (updates.jurisdiction !== undefined) {
+      sets.push("jurisdiction = ?");
+      params.push(updates.jurisdiction);
+    }
+    if (updates.taxId !== undefined) {
+      sets.push("tax_id = ?");
+      params.push(updates.taxId);
+    }
+    if (updates.taxBasis !== undefined) {
+      sets.push("tax_basis = ?");
+      params.push(updates.taxBasis);
+    }
+
+    if (sets.length === 0) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "No fields to update"));
+    }
+
+    sets.push("updated_at = ?");
+    params.push(new Date().toISOString());
+    params.push(ledgerId);
+
+    await this.db.run(`UPDATE ledgers SET ${sets.join(", ")} WHERE id = ?`, params);
+
+    const updated = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    return ok({
+      jurisdiction: updated?.jurisdiction ?? "AU",
+      taxId: updated?.tax_id ?? null,
+      taxBasis: updated?.tax_basis ?? "accrual",
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Invoice mutations (extracted from routes)
+  // -------------------------------------------------------------------------
+
+  async markInvoiceSent(invoiceId: string, alsoUpgradeStatus: boolean): Promise<Result<void>> {
+    const statusUpdate = alsoUpgradeStatus ? ", status = 'sent'" : "";
+    await this.db.run(
+      `UPDATE invoices SET sent_at = datetime('now'), updated_at = datetime('now')${statusUpdate} WHERE id = ?`,
+      [invoiceId],
+    );
+    return ok(undefined);
+  }
+
+  async deleteInvoiceDraft(invoiceId: string, ledgerId: string): Promise<Result<{ deleted: boolean; id: string }>> {
+    const existing = await this.db.get<{ ledger_id: string; status: string }>(
+      "SELECT ledger_id, status FROM invoices WHERE id = ?",
+      [invoiceId],
+    );
+    if (!existing || existing.ledger_id !== ledgerId) {
+      return err(createError(ErrorCode.INVOICE_NOT_FOUND, `Invoice not found: ${invoiceId}`));
+    }
+    if (existing.status !== "draft") {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "Only draft invoices can be deleted"));
+    }
+
+    await this.db.run("DELETE FROM invoice_line_items WHERE invoice_id = ?", [invoiceId]);
+    await this.db.run("DELETE FROM invoices WHERE id = ?", [invoiceId]);
+
+    return ok({ deleted: true, id: invoiceId });
+  }
+
+  // -------------------------------------------------------------------------
+  // Invoice wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async listInvoices(ledgerId: string, filters?: { status?: string; customerName?: string; customerId?: string; dateFrom?: string; dateTo?: string; cursor?: string; limit?: number }) {
+    return listInvoicesFn(this.db, ledgerId, filters);
+  }
+
+  async getInvoiceSummary(ledgerId: string) {
+    return getInvoiceSummaryFn(this.db, ledgerId);
+  }
+
+  async getARAging(ledgerId: string) {
+    return getARAgingFn(this.db, ledgerId);
+  }
+
+  async getInvoice(invoiceId: string) {
+    return getInvoiceFn(this.db, invoiceId);
+  }
+
+  async createInvoice(ledgerId: string, userId: string, input: CreateInvoiceInput) {
+    return createInvoiceFn(this.db, ledgerId, userId, input);
+  }
+
+  async updateInvoice(invoiceId: string, input: UpdateInvoiceInput) {
+    return updateInvoiceFn(this.db, invoiceId, input);
+  }
+
+  async sendInvoice(invoiceId: string, ledgerId: string, userId: string, options?: { sendEmail?: boolean }) {
+    return sendInvoiceFn(this.db, this as LedgerEngine, invoiceId, ledgerId, userId, options);
+  }
+
+  async recordInvoicePayment(invoiceId: string, ledgerId: string, userId: string, input: RecordPaymentInput) {
+    return recordPaymentFn(this.db, this as LedgerEngine, invoiceId, ledgerId, userId, input);
+  }
+
+  async voidInvoice(invoiceId: string, ledgerId: string, userId: string) {
+    return voidInvoiceFn(this.db, this as LedgerEngine, invoiceId, ledgerId, userId);
+  }
+
+  async getLedgerBusinessInfo(ledgerId: string): Promise<Result<{
+    name: string; jurisdiction: string; currency: string;
+    businessName: string | null; businessAddress: string | null;
+    businessEmail: string | null; businessPhone: string | null;
+    taxId: string | null;
+  }>> {
+    const row = await this.db.get<{
+      name: string; jurisdiction: string; currency: string;
+      business_name: string | null; business_address: string | null;
+      business_email: string | null; business_phone: string | null;
+      tax_id: string | null;
+    }>(
+      "SELECT name, jurisdiction, currency, business_name, business_address, business_email, business_phone, tax_id FROM ledgers WHERE id = ?",
+      [ledgerId],
+    );
+    if (!row) return err(ledgerNotFoundError(ledgerId));
+    return ok({
+      name: row.name,
+      jurisdiction: row.jurisdiction ?? "AU",
+      currency: row.currency,
+      businessName: row.business_name,
+      businessAddress: row.business_address,
+      businessEmail: row.business_email,
+      businessPhone: row.business_phone,
+      taxId: row.tax_id,
+    });
+  }
+
+  async verifyInvoiceBelongsToLedger(invoiceId: string, ledgerId: string): Promise<boolean> {
+    const row = await this.db.get<{ ledger_id: string }>(
+      "SELECT ledger_id FROM invoices WHERE id = ?",
+      [invoiceId],
+    );
+    return !!row && row.ledger_id === ledgerId;
+  }
+
+  async sendEmailLog(userId: string, to: string, subject: string, html: string, emailType: string, metadata?: Record<string, unknown>) {
+    return sendEmailFn(this.db, userId, to, subject, html, emailType, metadata);
+  }
+
+  // -------------------------------------------------------------------------
+  // Fixed asset wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async listFixedAssets(ledgerId: string, opts?: { status?: string; cursor?: string; limit?: number }) {
+    return listFixedAssetsFn(this.db, ledgerId, opts);
+  }
+
+  async getFixedAsset(assetId: string) {
+    return getFixedAssetFn(this.db, assetId);
+  }
+
+  async createFixedAsset(input: CreateFixedAssetInput) {
+    return createFixedAssetFn(this.db, input);
+  }
+
+  async updateFixedAsset(assetId: string, input: UpdateFixedAssetInput) {
+    return updateFixedAssetFn(this.db, assetId, input);
+  }
+
+  async getAssetSchedule(assetId: string) {
+    return getAssetScheduleFn(this.db, assetId);
+  }
+
+  async getPendingDepreciation(ledgerId: string, asOfDate?: string) {
+    return getPendingDepreciationFn(this.db, ledgerId, asOfDate);
+  }
+
+  async runDepreciation(ledgerId: string, asOfDate?: string) {
+    return runDepreciationFn(this.db, this as LedgerEngine, ledgerId, asOfDate);
+  }
+
+  async getAssetSummary(ledgerId: string) {
+    return getAssetSummaryFn(this.db, ledgerId);
+  }
+
+  async disposeFixedAsset(assetId: string, input: DisposeAssetInput) {
+    return disposeFixedAssetFn(this.db, this as LedgerEngine, assetId, input);
+  }
+
+  async verifyFixedAssetBelongsToLedger(assetId: string, ledgerId: string): Promise<boolean> {
+    const row = await this.db.get<{ ledger_id: string }>(
+      "SELECT ledger_id FROM fixed_assets WHERE id = ?",
+      [assetId],
+    );
+    return !!row && row.ledger_id === ledgerId;
+  }
+
+  // -------------------------------------------------------------------------
+  // Stripe wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async getStripeConnectionByLedger(ledgerId: string) {
+    return getConnectionByLedgerFn(this.db, ledgerId);
+  }
+
+  async getStripeConnectionByAccountId(accountId: string): Promise<{ id: string; webhookSecret: string | null; ledgerId: string } | null> {
+    const row = await this.db.get<{ id: string; webhook_secret: string | null; ledger_id: string }>(
+      "SELECT id, webhook_secret, ledger_id FROM stripe_connections WHERE stripe_account_id = ? AND status = 'active'",
+      [accountId],
+    );
+    return row ? { id: row.id, webhookSecret: row.webhook_secret, ledgerId: row.ledger_id } : null;
+  }
+
+  async createStripeConnection(input: CreateStripeConnectionInput) {
+    return createConnectionFn(this.db, input);
+  }
+
+  async disconnectStripeConnection(connectionId: string) {
+    return disconnectConnectionFn(this.db, connectionId);
+  }
+
+  async ensureStripeAccounts(ledgerId: string) {
+    return ensureStripeAccountsFn(this.db, this as LedgerEngine, ledgerId);
+  }
+
+  async handleStripeEvent(connection: StripeConnection, event: Parameters<typeof handleEventFn>[3]) {
+    return handleEventFn(this.db, this as LedgerEngine, connection, event);
+  }
+
+  async backfillStripe(connection: StripeConnection, days?: number) {
+    return backfillAllFn(this.db, this as LedgerEngine, connection, days);
+  }
+
+  async completeOnboardingItem(userId: string, item: string): Promise<void> {
+    try {
+      await this.db.run(
+        "UPDATE onboarding_checklist SET completed = 1, completed_at = datetime('now') WHERE user_id = ? AND item = ? AND completed = 0",
+        [userId, item],
+      );
+    } catch {
+      // Onboarding table may not exist — that's fine
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier / usage wrappers (delegate to standalone functions with this.db)
+  // -------------------------------------------------------------------------
+
+  async getUsageSummary(userId: string) {
+    return getUsageSummaryFn(this.db, userId);
+  }
+
+  async checkLimit(userId: string, ledgerId: string | undefined, resource: string) {
+    return checkLimitFn(this.db, userId, ledgerId, resource);
+  }
+
+  async incrementTierUsage(userId: string, ledgerId: string | undefined, field: string) {
+    return incrementUsageFn(this.db, userId, ledgerId, field as Parameters<typeof incrementUsageFn>[3]);
+  }
+
+  async getUsageHistory(userId: string) {
+    const rows = await this.db.all<{
+      period_start: string; period_end: string; ledger_id: string | null;
+      transactions_count: number; invoices_count: number; customers_count: number; fixed_assets_count: number;
+    }>(
+      "SELECT period_start, period_end, ledger_id, transactions_count, invoices_count, customers_count, fixed_assets_count FROM usage_tracking WHERE user_id = ? ORDER BY period_start DESC LIMIT 120",
+      [userId],
+    );
+
+    const periods = new Map<string, { periodStart: string; periodEnd: string; transactions: number; invoices: number; customers: number; fixedAssets: number }>();
+    for (const row of rows) {
+      const existing = periods.get(row.period_start);
+      if (existing) {
+        existing.transactions += row.transactions_count;
+        existing.invoices += row.invoices_count;
+        existing.customers += row.customers_count;
+        existing.fixedAssets += row.fixed_assets_count;
+      } else {
+        periods.set(row.period_start, {
+          periodStart: row.period_start, periodEnd: row.period_end,
+          transactions: row.transactions_count, invoices: row.invoices_count,
+          customers: row.customers_count, fixedAssets: row.fixed_assets_count,
+        });
+      }
+    }
+    return Array.from(periods.values()).slice(0, 12);
+  }
+
+  // -------------------------------------------------------------------------
+  // Misc helpers
+  // -------------------------------------------------------------------------
+
+  async isRecurringTransaction(transactionId: string): Promise<boolean> {
+    const row = await this.db.get<{ id: string }>(
+      "SELECT id FROM recurring_entry_log WHERE transaction_id = ? LIMIT 1",
+      [transactionId],
+    );
+    return !!row;
   }
 
   // -------------------------------------------------------------------------
@@ -1550,18 +2076,22 @@ export class LedgerEngine {
       [ledgerId],
     );
 
-    const accounts: AccountBalanceData[] = [];
-    for (const row of rows) {
-      accounts.push({
-        code: row.code,
-        name: row.name,
-        type: row.type as AccountType,
-        normalBalance: row.normal_balance as NormalBalance,
-        balance: await this.computeBalanceInPeriod(row.id, row.normal_balance as NormalBalance, startDate, endDate),
-        priorBalance: null,
-        metadata: row.metadata ? (parseJsonb(row.metadata) as Record<string, unknown>) : null,
-      });
-    }
+    // Batch compute all period balances in a single query (avoids N+1)
+    const rawBalances = await this.computeBalancesInPeriodBatch(
+      rows.map((r) => r.id),
+      startDate,
+      endDate,
+    );
+
+    const accounts: AccountBalanceData[] = rows.map((row) => ({
+      code: row.code,
+      name: row.name,
+      type: row.type as AccountType,
+      normalBalance: row.normal_balance as NormalBalance,
+      balance: this.getSignedBalance(rawBalances, row.id, row.normal_balance as NormalBalance),
+      priorBalance: null,
+      metadata: row.metadata ? (parseJsonb(row.metadata) as Record<string, unknown>) : null,
+    }));
 
     // Check for deferred revenue activity during this period
     const notes: string[] = [];
@@ -1601,20 +2131,7 @@ export class LedgerEngine {
       [ledgerId],
     );
 
-    const accounts: AccountBalanceData[] = [];
-    for (const row of bsRows) {
-      accounts.push({
-        code: row.code,
-        name: row.name,
-        type: row.type as AccountType,
-        normalBalance: row.normal_balance as NormalBalance,
-        balance: await this.computeBalance(row.id, row.normal_balance as NormalBalance, asOfDate),
-        priorBalance: null,
-        metadata: row.metadata ? (parseJsonb(row.metadata) as Record<string, unknown>) : null,
-      });
-    }
-
-    // Compute net income (cumulative revenue − expenses through asOfDate)
+    // Revenue and expense accounts for net income calculation
     const revenueRows = await this.db.all<AccountRow>(
       "SELECT * FROM accounts WHERE ledger_id = ? AND type = 'revenue' AND status = 'active'",
       [ledgerId],
@@ -1623,13 +2140,33 @@ export class LedgerEngine {
       "SELECT * FROM accounts WHERE ledger_id = ? AND type = 'expense' AND status = 'active'",
       [ledgerId],
     );
+
+    // Batch compute ALL balances in a single query (avoids N+1 for BS + P&L accounts)
+    const allAccountIds = [
+      ...bsRows.map((r) => r.id),
+      ...revenueRows.map((r) => r.id),
+      ...expenseRows.map((r) => r.id),
+    ];
+    const rawBalances = await this.computeBalancesBatch(allAccountIds, asOfDate);
+
+    const accounts: AccountBalanceData[] = bsRows.map((row) => ({
+      code: row.code,
+      name: row.name,
+      type: row.type as AccountType,
+      normalBalance: row.normal_balance as NormalBalance,
+      balance: this.getSignedBalance(rawBalances, row.id, row.normal_balance as NormalBalance),
+      priorBalance: null,
+      metadata: row.metadata ? (parseJsonb(row.metadata) as Record<string, unknown>) : null,
+    }));
+
+    // Compute net income from batched balances
     let totalRevenue = 0;
     for (const r of revenueRows) {
-      totalRevenue += await this.computeBalance(r.id, r.normal_balance as NormalBalance, asOfDate);
+      totalRevenue += this.getSignedBalance(rawBalances, r.id, r.normal_balance as NormalBalance);
     }
     let totalExpenses = 0;
     for (const r of expenseRows) {
-      totalExpenses += await this.computeBalance(r.id, r.normal_balance as NormalBalance, asOfDate);
+      totalExpenses += this.getSignedBalance(rawBalances, r.id, r.normal_balance as NormalBalance);
     }
     const netIncome = totalRevenue - totalExpenses;
 
@@ -1655,15 +2192,6 @@ export class LedgerEngine {
       "SELECT * FROM accounts WHERE ledger_id = ? AND type = 'expense' AND status = 'active'",
       [ledgerId],
     );
-    let periodRevenue = 0;
-    for (const r of revenueRows) {
-      periodRevenue += await this.computeBalanceInPeriod(r.id, r.normal_balance as NormalBalance, startDate, endDate);
-    }
-    let periodExpenses = 0;
-    for (const r of expenseRows) {
-      periodExpenses += await this.computeBalanceInPeriod(r.id, r.normal_balance as NormalBalance, startDate, endDate);
-    }
-    const netIncome = periodRevenue - periodExpenses;
 
     // Balance sheet accounts with period deltas
     const bsRows = await this.db.all<AccountRow>(
@@ -1673,12 +2201,32 @@ export class LedgerEngine {
 
     const dayBeforeStart = dayBefore(startDate);
 
-    const accounts: CashFlowAccountData[] = [];
-    for (const row of bsRows) {
+    // Batch compute ALL balances in parallel-safe queries (avoids N+1)
+    const plAccountIds = [...revenueRows.map((r) => r.id), ...expenseRows.map((r) => r.id)];
+    const bsAccountIds = bsRows.map((r) => r.id);
+    const allAccountIds = [...plAccountIds, ...bsAccountIds];
+
+    const [periodBalances, endBalances, startBalances] = await Promise.all([
+      this.computeBalancesInPeriodBatch(plAccountIds, startDate, endDate),
+      this.computeBalancesBatch(allAccountIds, endDate),
+      this.computeBalancesBatch(bsAccountIds, dayBeforeStart),
+    ]);
+
+    let periodRevenue = 0;
+    for (const r of revenueRows) {
+      periodRevenue += this.getSignedBalance(periodBalances, r.id, r.normal_balance as NormalBalance);
+    }
+    let periodExpenses = 0;
+    for (const r of expenseRows) {
+      periodExpenses += this.getSignedBalance(periodBalances, r.id, r.normal_balance as NormalBalance);
+    }
+    const netIncome = periodRevenue - periodExpenses;
+
+    const accounts: CashFlowAccountData[] = bsRows.map((row) => {
       const nb = row.normal_balance as NormalBalance;
-      const endBalance = await this.computeBalance(row.id, nb, endDate);
-      const startBalance = await this.computeBalance(row.id, nb, dayBeforeStart);
-      accounts.push({
+      const endBalance = this.getSignedBalance(endBalances, row.id, nb);
+      const startBalance = this.getSignedBalance(startBalances, row.id, nb);
+      return {
         code: row.code,
         name: row.name,
         type: row.type as AccountType,
@@ -1687,8 +2235,8 @@ export class LedgerEngine {
         priorBalance: null,
         metadata: row.metadata ? (parseJsonb(row.metadata) as Record<string, unknown>) : null,
         delta: endBalance - startBalance,
-      });
-    }
+      };
+    });
 
     return ok(
       buildCashFlowStatement(accounts, netIncome, { start: startDate, end: endDate }, ledger.currency, ledgerId),
@@ -1737,22 +2285,30 @@ export class LedgerEngine {
       suggestThreshold: importConfig?.suggestThreshold ?? DEFAULT_MATCH_CONFIG.suggestThreshold,
     };
 
-    // Fetch existing posted transactions for matching
-    const txnRows = await this.db.all<TransactionRow>(
-      "SELECT * FROM transactions WHERE ledger_id = ? AND status = 'posted' ORDER BY date DESC",
-      [params.ledgerId],
-    );
-    const existingTransactions: TransactionWithLines[] = [];
-    for (const txnRow of txnRows) {
-      const lineRows = await this.db.all<LineItemRow>(
-        "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
-        [txnRow.id],
-      );
-      existingTransactions.push({
-        ...toTransaction(txnRow),
-        lines: lineRows.map(toLineItem),
-      } as TransactionWithLines);
+    // Determine a reasonable matching window based on import data dates.
+    // Fall back to 1 year before the earliest row date to keep the dataset bounded.
+    let earliestDate: string | null = null;
+    for (const row of parsedRows) {
+      if (!earliestDate || row.date < earliestDate) {
+        earliestDate = row.date;
+      }
     }
+    const matchWindowDate = earliestDate
+      ? (() => { const d = new Date(earliestDate + "T00:00:00Z"); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })()
+      : new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const txnRows = await this.db.all<TransactionRow>(
+      "SELECT id, ledger_id, idempotency_key, date, effective_date, memo, status, source_type, source_ref, agent_id, metadata, posted_at, created_at, updated_at FROM transactions WHERE ledger_id = ? AND status = 'posted' AND date >= ? ORDER BY date DESC",
+      [params.ledgerId, matchWindowDate],
+    );
+
+    // Batch fetch all line items in a single query (avoids N+1)
+    const lineItemsMap = await this.fetchLineItemsBatch(txnRows.map((r) => r.id));
+
+    const existingTransactions: TransactionWithLines[] = txnRows.map((txnRow) => ({
+      ...toTransaction(txnRow),
+      lines: lineItemsMap.get(txnRow.id) ?? [],
+    } as TransactionWithLines));
 
     // Run matching
     const matchResults = matchRows(parsedRows, existingTransactions, config);
@@ -2174,7 +2730,12 @@ export class LedgerEngine {
     );
     if (!row) return err(bankConnectionNotFoundError(connectionId));
 
-    await this.db.run("DELETE FROM bank_connections WHERE id = ?", [connectionId]);
+    // Soft-delete: mark as disconnected rather than hard deleting (preserves audit trail)
+    const now = nowUtc();
+    await this.db.run(
+      "UPDATE bank_connections SET status = 'disconnected', updated_at = ? WHERE id = ?",
+      [now, connectionId]
+    );
     return ok(undefined);
   }
 
@@ -2364,17 +2925,13 @@ export class LedgerEngine {
       [ledgerId]
     );
 
-    const ledgerTxns: TransactionWithLines[] = [];
-    for (const txnRow of ledgerTxnRows) {
-      const lineRows = await this.db.all<LineItemRow>(
-        "SELECT * FROM line_items WHERE transaction_id = ?",
-        [txnRow.id]
-      );
-      ledgerTxns.push({
-        ...toTransaction(txnRow),
-        lines: lineRows.map(toLineItem),
-      } as TransactionWithLines);
-    }
+    // Batch fetch all line items in a single query (avoids N+1)
+    const lineItemsMap = await this.fetchLineItemsBatch(ledgerTxnRows.map((r) => r.id));
+
+    const ledgerTxns: TransactionWithLines[] = ledgerTxnRows.map((txnRow) => ({
+      ...toTransaction(txnRow),
+      lines: lineItemsMap.get(txnRow.id) ?? [],
+    } as TransactionWithLines));
 
     // Convert bank transactions to ParsedRows and run the matcher
     const parsedRows = bankTxns.map(bankTransactionToParseRow);

@@ -119,6 +119,7 @@ attachmentRoutes.get("/:id/download", async (c) => {
   }
 
   const attachmentId = c.req.param("id")!;
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const db = engine.getDb();
 
   const result = await getAttachment(db, attachmentId);
@@ -126,12 +127,19 @@ attachmentRoutes.get("/:id/download", async (c) => {
 
   const attachment = result.value;
 
+  // Verify the attachment belongs to the authenticated ledger
+  if (attachment.ledgerId !== apiKeyInfo.ledgerId) {
+    return errorResponse(c, createError(ErrorCode.ATTACHMENT_NOT_FOUND, "Attachment not found"));
+  }
+
   try {
     const { data, mimeType } = await storage.download(attachment.storageKey);
+    // Sanitize filename to prevent header injection (RFC 5987)
+    const safeName = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     return new Response(data, {
       headers: {
         "Content-Type": mimeType,
-        "Content-Disposition": `inline; filename="${attachment.filename}"`,
+        "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
         "Content-Length": String(data.length),
       },
     });
@@ -156,7 +164,15 @@ attachmentRoutes.delete("/:id", async (c) => {
   }
 
   const attachmentId = c.req.param("id")!;
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const db = engine.getDb();
+
+  // Verify the attachment belongs to the authenticated ledger before deleting
+  const existing = await getAttachment(db, attachmentId);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return errorResponse(c, createError(ErrorCode.ATTACHMENT_NOT_FOUND, "Attachment not found"));
+  }
 
   const result = await deleteAttachment(db, storage, attachmentId);
   if (!result.ok) return errorResponse(c, result.error);

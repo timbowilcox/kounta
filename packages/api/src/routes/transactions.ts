@@ -3,10 +3,17 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, success, paginated } from "../lib/responses.js";
-import { getJurisdictionConfig, checkLimit, incrementUsage as incrementTierUsage } from "@kounta/core";
+import { validateBody } from "../lib/validate.js";
+import {
+  getJurisdictionConfig,
+  postLineSchema,
+  sourceType,
+  isoDate,
+} from "@kounta/core";
 
 const DASHBOARD_URL = process.env["NEXT_PUBLIC_APP_URL"] || "https://kounta.ai";
 const UPGRADE_URL = `${DASHBOARD_URL}/billing`;
@@ -16,11 +23,25 @@ export const transactionRoutes = new Hono<Env>();
 // All transaction routes require API key auth
 transactionRoutes.use("/*", apiKeyAuth);
 
+// Schema for transaction creation (validated at boundary)
+const createTransactionBodySchema = z.object({
+  date: isoDate,
+  effectiveDate: isoDate.optional(),
+  memo: z.string().min(1).max(1000),
+  lines: z.array(postLineSchema).min(2),
+  idempotencyKey: z.string().max(255).optional(),
+  sourceType: sourceType.optional(),
+  sourceRef: z.string().max(500).optional(),
+  agentId: z.string().max(255).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 /** POST /v1/ledgers/:ledgerId/transactions — Post a new transaction */
 transactionRoutes.post("/", async (c) => {
   const engine = c.get("engine");
   const ledgerId = c.req.param("ledgerId");
-  const body = await c.req.json();
+  const body = await validateBody(c, createTransactionBodySchema);
+  if (body instanceof Response) return body;
 
   // Support Idempotency-Key header as an alternative to body field
   const headerKey = c.req.header("Idempotency-Key");
@@ -32,7 +53,7 @@ transactionRoutes.post("/", async (c) => {
   try {
     const apiKeyInfo = c.get("apiKeyInfo");
     if (apiKeyInfo) {
-      const tierCheck = await checkLimit(engine.getDb(), apiKeyInfo.userId, ledgerId!, "transactions");
+      const tierCheck = await engine.checkLimit(apiKeyInfo.userId, ledgerId!, "transactions");
       tierUsed = tierCheck.used;
       tierLimit = tierCheck.limit;
       if (!tierCheck.allowed) {
@@ -79,7 +100,7 @@ transactionRoutes.post("/", async (c) => {
   try {
     const apiKeyInfo = c.get("apiKeyInfo");
     if (apiKeyInfo) {
-      await incrementTierUsage(engine.getDb(), apiKeyInfo.userId, ledgerId!, "transactions_count");
+      await engine.incrementTierUsage(apiKeyInfo.userId, ledgerId!, "transactions_count");
     }
   } catch { /* ignore */ }
 
@@ -122,23 +143,15 @@ transactionRoutes.post("/", async (c) => {
     const isDepreciation = tx.idempotencyKey?.startsWith("depreciation-") || tx.memo?.startsWith("Depreciation:");
 
     // Skip transactions linked to recurring entries
-    const db = engine.getDb();
-    const recurringLink = await db.get<{ id: string }>(
-      "SELECT id FROM recurring_entry_log WHERE transaction_id = ? LIMIT 1",
-      [tx.id],
-    );
-    const isRecurring = !!recurringLink;
+    const isRecurring = await engine.isRecurringTransaction(tx.id);
 
     if (!isDepreciation && !isRecurring) {
       // Account name keywords to exclude (legitimate recurring large expenses)
       const EXCLUDE_KEYWORDS = /\b(rent|insurance|subscription|lease|payroll|salary|wages|tax|utilities)\b/i;
 
       // Get jurisdiction config for threshold
-      const ledgerRow = await db.get<{ jurisdiction: string }>(
-        "SELECT jurisdiction FROM ledgers WHERE id = ?",
-        [ledgerId],
-      );
-      const jurisdiction = ledgerRow?.jurisdiction ?? "AU";
+      const jurResult = await engine.getLedgerJurisdiction(ledgerId!);
+      const jurisdiction = jurResult.ok ? jurResult.value.jurisdiction : "AU";
       const jConfig = getJurisdictionConfig(jurisdiction);
       const threshold = jConfig.capitalisationThreshold;
 
@@ -198,7 +211,7 @@ transactionRoutes.get("/", async (c) => {
   try {
     const apiKeyInfo = c.get("apiKeyInfo");
     if (apiKeyInfo) {
-      const tierCheck = await checkLimit(engine.getDb(), apiKeyInfo.userId, ledgerId!, "transactions");
+      const tierCheck = await engine.checkLimit(apiKeyInfo.userId, ledgerId!, "transactions");
       c.header("X-Kounta-Usage", `${tierCheck.used}/${tierCheck.limit ?? "unlimited"}`);
     }
   } catch { /* ignore — tier check may not be available */ }
@@ -242,31 +255,17 @@ transactionRoutes.get("/:transactionId", async (c) => {
   return success(c, result.value);
 });
 
+// Schema for reversal request body
+const reverseTransactionBodySchema = z.object({
+  reason: z.string().min(1).max(1000),
+});
+
 /** POST /v1/ledgers/:ledgerId/transactions/:transactionId/reverse — Reverse a transaction */
 transactionRoutes.post("/:transactionId/reverse", async (c) => {
   const engine = c.get("engine");
   const transactionId = c.req.param("transactionId");
-  const body = await c.req.json();
-
-  if (!body.reason || typeof body.reason !== "string") {
-    return c.json(
-      {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "reason is required",
-          details: [
-            {
-              field: "reason",
-              suggestion:
-                'Provide a "reason" string in the request body explaining why the transaction is being reversed.',
-            },
-          ],
-          requestId: c.get("requestId"),
-        },
-      },
-      400
-    );
-  }
+  const body = await validateBody(c, reverseTransactionBodySchema);
+  if (body instanceof Response) return body;
 
   // Verify the transaction belongs to the scoped ledger
   const getResult = await engine.getTransaction(transactionId);

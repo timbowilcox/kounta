@@ -78,12 +78,22 @@ export async function getOrCreateUsageRecord(
 
 type UsageField = "transactions_count" | "invoices_count" | "customers_count" | "fixed_assets_count";
 
-const VALID_FIELDS: Set<string> = new Set([
+/**
+ * Whitelist of column names that can be used in dynamic SQL.
+ * This is the ONLY guard against SQL injection for the incrementUsage function.
+ * NEVER add user-provided values to this set.
+ */
+const VALID_FIELDS: ReadonlySet<UsageField> = new Set<UsageField>([
   "transactions_count",
   "invoices_count",
   "customers_count",
   "fixed_assets_count",
-]);
+] as const);
+
+/** Type guard ensuring a field name is safe for SQL interpolation. */
+const assertValidField = (field: string): field is UsageField => {
+  return (VALID_FIELDS as ReadonlySet<string>).has(field);
+};
 
 export async function incrementUsage(
   db: Database,
@@ -91,7 +101,7 @@ export async function incrementUsage(
   ledgerId: string | undefined,
   field: UsageField,
 ): Promise<void> {
-  if (!VALID_FIELDS.has(field)) return;
+  if (!assertValidField(field)) return;
 
   // Ensure record exists
   await getOrCreateUsageRecord(db, userId, ledgerId);
@@ -288,10 +298,11 @@ export async function checkLimit(
 
   // For customers and fixed_assets, check lifetime count (not periodic)
   if (resource === "customers" || resource === "fixed_assets") {
+    // SAFETY: table name is derived from a hardcoded string comparison, never from user input.
     const table = resource === "customers" ? "customers" : "fixed_assets";
-    // Count across all ledgers owned by user
+    // Use JOIN instead of subquery for better index utilisation
     const row = await db.get<{ cnt: number }>(
-      `SELECT COUNT(*) as cnt FROM ${table} WHERE ledger_id IN (SELECT id FROM ledgers WHERE owner_id = ?)`,
+      `SELECT COUNT(*) as cnt FROM ${table} t JOIN ledgers l ON t.ledger_id = l.id WHERE l.owner_id = ?`,
       [userId],
     );
     const used = row?.cnt ?? 0;

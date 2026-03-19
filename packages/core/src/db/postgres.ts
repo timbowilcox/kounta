@@ -18,10 +18,39 @@ export class PostgresDatabase implements Database {
   /**
    * Convert SQLite-style ? placeholders to PostgreSQL-style $1, $2, ...
    * This allows the engine to use ? everywhere and have the adapter translate.
+   *
+   * Only replaces ? characters that are outside single-quoted string literals.
+   * This avoids corrupting string values containing '?' and preserves
+   * PostgreSQL JSONB operators (though we don't use them currently).
    */
   private convertPlaceholders(sql: string): string {
     let index = 0;
-    return sql.replace(/\?/g, () => "$" + String(++index));
+    let inString = false;
+    let result = "";
+
+    for (let i = 0; i < sql.length; i++) {
+      const ch = sql[i]!;
+
+      if (ch === "'" && !inString) {
+        inString = true;
+        result += ch;
+      } else if (ch === "'" && inString) {
+        // Handle escaped quotes ('')
+        if (i + 1 < sql.length && sql[i + 1] === "'") {
+          result += "''";
+          i++;
+        } else {
+          inString = false;
+          result += ch;
+        }
+      } else if (ch === "?" && !inString) {
+        result += "$" + String(++index);
+      } else {
+        result += ch;
+      }
+    }
+
+    return result;
   }
 
   /** Get the current query target: transaction client if inside a transaction, otherwise the pool. */

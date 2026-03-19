@@ -108,10 +108,18 @@ notificationRoutes.put("/preferences/:type", async (c) => {
 
 notificationRoutes.get("/:notificationId", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+  const ledgerId = c.req.param("ledgerId")!;
   const notificationId = c.req.param("notificationId");
 
   const result = await engine.getNotification(notificationId);
   if (!result.ok) return errorResponse(c, result.error);
+
+  // Verify the notification belongs to the authenticated ledger and user
+  if (result.value.ledgerId !== ledgerId || result.value.userId !== apiKeyInfo.userId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Notification not found", requestId: c.get("requestId") } }, 404);
+  }
+
   return success(c, result.value);
 });
 
@@ -121,7 +129,16 @@ notificationRoutes.get("/:notificationId", async (c) => {
 
 notificationRoutes.patch("/:notificationId", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
+  const ledgerId = c.req.param("ledgerId")!;
   const notificationId = c.req.param("notificationId");
+
+  // Verify the notification belongs to the authenticated ledger before updating
+  const existing = await engine.getNotification(notificationId);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== ledgerId || existing.value.userId !== apiKeyInfo.userId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Notification not found", requestId: c.get("requestId") } }, 404);
+  }
   const body = await c.req.json<{ status: NotificationStatus }>();
 
   const validStatuses: NotificationStatus[] = ["unread", "read", "dismissed", "actioned"];

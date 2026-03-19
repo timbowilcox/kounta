@@ -14,7 +14,7 @@ npm install @kounta/sdk
 import { Kounta } from "@kounta/sdk";
 
 const kounta = new Kounta({
-  apiKey: "ldg_live_...",             // your API key
+  apiKey: "kounta_live_...",             // your API key
   adminSecret: "sk_admin_...",        // optional — only for admin operations
   baseUrl: "https://api.kounta.ai", // optional — defaults to production
 });
@@ -191,7 +191,7 @@ Ledger creation, API key management, and template application require `adminSecr
 
 ```typescript
 const admin = new Kounta({
-  apiKey: "ldg_live_...",
+  apiKey: "kounta_live_...",
   adminSecret: "sk_admin_...",
 });
 
@@ -272,7 +272,7 @@ Pass a custom `fetch` for edge runtimes, testing, or middleware:
 
 ```typescript
 const kounta = new Kounta({
-  apiKey: "ldg_live_...",
+  apiKey: "kounta_live_...",
   fetch: myCustomFetch,
 });
 ```

@@ -60,7 +60,8 @@ export const formatAmount = (amount: number, currency: string = "USD"): string =
   const dollars = Math.floor(abs / 100);
   const cents = abs % 100;
   const sign = amount < 0 ? "-" : "";
-  const symbol = currency === "USD" ? "$" : currency === "GBP" ? "\u00A3" : currency === "EUR" ? "\u20AC" : currency === "AUD" ? "A$" : "$";
+  const SYMBOLS: Record<string, string> = { USD: "$", GBP: "\u00A3", EUR: "\u20AC", AUD: "A$", CAD: "C$", NZD: "NZ$", JPY: "\u00A5", CHF: "CHF ", INR: "\u20B9", SGD: "S$", HKD: "HK$", ZAR: "R" };
+  const symbol = SYMBOLS[currency] ?? `${currency} `;
   return `${sign}${symbol}${dollars.toLocaleString("en-US")}.${cents.toString().padStart(2, "0")}`;
 };
 

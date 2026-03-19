@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { generateId } from "@kounta/core";
+import { rateLimit } from "./middleware/rate-limit.js";
 import type { LedgerEngine, AttachmentStorage } from "@kounta/core";
 import type { Env } from "./lib/context.js";
 import { ledgerRoutes } from "./routes/ledgers.js";
@@ -70,6 +71,12 @@ export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Ho
     if (storage) c.set("storage", storage);
     await next();
   });
+
+  // Rate limiting — 120 requests per minute per API key / IP
+  app.use("*", rateLimit({
+    windowMs: 60_000,
+    maxRequests: 120,
+  }));
 
   // Global error handler
   app.onError((error, c) => {

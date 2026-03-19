@@ -56,10 +56,16 @@ const main = async () => {
         console.log(`Created new database at ${dbPath}`);
       }
 
-      // Persist on graceful shutdown
-      const shutdown = () => {
-        console.log("Persisting database before shutdown...");
-        persistDatabase(sqliteDb, dbPath);
+      // TODO(#32): When moving to PostgreSQL, implement connection pooling
+      // via pg-pool and call engine.close() here.
+      const shutdown = async () => {
+        console.log("Shutting down gracefully...");
+        try {
+          persistDatabase(sqliteDb, dbPath);
+          console.log("Database persisted successfully.");
+        } catch (e) {
+          console.error("Failed to persist database on shutdown:", e);
+        }
         process.exit(0);
       };
       process.on("SIGTERM", shutdown);

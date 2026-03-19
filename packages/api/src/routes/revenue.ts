@@ -60,10 +60,17 @@ revenueRoutes.get("/schedules", async (c) => {
 revenueRoutes.get("/schedules/:id", async (c) => {
   const engine = c.get("engine");
   const db = engine.getDb();
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const scheduleId = c.req.param("id");
 
   const result = await getRevenueSchedule(db, scheduleId);
   if (!result.ok) return errorResponse(c, result.error);
+
+  // Verify the schedule belongs to the authenticated ledger
+  if (result.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Revenue schedule not found", requestId: c.get("requestId") } }, 404);
+  }
+
   return success(c, result.value);
 });
 
@@ -152,7 +159,16 @@ revenueRoutes.post("/schedules", async (c) => {
 revenueRoutes.put("/schedules/:id", async (c) => {
   const engine = c.get("engine");
   const db = engine.getDb();
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const scheduleId = c.req.param("id");
+
+  // Verify the schedule belongs to the authenticated ledger
+  const existing = await getRevenueSchedule(db, scheduleId);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Revenue schedule not found", requestId: c.get("requestId") } }, 404);
+  }
+
   const body = await c.req.json<UpdateScheduleInput>();
 
   const validActions = ["pause", "cancel", "resume"];

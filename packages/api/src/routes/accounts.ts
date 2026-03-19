@@ -3,20 +3,35 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { errorResponse, created, success } from "../lib/responses.js";
+import { validateBody } from "../lib/validate.js";
+import { accountType, normalBalance, currencyCode } from "@kounta/core";
 
 export const accountRoutes = new Hono<Env>();
 
 // All account routes require API key auth
 accountRoutes.use("/*", apiKeyAuth);
 
+// Schema for account creation (validated at API boundary)
+const createAccountBodySchema = z.object({
+  code: z.string().min(1).max(50),
+  name: z.string().min(1).max(255),
+  type: accountType,
+  normalBalance: normalBalance.optional(),
+  parentCode: z.string().optional(),
+  currency: currencyCode.optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 /** POST /v1/ledgers/:ledgerId/accounts — Create an account */
 accountRoutes.post("/", async (c) => {
   const engine = c.get("engine");
   const ledgerId = c.req.param("ledgerId");
-  const body = await c.req.json();
+  const body = await validateBody(c, createAccountBodySchema);
+  if (body instanceof Response) return body;
 
   const result = await engine.createAccount({
     ledgerId: ledgerId!,

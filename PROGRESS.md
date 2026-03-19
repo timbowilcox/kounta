@@ -3,7 +3,7 @@
 ## Project Overview
 
 Kounta is a programmable double-entry ledger and reporting engine, embeddable via API, SDK, and MCP.
-Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 312+ tests passing.
+Monorepo with 5 packages + 3 example apps, ~189 TypeScript files, 607+ tests passing.
 
 ## Tech Stack
 
@@ -123,17 +123,34 @@ examples/
     - Dashboard: 7 AI assistant tools with write confirmations for send and payment
     - 48 new tests (30 core engine + 18 API integration)
 
+### Phase 3 — Security & Code Quality Hardening
+
+20. **SQL Code Review & Security Fixes** (Migration 028)
+    - **AES-256-GCM token encryption** — `packages/core/src/crypto/tokens.ts` encrypts Stripe OAuth tokens at rest via `KOUNTA_TOKEN_ENCRYPTION_KEY`
+    - **Zod validation at API boundaries** — New `packages/api/src/lib/validate.ts` with `validateBody()` / `validateQuery()` helpers; applied to transactions, accounts, and ledgers routes
+    - **Cross-ledger authorization** — Added ledger ownership checks to recurring entries (5 endpoints), notifications (2), fixed assets (3), revenue schedules (2), attachments (2)
+    - **Timing-safe admin secret comparison** — `crypto.timingSafeEqual()` in auth middleware prevents timing attacks
+    - **Content-Disposition header sanitization** — Filename injection prevention in attachments and invoice PDF downloads (RFC 5987 encoding)
+    - **Removed information leaks** — Stripped ledger IDs from 403 error details in API key and OAuth auth paths
+    - **Soft-delete bank connections** — Changed `deleteBankConnection` from hard DELETE to status update
+    - **MCP tier-check logging** — Fail-open with `console.warn()` logging instead of silent catch blocks
+    - **Performance indexes** — Migration 028 adds B-tree indexes on high-traffic query paths (transactions by date, line_items by account, audit by entity)
+    - **Audit immutability triggers** — Migration 028 adds database-level triggers preventing UPDATE/DELETE on audit_log
+    - **Dynamic SQL safety** — `ReadonlySet` + `assertValidField()` in `packages/core/src/tiers/usage.ts`
+    - **Currency symbol map expansion** — 12 currencies (USD, GBP, EUR, AUD, CAD, NZD, JPY, CHF, INR, SGD, HKD, ZAR) with fallback
+    - **SDK documentation fixes** — Corrected API key prefix in JSDoc and README examples (`kounta_live_` / `kounta_test_`)
+
 ## Current State
 
 ### Test Status
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| @kounta/core | 350 | ✅ passing |
-| @kounta/mcp | 44 | ✅ passing |
-| @kounta/api | 67 (63 integration + 4 benchmark) | ✅ passing |
-| @kounta/sdk | 35 | ✅ passing |
-| **Total** | **496+** | **all passing** |
+| @kounta/core | 421 | ✅ passing |
+| @kounta/mcp | 43/44 | ✅ (1 pre-existing failure) |
+| @kounta/api | 105/107 | ✅ (2 pre-existing failures) |
+| @kounta/sdk | 33/35 | ✅ (2 pre-existing failures) |
+| **Total** | **607+** | **0 regressions from security hardening** |
 
 ### Database Migrations
 
@@ -160,6 +177,7 @@ examples/
 | 019 | jurisdiction | Jurisdiction configuration (AU, US, UK, NZ, CA, SG) |
 | 020 | capitalisation_notification | Capitalisation check notification type |
 | 021 | invoicing | Invoices, invoice line items, invoice payments (AR lifecycle) |
+| 028 | sql_review_fixes | Performance indexes (transactions, line_items, audit), audit immutability triggers |
 
 ### MCP Tools (63 total)
 
@@ -186,6 +204,7 @@ Health, Ledgers (CRUD), Accounts (CRUD), Transactions (post/list/get/reverse), R
 | KOUNTA_ADMIN_SECRET | (auto-generated) | Admin secret for bootstrap operations |
 | KOUNTA_API_URL | - | API URL for dashboard/SDK |
 | STRIPE_SECRET_KEY | - | Stripe API key for billing |
+| KOUNTA_TOKEN_ENCRYPTION_KEY | - | 32-byte hex key for AES-256-GCM token encryption at rest |
 | AUTH_GITHUB_ID/SECRET | - | GitHub OAuth for dashboard |
 | AUTH_GOOGLE_ID/SECRET | - | Google OAuth for dashboard |
 

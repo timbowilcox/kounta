@@ -27,8 +27,9 @@ export async function mcpCheckLimit(
         upgrade_url: UPGRADE_URL,
       });
     }
-  } catch {
-    // Fail open if tier check unavailable
+  } catch (e) {
+    // Log but allow — MCP runs locally, tier check is advisory
+    console.warn("[mcp/tier-check] Limit check failed:", e instanceof Error ? e.message : String(e));
   }
   return null;
 }
@@ -53,8 +54,9 @@ export async function mcpCheckFeature(
         upgrade_url: UPGRADE_URL,
       });
     }
-  } catch {
-    // Fail open
+  } catch (e) {
+    // Log but allow — MCP runs locally, tier check is advisory
+    console.warn("[mcp/tier-check] Feature check failed:", e instanceof Error ? e.message : String(e));
   }
   return null;
 }

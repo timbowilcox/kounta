@@ -254,7 +254,7 @@ import type { ConfirmAction } from "@kounta/core";
 // ---------------------------------------------------------------------------
 
 export interface KountaConfig {
-  /** API key (starts with `ldg_`). Required. */
+  /** API key (starts with `kounta_live_` or `kounta_test_`). Required. */
   readonly apiKey: string;
 
   /**

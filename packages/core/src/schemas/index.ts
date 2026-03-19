@@ -91,30 +91,8 @@ export const postLineSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
   currency: currencyCode.optional(),
   originalAmount: positiveInt.optional(),
-  exchangeRate: z.number().int().positive().optional(),
+  exchangeRate: z.number().positive().optional(),
 });
-
-export const postTransactionSchema = z.object({
-  ledgerId: uuidV7,
-  date: isoDate,
-  effectiveDate: isoDate.optional(),
-  memo: z.string().min(1).max(1000),
-  lines: z.array(postLineSchema).min(2),
-  idempotencyKey: z.string().max(255).optional(),
-  sourceType: sourceType.optional(),
-  sourceRef: z.string().max(500).optional(),
-  agentId: z.string().max(255).optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
-
-export type PostTransactionSchema = z.infer<typeof postTransactionSchema>;
-
-export const reverseTransactionSchema = z.object({
-  transactionId: uuidV7,
-  reason: z.string().min(1).max(1000),
-});
-
-export type ReverseTransactionSchema = z.infer<typeof reverseTransactionSchema>;
 
 // ---------------------------------------------------------------------------
 // Transaction validation: debits must equal credits
@@ -138,6 +116,28 @@ export const balancedLinesSchema = z
         "Transaction is unbalanced: total debits must equal total credits",
     }
   );
+
+export const postTransactionSchema = z.object({
+  ledgerId: uuidV7,
+  date: isoDate,
+  effectiveDate: isoDate.optional(),
+  memo: z.string().min(1).max(1000),
+  lines: z.array(postLineSchema).min(2),
+  idempotencyKey: z.string().max(255).optional(),
+  sourceType: sourceType.optional(),
+  sourceRef: z.string().max(500).optional(),
+  agentId: z.string().max(255).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export type PostTransactionSchema = z.infer<typeof postTransactionSchema>;
+
+export const reverseTransactionSchema = z.object({
+  transactionId: uuidV7,
+  reason: z.string().min(1).max(1000),
+});
+
+export type ReverseTransactionSchema = z.infer<typeof reverseTransactionSchema>;
 
 // ---------------------------------------------------------------------------
 // Statements
@@ -225,7 +225,7 @@ export type EnableCurrencyInput = z.infer<typeof enableCurrencySchema>;
 export const setExchangeRateSchema = z.object({
   fromCurrency: currencyCode,
   toCurrency: currencyCode,
-  rate: z.number().int().positive(),
+  rate: z.number().positive(),
   effectiveDate: isoDate,
   source: exchangeRateSource.default("manual"),
 });

@@ -4,6 +4,7 @@
 
 import type { Database } from "../db/database.js";
 import { generateId, nowUtc } from "../engine/id.js";
+import { encryptToken } from "../crypto/tokens.js";
 import type {
   StripeConnection,
   CreateStripeConnectionInput,
@@ -81,6 +82,11 @@ export const createConnection = async (
   const id = generateId();
   const now = nowUtc();
 
+  // Encrypt sensitive tokens before storage
+  const encryptedAccessToken = encryptToken(input.accessToken);
+  const encryptedRefreshToken = input.refreshToken ? encryptToken(input.refreshToken) : null;
+  const encryptedWebhookSecret = input.webhookSecret ? encryptToken(input.webhookSecret) : null;
+
   await db.run(
     `INSERT INTO stripe_connections
       (id, user_id, ledger_id, stripe_account_id, access_token, refresh_token,
@@ -91,10 +97,10 @@ export const createConnection = async (
       input.userId,
       input.ledgerId,
       input.stripeAccountId,
-      input.accessToken,
-      input.refreshToken ?? null,
+      encryptedAccessToken,
+      encryptedRefreshToken,
       input.stripePublishableKey ?? null,
-      input.webhookSecret ?? null,
+      encryptedWebhookSecret,
       now,
       now,
     ],

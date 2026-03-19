@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { createMiddleware } from "hono/factory";
+import { timingSafeEqual } from "node:crypto";
 import type { Env } from "../lib/context.js";
 import { validateOAuthToken } from "../lib/oauth-scopes.js";
 
@@ -81,8 +82,6 @@ export const apiKeyAuth = createMiddleware<Env>(async (c, next) => {
             details: [
               {
                 field: "ledgerId",
-                actual: ledgerId,
-                expected: apiKey.ledgerId,
                 suggestion:
                   "This API key is scoped to a different ledger. Use an API key created for this ledger, or verify you are using the correct ledger ID in the URL.",
               },
@@ -159,8 +158,6 @@ export const apiKeyAuth = createMiddleware<Env>(async (c, next) => {
           details: [
             {
               field: "ledgerId",
-              actual: ledgerId,
-              expected: oauthResult.ledgerId,
               suggestion: "This OAuth token is scoped to a different ledger.",
             },
           ],
@@ -209,7 +206,12 @@ export const adminAuth = createMiddleware<Env>(async (c, next) => {
   }
 
   // If admin secret is configured and token matches, grant admin access
-  if (adminSecret && token === adminSecret) {
+  // Use timing-safe comparison to prevent timing attacks (CWE-208)
+  if (
+    adminSecret &&
+    token.length === adminSecret.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(adminSecret))
+  ) {
     await next();
     return;
   }

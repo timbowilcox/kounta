@@ -100,10 +100,16 @@ recurringRoutes.post("/", async (c) => {
 
 recurringRoutes.get("/:id", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const id = c.req.param("id");
 
   const result = await engine.getRecurringEntry(id);
   if (!result.ok) return errorResponse(c, result.error);
+
+  // Verify the entry belongs to the authenticated ledger
+  if (result.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Recurring entry not found", requestId: c.get("requestId") } }, 404);
+  }
 
   const logs = await engine.getRecurringEntryLogs(id, 10);
   return success(c, { ...result.value, recentLogs: logs });
@@ -115,9 +121,17 @@ recurringRoutes.get("/:id", async (c) => {
 
 recurringRoutes.put("/:id", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const id = c.req.param("id");
-  const body = await c.req.json<UpdateRecurringEntryInput>();
 
+  // Verify the entry belongs to the authenticated ledger
+  const existing = await engine.getRecurringEntry(id);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Recurring entry not found", requestId: c.get("requestId") } }, 404);
+  }
+
+  const body = await c.req.json<UpdateRecurringEntryInput>();
   const result = await engine.updateRecurringEntry(id, body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
@@ -129,7 +143,15 @@ recurringRoutes.put("/:id", async (c) => {
 
 recurringRoutes.delete("/:id", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const id = c.req.param("id");
+
+  // Verify the entry belongs to the authenticated ledger
+  const existing = await engine.getRecurringEntry(id);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Recurring entry not found", requestId: c.get("requestId") } }, 404);
+  }
 
   const result = await engine.deleteRecurringEntry(id);
   if (!result.ok) return errorResponse(c, result.error);
@@ -142,7 +164,15 @@ recurringRoutes.delete("/:id", async (c) => {
 
 recurringRoutes.post("/:id/pause", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const id = c.req.param("id");
+
+  // Verify the entry belongs to the authenticated ledger
+  const existing = await engine.getRecurringEntry(id);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Recurring entry not found", requestId: c.get("requestId") } }, 404);
+  }
 
   const result = await engine.pauseRecurringEntry(id);
   if (!result.ok) return errorResponse(c, result.error);
@@ -155,7 +185,15 @@ recurringRoutes.post("/:id/pause", async (c) => {
 
 recurringRoutes.post("/:id/resume", async (c) => {
   const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const id = c.req.param("id");
+
+  // Verify the entry belongs to the authenticated ledger
+  const existing = await engine.getRecurringEntry(id);
+  if (!existing.ok) return errorResponse(c, existing.error);
+  if (existing.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Recurring entry not found", requestId: c.get("requestId") } }, 404);
+  }
 
   const result = await engine.resumeRecurringEntry(id);
   if (!result.ok) return errorResponse(c, result.error);

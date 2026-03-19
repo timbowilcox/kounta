@@ -10,19 +10,9 @@ import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { success, created, errorResponse, paginated } from "../lib/responses.js";
 import {
-  createInvoice,
-  updateInvoice,
-  sendInvoice,
-  recordPayment,
-  voidInvoice,
-  getInvoice,
-  listInvoices,
-  getInvoiceSummary,
-  getARAging,
   generateInvoicePDF,
   getJurisdictionConfig,
   getResendClient,
-  sendEmail,
   generateInvoiceEmail,
   emailLayout,
 } from "@kounta/core";
@@ -33,13 +23,28 @@ export const invoiceRoutes = new Hono<Env>();
 
 invoiceRoutes.use("/*", apiKeyAuth);
 
+// Helper: build PDF config from ledger business info
+const buildPdfConfig = (ledger: { name: string; jurisdiction: string; businessName: string | null; businessAddress: string | null; businessEmail: string | null; businessPhone: string | null; taxId: string | null }, currency: string): InvoicePDFConfig => {
+  const jConfig = getJurisdictionConfig(ledger.jurisdiction);
+  return {
+    businessName: ledger.businessName ?? ledger.name ?? "Business",
+    businessAddress: ledger.businessAddress ?? undefined,
+    businessEmail: ledger.businessEmail ?? undefined,
+    businessPhone: ledger.businessPhone ?? undefined,
+    taxId: ledger.taxId ?? undefined,
+    taxIdLabel: jConfig.taxIdLabel,
+    jurisdiction: ledger.jurisdiction,
+    currencySymbol: jConfig.currencySymbol,
+    currency,
+  };
+};
+
 // ---------------------------------------------------------------------------
 // GET / — list invoices
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.get("/", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
   const status = c.req.query("status");
@@ -49,7 +54,7 @@ invoiceRoutes.get("/", async (c) => {
   const cursor = c.req.query("cursor");
   const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
 
-  const result = await listInvoices(db, apiKeyInfo.ledgerId, {
+  const result = await engine.listInvoices(apiKeyInfo.ledgerId, {
     status: status ?? undefined,
     customerName: customer ?? undefined,
     dateFrom: fromDate ?? undefined,
@@ -66,10 +71,10 @@ invoiceRoutes.get("/", async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.get("/summary", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const summary = await getInvoiceSummary(db, apiKeyInfo.ledgerId);
+  const summary = await engine.getInvoiceSummary(apiKeyInfo.ledgerId);
   return success(c, summary);
 });
 
@@ -78,10 +83,10 @@ invoiceRoutes.get("/summary", async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.get("/aging", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const buckets = await getARAging(db, apiKeyInfo.ledgerId);
+  const buckets = await engine.getARAging(apiKeyInfo.ledgerId);
   return success(c, buckets);
 });
 
@@ -91,11 +96,10 @@ invoiceRoutes.get("/aging", async (c) => {
 
 invoiceRoutes.post("/", tierLimitCheck("invoices"), tierUsageIncrement("invoices"), async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const body = await c.req.json() as Omit<CreateInvoiceInput, "ledgerId">;
 
-  const result = await createInvoice(db, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", body);
+  const result = await engine.createInvoice(apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", body);
   if (!result.ok) return errorResponse(c, result.error);
   return created(c, result.value);
 });
@@ -105,20 +109,15 @@ invoiceRoutes.post("/", tierLimitCheck("invoices"), tierUsageIncrement("invoices
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.get("/:id", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  // Verify invoice belongs to ledger
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
-  const result = await getInvoice(db, invoiceId);
+  const result = await engine.getInvoice(invoiceId);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -128,49 +127,23 @@ invoiceRoutes.get("/:id", async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.get("/:id/pdf", tierFeatureGate("pdfExport"), async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
-  const result = await getInvoice(db, invoiceId);
+  const result = await engine.getInvoice(invoiceId);
   if (!result.ok) return errorResponse(c, result.error);
   const invoice = result.value;
 
-  // Get ledger + jurisdiction info for PDF config
-  const ledger = await db.get<{
-    name: string; jurisdiction: string; currency: string;
-    business_name: string | null; business_address: string | null;
-    business_email: string | null; business_phone: string | null;
-    tax_id: string | null;
-  }>(
-    `SELECT name, jurisdiction, currency,
-            business_name, business_address, business_email, business_phone, tax_id
-     FROM ledgers WHERE id = ?`,
-    [apiKeyInfo.ledgerId],
-  );
+  const ledgerResult = await engine.getLedgerBusinessInfo(apiKeyInfo.ledgerId);
+  if (!ledgerResult.ok) return errorResponse(c, ledgerResult.error);
+  const ledger = ledgerResult.value;
 
-  const jur = ledger?.jurisdiction ?? "AU";
-  const jConfig = getJurisdictionConfig(jur);
-
-  const pdfConfig: InvoicePDFConfig = {
-    businessName: ledger?.business_name ?? ledger?.name ?? "Business",
-    businessAddress: ledger?.business_address ?? undefined,
-    businessEmail: ledger?.business_email ?? undefined,
-    businessPhone: ledger?.business_phone ?? undefined,
-    taxId: ledger?.tax_id ?? undefined,
-    taxIdLabel: jConfig.taxIdLabel,
-    jurisdiction: jur,
-    currencySymbol: jConfig.currencySymbol,
-    currency: invoice.currency,
-  };
+  const pdfConfig = buildPdfConfig(ledger, invoice.currency);
 
   let pdfBuffer: Buffer;
   try {
@@ -184,7 +157,7 @@ invoiceRoutes.get("/:id/pdf", tierFeatureGate("pdfExport"), async (c) => {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
+      "Content-Disposition": `attachment; filename="${invoice.invoiceNumber.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf"`,
       "Content-Length": String(pdfBuffer.length),
     },
   });
@@ -195,19 +168,15 @@ invoiceRoutes.get("/:id/pdf", tierFeatureGate("pdfExport"), async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
-  const result = await getInvoice(db, invoiceId);
+  const result = await engine.getInvoice(invoiceId);
   if (!result.ok) return errorResponse(c, result.error);
   const invoice = result.value;
 
@@ -219,36 +188,12 @@ invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
     });
   }
 
-  // Get ledger + jurisdiction for PDF + email
-  const ledger = await db.get<{
-    name: string; jurisdiction: string; currency: string;
-    business_name: string | null; business_address: string | null;
-    business_email: string | null; business_phone: string | null;
-    tax_id: string | null;
-  }>(
-    `SELECT name, jurisdiction, currency,
-            business_name, business_address, business_email, business_phone, tax_id
-     FROM ledgers WHERE id = ?`,
-    [apiKeyInfo.ledgerId],
-  );
+  const ledgerResult = await engine.getLedgerBusinessInfo(apiKeyInfo.ledgerId);
+  if (!ledgerResult.ok) return errorResponse(c, ledgerResult.error);
+  const ledger = ledgerResult.value;
+  const businessName = ledger.businessName ?? ledger.name ?? "Business";
 
-  const jur = ledger?.jurisdiction ?? "AU";
-  const jConfig = getJurisdictionConfig(jur);
-  const businessName = ledger?.business_name ?? ledger?.name ?? "Business";
-
-  // Generate PDF
-  const pdfConfig: InvoicePDFConfig = {
-    businessName,
-    businessAddress: ledger?.business_address ?? undefined,
-    businessEmail: ledger?.business_email ?? undefined,
-    businessPhone: ledger?.business_phone ?? undefined,
-    taxId: ledger?.tax_id ?? undefined,
-    taxIdLabel: jConfig.taxIdLabel,
-    jurisdiction: jur,
-    currencySymbol: jConfig.currencySymbol,
-    currency: invoice.currency,
-  };
-
+  const pdfConfig = buildPdfConfig(ledger, invoice.currency);
   const pdfBuffer = await generateInvoicePDF(invoice, pdfConfig);
 
   // Send email via Resend
@@ -285,8 +230,7 @@ invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
   });
 
   // Log the email
-  await sendEmail(
-    db,
+  await engine.sendEmailLog(
     apiKeyInfo.userId,
     invoice.customerEmail,
     `Invoice ${invoice.invoiceNumber} from ${businessName}`,
@@ -296,11 +240,7 @@ invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
   );
 
   // Update sent_at on the invoice; also upgrade status from 'approved' to 'sent' if applicable
-  const statusUpdate = invoice.status === "approved" ? ", status = 'sent'" : "";
-  await db.run(
-    `UPDATE invoices SET sent_at = datetime('now'), updated_at = datetime('now')${statusUpdate} WHERE id = ?`,
-    [invoiceId],
-  );
+  await engine.markInvoiceSent(invoiceId, invoice.status === "approved");
 
   return success(c, { sent: true, to: invoice.customerEmail, invoiceNumber: invoice.invoiceNumber });
 });
@@ -310,20 +250,16 @@ invoiceRoutes.post("/:id/email", tierFeatureGate("invoiceEmail"), async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.patch("/:id", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
   const body = await c.req.json() as UpdateInvoiceInput;
-  const result = await updateInvoice(db, invoiceId, body);
+  const result = await engine.updateInvoice(invoiceId, body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -334,15 +270,10 @@ invoiceRoutes.patch("/:id", async (c) => {
 
 invoiceRoutes.post("/:id/send", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
@@ -351,13 +282,10 @@ invoiceRoutes.post("/:id/send", async (c) => {
   const wantsEmail = body.sendEmail ?? body.send_email ?? false;
 
   // Check if email can actually be sent (customer has email + Resend configured)
-  const invoiceRow = await db.get<{ customer_email: string | null }>(
-    "SELECT customer_email FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  const canEmail = wantsEmail && !!invoiceRow?.customer_email;
+  const invoiceResult = await engine.getInvoice(invoiceId);
+  const canEmail = wantsEmail && invoiceResult.ok && !!invoiceResult.value.customerEmail;
 
-  const result = await sendInvoice(db, engine, invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", { sendEmail: canEmail });
+  const result = await engine.sendInvoice(invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", { sendEmail: canEmail });
   if (!result.ok) return errorResponse(c, result.error);
 
   const invoice = result.value;
@@ -367,57 +295,33 @@ invoiceRoutes.post("/:id/send", async (c) => {
     try {
       const resend = getResendClient();
       if (resend) {
-        const ledger = await db.get<{
-          name: string; jurisdiction: string; currency: string;
-          business_name: string | null; business_address: string | null;
-          business_email: string | null; business_phone: string | null;
-          tax_id: string | null;
-        }>(
-          `SELECT name, jurisdiction, currency,
-                  business_name, business_address, business_email, business_phone, tax_id
-           FROM ledgers WHERE id = ?`,
-          [apiKeyInfo.ledgerId],
-        );
+        const ledgerResult = await engine.getLedgerBusinessInfo(apiKeyInfo.ledgerId);
+        if (ledgerResult.ok) {
+          const ledger = ledgerResult.value;
+          const businessName = ledger.businessName ?? ledger.name ?? "Business";
+          const pdfConfig = buildPdfConfig(ledger, invoice.currency);
 
-        const jur = ledger?.jurisdiction ?? "AU";
-        const jConfig = getJurisdictionConfig(jur);
-        const businessName = ledger?.business_name ?? ledger?.name ?? "Business";
+          const pdfBuffer = await generateInvoicePDF(invoice, pdfConfig);
+          const emailBody = generateInvoiceEmail({
+            invoiceNumber: invoice.invoiceNumber,
+            customerName: invoice.customerName,
+            total: invoice.total,
+            currency: invoice.currency,
+            dueDate: invoice.dueDate,
+            businessName,
+            notes: invoice.notes ?? undefined,
+          });
 
-        const pdfConfig: InvoicePDFConfig = {
-          businessName,
-          businessAddress: ledger?.business_address ?? undefined,
-          businessEmail: ledger?.business_email ?? undefined,
-          businessPhone: ledger?.business_phone ?? undefined,
-          taxId: ledger?.tax_id ?? undefined,
-          taxIdLabel: jConfig.taxIdLabel,
-          jurisdiction: jur,
-          currencySymbol: jConfig.currencySymbol,
-          currency: invoice.currency,
-        };
+          await resend.emails.send({
+            from: `${businessName} <notifications@kounta.ai>`,
+            to: [invoice.customerEmail],
+            subject: `Invoice ${invoice.invoiceNumber} from ${businessName}`,
+            html: emailLayout(emailBody),
+            attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer.toString("base64") }],
+          });
 
-        const pdfBuffer = await generateInvoicePDF(invoice, pdfConfig);
-        const emailBody = generateInvoiceEmail({
-          invoiceNumber: invoice.invoiceNumber,
-          customerName: invoice.customerName,
-          total: invoice.total,
-          currency: invoice.currency,
-          dueDate: invoice.dueDate,
-          businessName,
-          notes: invoice.notes ?? undefined,
-        });
-
-        await resend.emails.send({
-          from: `${businessName} <notifications@kounta.ai>`,
-          to: [invoice.customerEmail],
-          subject: `Invoice ${invoice.invoiceNumber} from ${businessName}`,
-          html: emailLayout(emailBody),
-          attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer.toString("base64") }],
-        });
-
-        await db.run(
-          "UPDATE invoices SET sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-          [invoiceId],
-        );
+          await engine.markInvoiceSent(invoiceId, false);
+        }
       }
     } catch {
       // Best-effort — email failure should not block the send operation
@@ -433,20 +337,15 @@ invoiceRoutes.post("/:id/send", async (c) => {
 
 invoiceRoutes.post("/:id/payment", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
   const body = await c.req.json() as RecordPaymentInput;
-  const result = await recordPayment(db, engine, invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", body);
+  const result = await engine.recordInvoicePayment(invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system", body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -457,19 +356,14 @@ invoiceRoutes.post("/:id/payment", async (c) => {
 
 invoiceRoutes.post("/:id/void", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyInvoiceBelongsToLedger(invoiceId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
   }
 
-  const result = await voidInvoice(db, engine, invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system");
+  const result = await engine.voidInvoice(invoiceId, apiKeyInfo.ledgerId, apiKeyInfo.userId ?? "system");
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -479,27 +373,11 @@ invoiceRoutes.post("/:id/void", async (c) => {
 // ---------------------------------------------------------------------------
 
 invoiceRoutes.delete("/:id", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const invoiceId = c.req.param("id");
 
-  const existing = await db.get<{ ledger_id: string; status: string }>(
-    "SELECT ledger_id, status FROM invoices WHERE id = ?",
-    [invoiceId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
-    return errorResponse(c, { code: "INVOICE_NOT_FOUND", message: `Invoice not found: ${invoiceId}` });
-  }
-  if (existing.status !== "draft") {
-    return errorResponse(c, {
-      code: "INVOICE_INVALID_STATE",
-      message: "Only draft invoices can be deleted",
-      details: [{ field: "status", actual: existing.status, expected: "draft" }],
-    });
-  }
-
-  await db.run("DELETE FROM invoice_line_items WHERE invoice_id = ?", [invoiceId]);
-  await db.run("DELETE FROM invoices WHERE id = ?", [invoiceId]);
-
-  return success(c, { deleted: true, id: invoiceId });
+  const result = await engine.deleteInvoiceDraft(invoiceId, apiKeyInfo.ledgerId);
+  if (!result.ok) return errorResponse(c, result.error);
+  return success(c, result.value);
 });

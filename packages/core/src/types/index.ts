@@ -35,6 +35,9 @@ export interface Ledger {
   readonly status: LedgerStatus;
   readonly ownerId: string;
   readonly closedThrough: string | null;
+  readonly jurisdiction: string;
+  readonly taxId: string | null;
+  readonly taxBasis: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

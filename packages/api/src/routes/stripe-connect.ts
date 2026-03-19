@@ -13,13 +13,7 @@ import { success } from "../lib/responses.js";
 import {
   getOAuthUrl,
   exchangeCode,
-  createConnection,
-  getConnectionByLedger,
-  disconnectConnection,
   verifyWebhookSignature,
-  handleEvent,
-  ensureStripeAccounts,
-  backfillAll,
 } from "@kounta/core";
 
 const STRIPE_CONNECT_CLIENT_ID = process.env["STRIPE_CONNECT_CLIENT_ID"];
@@ -50,9 +44,7 @@ stripeConnectRoutes.post("/webhook", async (c) => {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
-  // Find the connection by Stripe account ID
   const engine = c.get("engine");
-  const db = engine.getDb();
 
   // The event.account field contains the connected account ID
   const accountId = event.account;
@@ -61,25 +53,21 @@ stripeConnectRoutes.post("/webhook", async (c) => {
   }
 
   // Look up connection by stripe_account_id
-  const connRow = await db.get<{ id: string; webhook_secret: string | null; ledger_id: string }>(
-    `SELECT id, webhook_secret, ledger_id FROM stripe_connections WHERE stripe_account_id = ? AND status = 'active'`,
-    [accountId],
-  );
-
+  const connRow = await engine.getStripeConnectionByAccountId(accountId);
   if (!connRow) {
     return c.json({ received: true, skipped: "unknown account" }, 200);
   }
 
   // Verify signature if webhook_secret is configured
-  if (connRow.webhook_secret) {
-    const valid = verifyWebhookSignature(body, sig, connRow.webhook_secret);
+  if (connRow.webhookSecret) {
+    const valid = verifyWebhookSignature(body, sig, connRow.webhookSecret);
     if (!valid) {
       return c.json({ error: "Invalid signature" }, 400);
     }
   }
 
   // Get full connection
-  const connection = await getConnectionByLedger(db, connRow.ledger_id);
+  const connection = await engine.getStripeConnectionByLedger(connRow.ledgerId);
   if (!connection) {
     return c.json({ received: true, skipped: "connection not found" }, 200);
   }
@@ -87,7 +75,7 @@ stripeConnectRoutes.post("/webhook", async (c) => {
   // Only handle events we care about
   if (["charge.succeeded", "charge.refunded", "payout.paid", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
     try {
-      await handleEvent(db, engine, connection, event as Parameters<typeof handleEvent>[3]);
+      await engine.handleStripeEvent(connection, event as Parameters<typeof engine.handleStripeEvent>[1]);
     } catch (e) {
       console.error("Error handling Stripe webhook event:", e);
     }
@@ -133,19 +121,9 @@ stripeConnectRoutes.get("/callback", async (c) => {
   }
 
   const engine = c.get("engine");
-  const db = engine.getDb();
 
   try {
-    // Exchange code for tokens
     const tokens = await exchangeCode(STRIPE_CONNECT_CLIENT_ID, STRIPE_SECRET_KEY, code);
-
-    // We need user context — get it from the state param or session
-    // For OAuth callback, the user info was stored in the state param or we need a different mechanism.
-    // Since this is a redirect flow, we'll use a simpler approach:
-    // Look up the user from the most recent pending auth flow.
-    // In production, the authorize endpoint should embed userId+ledgerId in the OAuth state param.
-    // For now, find the user's ledger from the Stripe account if it already exists,
-    // or require the callback to have state data.
 
     const state = c.req.query("state");
     let userId: string;
@@ -164,7 +142,7 @@ stripeConnectRoutes.get("/callback", async (c) => {
     }
 
     // Create the connection
-    const connection = await createConnection(db, {
+    const connection = await engine.createStripeConnection({
       userId,
       ledgerId,
       stripeAccountId: tokens.stripeUserId,
@@ -174,23 +152,15 @@ stripeConnectRoutes.get("/callback", async (c) => {
     });
 
     // Ensure required accounts exist
-    await ensureStripeAccounts(db, engine, ledgerId);
+    await engine.ensureStripeAccounts(ledgerId);
 
     // Trigger backfill asynchronously (don't block redirect)
-    backfillAll(db, engine, connection, 90).catch((e) => {
+    engine.backfillStripe(connection, 90).catch((e) => {
       console.error("Stripe backfill error:", e);
     });
 
     // Update onboarding checklist if exists
-    try {
-      await db.run(
-        `UPDATE onboarding_checklist SET completed = 1, completed_at = datetime('now')
-         WHERE user_id = ? AND item = 'connect_stripe' AND completed = 0`,
-        [userId],
-      );
-    } catch {
-      // Onboarding table may not exist — that's fine
-    }
+    await engine.completeOnboardingItem(userId, "connect_stripe");
 
     return c.redirect(`${DASHBOARD_URL}/settings?tab=connections&success=stripe`);
   } catch (e) {
@@ -202,10 +172,9 @@ stripeConnectRoutes.get("/callback", async (c) => {
 /** GET /v1/stripe-connect/status — Connection status */
 stripeConnectRoutes.get("/status", apiKeyAuth, async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const connection = await getConnectionByLedger(db, apiKeyInfo.ledgerId);
+  const connection = await engine.getStripeConnectionByLedger(apiKeyInfo.ledgerId);
   if (!connection) {
     return success(c, null);
   }
@@ -222,10 +191,9 @@ stripeConnectRoutes.get("/status", apiKeyAuth, async (c) => {
 /** POST /v1/stripe-connect/disconnect — Disconnect Stripe */
 stripeConnectRoutes.post("/disconnect", apiKeyAuth, async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const connection = await getConnectionByLedger(db, apiKeyInfo.ledgerId);
+  const connection = await engine.getStripeConnectionByLedger(apiKeyInfo.ledgerId);
   if (!connection) {
     return c.json(
       { error: { code: "NOT_FOUND", message: "No active Stripe connection found" } },
@@ -233,17 +201,16 @@ stripeConnectRoutes.post("/disconnect", apiKeyAuth, async (c) => {
     );
   }
 
-  await disconnectConnection(db, connection.id);
+  await engine.disconnectStripeConnection(connection.id);
   return success(c, { disconnected: true });
 });
 
 /** POST /v1/stripe-connect/sync — Manually trigger backfill */
 stripeConnectRoutes.post("/sync", apiKeyAuth, async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const connection = await getConnectionByLedger(db, apiKeyInfo.ledgerId);
+  const connection = await engine.getStripeConnectionByLedger(apiKeyInfo.ledgerId);
   if (!connection) {
     return c.json(
       { error: { code: "NOT_FOUND", message: "No active Stripe connection found" } },
@@ -252,7 +219,7 @@ stripeConnectRoutes.post("/sync", apiKeyAuth, async (c) => {
   }
 
   // Run async — respond immediately
-  backfillAll(db, engine, connection, 90).catch((e) => {
+  engine.backfillStripe(connection, 90).catch((e) => {
     console.error("Stripe sync error:", e);
   });
 

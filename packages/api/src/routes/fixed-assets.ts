@@ -9,18 +9,7 @@ import { Hono } from "hono";
 import type { Env } from "../lib/context.js";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { success, created, errorResponse, paginated } from "../lib/responses.js";
-import {
-  createFixedAsset,
-  getFixedAsset,
-  listFixedAssets,
-  getAssetSchedule,
-  getPendingDepreciation,
-  runDepreciation,
-  getAssetSummary,
-  disposeFixedAsset,
-  adviseOnCapitalisation,
-  updateFixedAsset,
-} from "@kounta/core";
+import { adviseOnCapitalisation } from "@kounta/core";
 import type { CreateFixedAssetInput, UpdateFixedAssetInput, DisposeAssetInput } from "@kounta/core";
 import { tierLimitCheck, tierUsageIncrement } from "../middleware/tier-enforcement.js";
 
@@ -34,14 +23,13 @@ fixedAssetRoutes.use("/*", apiKeyAuth);
 
 fixedAssetRoutes.get("/", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
   const status = c.req.query("status") ?? "active";
   const cursor = c.req.query("cursor");
   const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
 
-  const result = await listFixedAssets(db, apiKeyInfo.ledgerId, {
+  const result = await engine.listFixedAssets(apiKeyInfo.ledgerId, {
     status, cursor: cursor ?? undefined, limit,
   });
 
@@ -54,10 +42,9 @@ fixedAssetRoutes.get("/", async (c) => {
 
 fixedAssetRoutes.get("/summary", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const summary = await getAssetSummary(db, apiKeyInfo.ledgerId);
+  const summary = await engine.getAssetSummary(apiKeyInfo.ledgerId);
   return success(c, summary);
 });
 
@@ -67,10 +54,9 @@ fixedAssetRoutes.get("/summary", async (c) => {
 
 fixedAssetRoutes.get("/pending", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const result = await getPendingDepreciation(db, apiKeyInfo.ledgerId);
+  const result = await engine.getPendingDepreciation(apiKeyInfo.ledgerId);
   return success(c, result);
 });
 
@@ -80,7 +66,6 @@ fixedAssetRoutes.get("/pending", async (c) => {
 
 fixedAssetRoutes.post("/capitalisation-check", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const body = await c.req.json() as {
     amount: number;
@@ -89,12 +74,8 @@ fixedAssetRoutes.post("/capitalisation-check", async (c) => {
     annual_turnover?: number;
   };
 
-  // Get ledger jurisdiction
-  const ledger = await db.get<{ jurisdiction: string }>(
-    "SELECT jurisdiction FROM ledgers WHERE id = ?",
-    [apiKeyInfo.ledgerId],
-  );
-  const jurisdiction = ledger?.jurisdiction ?? "AU";
+  const jurResult = await engine.getLedgerJurisdiction(apiKeyInfo.ledgerId);
+  const jurisdiction = jurResult.ok ? jurResult.value.jurisdiction : "AU";
   const purchaseYear = new Date(body.purchase_date).getUTCFullYear();
 
   const advice = adviseOnCapitalisation(
@@ -114,11 +95,10 @@ fixedAssetRoutes.post("/capitalisation-check", async (c) => {
 
 fixedAssetRoutes.post("/", tierLimitCheck("fixed_assets"), tierUsageIncrement("fixed_assets"), async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const body = await c.req.json() as Omit<CreateFixedAssetInput, "ledgerId">;
 
-  const result = await createFixedAsset(db, {
+  const result = await engine.createFixedAsset({
     ...body,
     ledgerId: apiKeyInfo.ledgerId,
   });
@@ -132,11 +112,18 @@ fixedAssetRoutes.post("/", tierLimitCheck("fixed_assets"), tierUsageIncrement("f
 // ---------------------------------------------------------------------------
 
 fixedAssetRoutes.get("/:id", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const assetId = c.req.param("id");
 
-  const result = await getFixedAsset(db, assetId);
+  const result = await engine.getFixedAsset(assetId);
   if (!result.ok) return errorResponse(c, result.error);
+
+  // Verify the asset belongs to the authenticated ledger
+  if (result.value.ledgerId !== apiKeyInfo.ledgerId) {
+    return errorResponse(c, { code: "FIXED_ASSET_NOT_FOUND", message: `Fixed asset ${assetId} not found` });
+  }
+
   return success(c, result.value);
 });
 
@@ -145,16 +132,11 @@ fixedAssetRoutes.get("/:id", async (c) => {
 // ---------------------------------------------------------------------------
 
 fixedAssetRoutes.patch("/:id", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
   const apiKeyInfo = c.get("apiKeyInfo")!;
   const assetId = c.req.param("id");
 
-  // Verify asset belongs to the authenticated ledger
-  const existing = await db.get<{ ledger_id: string }>(
-    "SELECT ledger_id FROM fixed_assets WHERE id = ?",
-    [assetId],
-  );
-  if (!existing || existing.ledger_id !== apiKeyInfo.ledgerId) {
+  if (!(await engine.verifyFixedAssetBelongsToLedger(assetId, apiKeyInfo.ledgerId))) {
     return errorResponse(c, {
       code: "FIXED_ASSET_NOT_FOUND",
       message: `Fixed asset ${assetId} not found`,
@@ -162,7 +144,7 @@ fixedAssetRoutes.patch("/:id", async (c) => {
   }
 
   const body = await c.req.json() as Omit<UpdateFixedAssetInput, never>;
-  const result = await updateFixedAsset(db, assetId, body);
+  const result = await engine.updateFixedAsset(assetId, body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -172,10 +154,15 @@ fixedAssetRoutes.patch("/:id", async (c) => {
 // ---------------------------------------------------------------------------
 
 fixedAssetRoutes.get("/:id/schedule", async (c) => {
-  const db = c.get("engine").getDb();
+  const engine = c.get("engine");
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const assetId = c.req.param("id");
 
-  const result = await getAssetSchedule(db, assetId);
+  if (!(await engine.verifyFixedAssetBelongsToLedger(assetId, apiKeyInfo.ledgerId))) {
+    return errorResponse(c, { code: "FIXED_ASSET_NOT_FOUND", message: `Fixed asset ${assetId} not found` });
+  }
+
+  const result = await engine.getAssetSchedule(assetId);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -186,11 +173,16 @@ fixedAssetRoutes.get("/:id/schedule", async (c) => {
 
 fixedAssetRoutes.post("/:id/dispose", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
+  const apiKeyInfo = c.get("apiKeyInfo")!;
   const assetId = c.req.param("id");
+
+  if (!(await engine.verifyFixedAssetBelongsToLedger(assetId, apiKeyInfo.ledgerId))) {
+    return errorResponse(c, { code: "FIXED_ASSET_NOT_FOUND", message: `Fixed asset ${assetId} not found` });
+  }
+
   const body = await c.req.json() as DisposeAssetInput;
 
-  const result = await disposeFixedAsset(db, engine, assetId, body);
+  const result = await engine.disposeFixedAsset(assetId, body);
   if (!result.ok) return errorResponse(c, result.error);
   return success(c, result.value);
 });
@@ -201,9 +193,8 @@ fixedAssetRoutes.post("/:id/dispose", async (c) => {
 
 fixedAssetRoutes.post("/run-depreciation", async (c) => {
   const engine = c.get("engine");
-  const db = engine.getDb();
   const apiKeyInfo = c.get("apiKeyInfo")!;
 
-  const result = await runDepreciation(db, engine, apiKeyInfo.ledgerId);
+  const result = await engine.runDepreciation(apiKeyInfo.ledgerId);
   return success(c, result);
 });
