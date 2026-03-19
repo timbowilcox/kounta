@@ -30,10 +30,10 @@ interface OnboardingData {
 // ---------------------------------------------------------------------------
 
 const BUSINESS_TYPES = [
-  { value: "saas", label: "I'm building a SaaS product", icon: "💻" },
-  { value: "freelance", label: "I freelance or consult", icon: "🎯" },
-  { value: "ecommerce", label: "I run an ecommerce store", icon: "🛍️" },
-  { value: "other", label: "Something else", icon: "✨" },
+  { value: "saas", label: "SaaS product", desc: "Subscription software, API, or platform" },
+  { value: "freelance", label: "Freelance / consulting", desc: "Client work, services, or contracting" },
+  { value: "ecommerce", label: "Ecommerce", desc: "Physical or digital product sales" },
+  { value: "other", label: "Something else", desc: "Agency, marketplace, or other business" },
 ];
 
 const BUSINESS_AGES = [
@@ -126,7 +126,6 @@ export function OnboardingFlow() {
     businessStructure: "",
     country: "",
   });
-  const [setupResult, setSetupResult] = useState<SetupResult | null>(null);
   const [setupSteps, setSetupSteps] = useState<string[]>([]);
   const [isSettingUp, setIsSettingUp] = useState(false);
 
@@ -137,7 +136,6 @@ export function OnboardingFlow() {
       currency: d.currency || detectCurrency(),
       country: d.country || detectCountry(),
     }));
-    // Initialize onboarding state on the server
     createOnboardingState().catch(() => {});
   }, []);
 
@@ -159,25 +157,20 @@ export function OnboardingFlow() {
     setStep("setup");
     setIsSettingUp(true);
 
-    // Execute the setup
     try {
       const result = await executeOnboardingSetup();
       if (result) {
-        setSetupResult(result);
-        // Animate steps appearing
         for (let i = 0; i < result.steps.length; i++) {
           await new Promise((r) => setTimeout(r, 400));
           setSetupSteps((prev) => [...prev, result.steps[i]]);
         }
       }
-      // Clear the needsOnboarding flag in the JWT so middleware stops redirecting
       await updateSession({ needsOnboarding: false, needsTemplate: false });
     } catch (e) {
       console.error("Setup failed:", e);
     }
 
     setIsSettingUp(false);
-    // Auto-advance after a brief pause
     setTimeout(() => setStep("connect"), 1200);
   }, [data, updateSession]);
 
@@ -187,54 +180,29 @@ export function OnboardingFlow() {
   }, []);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#FAFAFA",
-        fontFamily: "var(--font-family-body, 'Geist', system-ui, sans-serif)",
-      }}
-    >
+    <div className="onboarding-shell">
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "24px 32px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <rect width="24" height="24" rx="6" fill="#0066FF" />
-            <path d="M7 8h10M7 12h7M7 16h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <header className="onboarding-header">
+        <div className="onboarding-logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <rect width="24" height="24" rx="6" fill="var(--accent)" />
+            <path d="M7 8h10M7 12h7M7 16h4" stroke="var(--background)" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span style={{ fontSize: 16, fontWeight: 600, color: "#0A0A0A" }}>Kounta</span>
+          <span>Kounta</span>
         </div>
-        {/* Progress indicator */}
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div className="onboarding-progress">
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              style={{
-                width: i <= stepIndex ? 24 : 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: i <= stepIndex ? "#0066FF" : "#E5E5E5",
-                transition: "all 300ms ease",
-              }}
+              className={`onboarding-progress-dot ${i <= stepIndex ? "active" : ""}`}
+              style={{ width: i <= stepIndex ? 20 : 6 }}
             />
           ))}
         </div>
-      </div>
+      </header>
 
       {/* Content */}
-      <div
-        style={{
-          maxWidth: 640,
-          margin: "0 auto",
-          padding: "40px 24px",
-        }}
-      >
+      <div className="onboarding-content page-content">
         {step === "business_type" && (
           <BusinessTypeStep onSelect={handleBusinessType} />
         )}
@@ -247,12 +215,178 @@ export function OnboardingFlow() {
           />
         )}
         {step === "setup" && (
-          <SetupStep steps={setupSteps} isSettingUp={isSettingUp} businessType={data.businessType} />
+          <SetupStep steps={setupSteps} isSettingUp={isSettingUp} />
         )}
         {step === "connect" && (
           <ConnectStep onSkip={handleFinish} />
         )}
       </div>
+
+      <style>{`
+        .onboarding-shell {
+          min-height: 100vh;
+          background: var(--background);
+        }
+        .onboarding-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1.5rem 2rem;
+          border-bottom: 1px solid var(--border);
+        }
+        .onboarding-logo {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .onboarding-progress {
+          display: flex;
+          gap: 0.375rem;
+          align-items: center;
+        }
+        .onboarding-progress-dot {
+          height: 6px;
+          border-radius: 3px;
+          background: var(--border);
+          transition: all 300ms var(--ease-out);
+        }
+        .onboarding-progress-dot.active {
+          background: var(--accent);
+        }
+        .onboarding-content {
+          max-width: 32rem;
+          margin: 0 auto;
+          padding: 3rem 1.5rem;
+        }
+
+        /* Business type cards */
+        .ob-type-card {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem 1.25rem;
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--border);
+          background: var(--surface-1);
+          cursor: pointer;
+          text-align: left;
+          width: 100%;
+          transition: all 150ms ease;
+        }
+        .ob-type-card:hover {
+          border-color: var(--accent);
+          background: var(--surface-2);
+        }
+        .ob-type-card-label {
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+        .ob-type-card-desc {
+          font-size: 0.75rem;
+          color: var(--text-tertiary);
+          margin-top: 0.125rem;
+        }
+
+        /* Segmented buttons */
+        .ob-seg-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+        .ob-seg-btn {
+          padding: 0.375rem 0.75rem;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 150ms ease;
+          white-space: nowrap;
+          font-family: var(--font-sans);
+        }
+        .ob-seg-btn:hover {
+          border-color: var(--border-strong);
+          color: var(--text-primary);
+        }
+        .ob-seg-btn.selected {
+          border-color: var(--accent);
+          background: rgba(235, 228, 220, 0.08);
+          color: var(--accent);
+        }
+
+        /* Select */
+        .ob-select {
+          width: 100%;
+          padding: 0.5rem 0.75rem;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
+          background: var(--surface-1);
+          color: var(--text-primary);
+          font-size: 0.8125rem;
+          font-family: var(--font-sans);
+          outline: none;
+          cursor: pointer;
+          height: 2.25rem;
+          transition: border-color 150ms ease;
+          appearance: auto;
+        }
+        .ob-select option {
+          background: var(--surface-2);
+          color: var(--text-primary);
+        }
+        .ob-select:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(235, 228, 220, 0.1);
+        }
+
+        /* Field label */
+        .ob-label {
+          font-size: 0.6875rem;
+          font-weight: 500;
+          color: var(--text-tertiary);
+          margin-bottom: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        /* Setup checklist */
+        .ob-check-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          font-size: 0.8125rem;
+          color: var(--text-primary);
+          animation: fadeIn 200ms var(--ease-out);
+        }
+        .ob-check-icon {
+          color: var(--positive);
+          font-size: 0.875rem;
+          font-weight: 700;
+          width: 1.25rem;
+          text-align: center;
+          flex-shrink: 0;
+        }
+        .ob-spinner {
+          width: 0.875rem;
+          height: 0.875rem;
+          border-radius: 50%;
+          border: 2px solid var(--border);
+          border-top-color: var(--accent);
+          animation: ob-spin 600ms linear infinite;
+          flex-shrink: 0;
+          margin-left: 0.1875rem;
+        }
+
+        @keyframes ob-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -264,55 +398,27 @@ export function OnboardingFlow() {
 function BusinessTypeStep({ onSelect }: { onSelect: (type: string) => void }) {
   return (
     <div>
-      <h1
-        style={{
-          fontSize: 28,
-          fontWeight: 700,
-          color: "#0A0A0A",
-          marginBottom: 8,
-          lineHeight: 1.3,
-        }}
-      >
-        Welcome to Kounta.
+      <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+        Welcome to Kounta
       </h1>
-      <p style={{ fontSize: 16, color: "#666666", marginBottom: 8 }}>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>
         Let&apos;s set up your books in about 3 minutes.
       </p>
-      <p style={{ fontSize: 15, color: "#999999", marginBottom: 36 }}>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-tertiary)", marginBottom: "1.5rem" }}>
         What kind of business are you running?
       </p>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         {BUSINESS_TYPES.map((bt) => (
           <button
             key={bt.value}
             onClick={() => onSelect(bt.value)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              padding: "20px 24px",
-              borderRadius: 12,
-              border: "1px solid #E5E5E5",
-              backgroundColor: "#FFFFFF",
-              cursor: "pointer",
-              textAlign: "left",
-              fontSize: 15,
-              fontWeight: 500,
-              color: "#0A0A0A",
-              transition: "all 200ms ease",
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = "#0066FF";
-              e.currentTarget.style.backgroundColor = "#F0F6FF";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = "#E5E5E5";
-              e.currentTarget.style.backgroundColor = "#FFFFFF";
-            }}
+            className="ob-type-card"
           >
-            <span style={{ fontSize: 24, width: 40, textAlign: "center" }}>{bt.icon}</span>
-            {bt.label}
+            <div>
+              <div className="ob-type-card-label">{bt.label}</div>
+              <div className="ob-type-card-desc">{bt.desc}</div>
+            </div>
           </button>
         ))}
       </div>
@@ -345,22 +451,19 @@ function BusinessDetailsStep({
 
   return (
     <div>
-      <h1
-        style={{ fontSize: 24, fontWeight: 700, color: "#0A0A0A", marginBottom: 8 }}
-      >
-        A few quick details:
+      <h1 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+        A few quick details
       </h1>
-      <p style={{ fontSize: 14, color: "#999999", marginBottom: 32 }}>
-        All fields are required to configure your books correctly.
+      <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", marginBottom: "1.5rem" }}>
+        All fields required to configure your books correctly.
       </p>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-        {/* Currency */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
         <Field label="Currency">
           <select
             value={data.currency}
             onChange={(e) => onChange({ currency: e.target.value })}
-            style={selectStyle}
+            className="ob-select"
           >
             {CURRENCIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
@@ -368,7 +471,6 @@ function BusinessDetailsStep({
           </select>
         </Field>
 
-        {/* Business age */}
         <Field label="How long running?">
           <SegmentedButtons
             options={BUSINESS_AGES}
@@ -377,7 +479,6 @@ function BusinessDetailsStep({
           />
         </Field>
 
-        {/* Payment processor */}
         <Field label="Payment processor">
           <SegmentedButtons
             options={PROCESSORS}
@@ -386,7 +487,6 @@ function BusinessDetailsStep({
           />
         </Field>
 
-        {/* Bank situation */}
         <Field label="Bank situation">
           <SegmentedButtons
             options={BANK_SITUATIONS}
@@ -395,7 +495,6 @@ function BusinessDetailsStep({
           />
         </Field>
 
-        {/* Business structure */}
         <Field label="Business structure">
           <SegmentedButtons
             options={STRUCTURES}
@@ -405,12 +504,11 @@ function BusinessDetailsStep({
           />
         </Field>
 
-        {/* Country */}
         <Field label="Country">
           <select
             value={data.country}
             onChange={(e) => onChange({ country: e.target.value })}
-            style={selectStyle}
+            className="ob-select"
           >
             {COUNTRIES.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -419,17 +517,16 @@ function BusinessDetailsStep({
         </Field>
       </div>
 
-      {/* Navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40 }}>
-        <button onClick={onBack} style={ghostButtonStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2rem" }}>
+        <button onClick={onBack} className="btn-ghost">
           &larr; Back
         </button>
         <button
           onClick={onContinue}
           disabled={!isValid}
+          className="btn-primary"
           style={{
-            ...primaryButtonStyle,
-            opacity: isValid ? 1 : 0.5,
+            opacity: isValid ? 1 : 0.4,
             cursor: isValid ? "pointer" : "not-allowed",
           }}
         >
@@ -447,84 +544,41 @@ function BusinessDetailsStep({
 function SetupStep({
   steps,
   isSettingUp,
-  businessType,
 }: {
   steps: string[];
   isSettingUp: boolean;
-  businessType: string;
 }) {
   return (
-    <div style={{ textAlign: "center", paddingTop: 40 }}>
-      <h1
-        style={{ fontSize: 24, fontWeight: 700, color: "#0A0A0A", marginBottom: 8 }}
-      >
+    <div style={{ paddingTop: "2rem" }}>
+      <h1 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.375rem" }}>
         Setting up your books
       </h1>
-      <p style={{ fontSize: 14, color: "#999999", marginBottom: 40 }}>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-tertiary)", marginBottom: "2rem" }}>
         This only takes a moment...
       </p>
 
       <div
+        className="card"
         style={{
-          maxWidth: 440,
-          margin: "0 auto",
-          textAlign: "left",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: "0.875rem",
+          padding: "1.25rem 1.5rem",
         }}
       >
         {steps.map((s, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              fontSize: 14,
-              color: "#0A0A0A",
-              animation: "fadeSlideIn 300ms ease forwards",
-            }}
-          >
-            <span style={{ color: "#22C55E", fontSize: 18, fontWeight: 700 }}>✓</span>
+          <div key={i} className="ob-check-item">
+            <span className="ob-check-icon">&#10003;</span>
             {s}
           </div>
         ))}
         {isSettingUp && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              fontSize: 14,
-              color: "#999999",
-            }}
-          >
-            <span
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: "50%",
-                border: "2px solid #E5E5E5",
-                borderTopColor: "#0066FF",
-                animation: "spin 600ms linear infinite",
-                display: "inline-block",
-              }}
-            />
+          <div className="ob-check-item" style={{ color: "var(--text-tertiary)" }}>
+            <span className="ob-spinner" />
             Processing...
           </div>
         )}
       </div>
-
-      <style>{`
-        @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
@@ -535,37 +589,35 @@ function SetupStep({
 
 function ConnectStep({ onSkip }: { onSkip: () => void }) {
   return (
-    <div style={{ textAlign: "center", paddingTop: 40 }}>
-      <h1
-        style={{ fontSize: 24, fontWeight: 700, color: "#0A0A0A", marginBottom: 8 }}
-      >
-        Now let&apos;s connect your money.
+    <div style={{ paddingTop: "2rem" }}>
+      <h1 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+        Connect your money
       </h1>
-      <p style={{ fontSize: 14, color: "#999999", marginBottom: 40 }}>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-tertiary)", marginBottom: "1.5rem" }}>
         Connect your bank account to automatically import and classify transactions.
       </p>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 360, margin: "0 auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "22rem" }}>
         <button
           onClick={() => (window.location.href = "/bank-feeds")}
-          style={primaryButtonStyle}
+          className="btn-primary"
+          style={{ height: "2.5rem", justifyContent: "center" }}
         >
           Connect bank account &rarr;
         </button>
 
         <button
           onClick={() => (window.location.href = "/settings?tab=connections")}
-          style={secondaryButtonStyle}
+          className="btn-secondary"
+          style={{ height: "2.5rem", justifyContent: "center" }}
         >
           Connect Stripe &rarr;
         </button>
 
         <button
           onClick={onSkip}
-          style={{
-            ...ghostButtonStyle,
-            marginTop: 8,
-          }}
+          className="btn-ghost"
+          style={{ marginTop: "0.25rem", justifyContent: "center" }}
         >
           Skip for now &rarr;
         </button>
@@ -581,18 +633,7 @@ function ConnectStep({ onSkip }: { onSkip: () => void }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 500,
-          color: "#666666",
-          marginBottom: 8,
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-        }}
-      >
-        {label}
-      </div>
+      <div className="ob-label">{label}</div>
       {children}
     </div>
   );
@@ -610,89 +651,16 @@ function SegmentedButtons({
   wrap?: boolean;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: wrap ? "wrap" : "nowrap",
-        gap: 8,
-      }}
-    >
-      {options.map((opt) => {
-        const selected = value === opt.value;
-        return (
-          <button
-            key={opt.value}
-            onClick={() => onChange(opt.value)}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: `1px solid ${selected ? "#0066FF" : "#E5E5E5"}`,
-              backgroundColor: selected ? "#F0F6FF" : "#FFFFFF",
-              color: selected ? "#0066FF" : "#0A0A0A",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              transition: "all 150ms ease",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
+    <div className="ob-seg-group" style={wrap ? undefined : { flexWrap: "nowrap" }}>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`ob-seg-btn ${value === opt.value ? "selected" : ""}`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Shared styles
-// ---------------------------------------------------------------------------
-
-const primaryButtonStyle: React.CSSProperties = {
-  padding: "12px 24px",
-  borderRadius: 10,
-  border: "none",
-  backgroundColor: "#0066FF",
-  color: "#FFFFFF",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "all 200ms ease",
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: "12px 24px",
-  borderRadius: 10,
-  border: "1px solid #E5E5E5",
-  backgroundColor: "#FFFFFF",
-  color: "#0A0A0A",
-  fontSize: 14,
-  fontWeight: 500,
-  cursor: "pointer",
-  transition: "all 200ms ease",
-  position: "relative",
-};
-
-const ghostButtonStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  borderRadius: 8,
-  border: "none",
-  backgroundColor: "transparent",
-  color: "#999999",
-  fontSize: 13,
-  fontWeight: 500,
-  cursor: "pointer",
-};
-
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #E5E5E5",
-  backgroundColor: "#FFFFFF",
-  color: "#0A0A0A",
-  fontSize: 14,
-  outline: "none",
-  cursor: "pointer",
-  appearance: "auto",
-};
