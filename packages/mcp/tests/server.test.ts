@@ -60,10 +60,11 @@ function parseToolResult(result: { content: unknown[] }): unknown {
 // ---------------------------------------------------------------------------
 
 describe("Tool discovery", () => {
-  it("lists all 63 tools", async () => {
+  it("lists all 79 tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "approve_bill",
       "check_capitalisation",
       "classify_bank_transaction",
       "classify_transaction",
@@ -72,17 +73,22 @@ describe("Tool discovery", () => {
       "confirm_matches",
       "convert_amount",
       "create_account",
+      "create_bill",
       "create_classification_rule",
       "create_customer",
       "create_fixed_asset",
       "create_invoice",
       "create_recurring_entry",
       "create_revenue_schedule",
+      "create_vendor",
       "dispose_fixed_asset",
       "enable_currency",
       "generate_insights",
+      "get_ap_aging",
       "get_ar_aging",
       "get_asset_register_summary",
+      "get_bill",
+      "get_bill_summary",
       "get_customer",
       "get_deferred_revenue",
       "get_depreciation_due",
@@ -97,11 +103,13 @@ describe("Tool discovery", () => {
       "get_statement",
       "get_stripe_status",
       "get_usage",
+      "get_vendor",
       "import_file",
       "list_accounts",
       "list_bank_accounts",
       "list_bank_connections",
       "list_bank_transactions",
+      "list_bills",
       "list_classification_rules",
       "list_customers",
       "list_exchange_rates",
@@ -111,9 +119,11 @@ describe("Tool discovery", () => {
       "list_notifications",
       "list_recurring_entries",
       "list_revenue_schedules",
+      "list_vendors",
       "map_bank_account",
       "pause_recurring_entry",
       "post_transaction",
+      "record_bill_payment",
       "record_invoice_payment",
       "resume_recurring_entry",
       "revalue_accounts",
@@ -130,6 +140,8 @@ describe("Tool discovery", () => {
       "update_jurisdiction",
       "update_notification",
       "update_recurring_entry",
+      "update_vendor",
+      "void_bill",
       "void_invoice",
     ]);
   });

@@ -198,10 +198,16 @@ async function startHttp(
 // Auth helpers
 // ---------------------------------------------------------------------------
 
-/** Extract API key from Authorization header, X-Api-Key header, or ?key= query param. */
+/**
+ * Extract API key from Authorization header or X-Api-Key header.
+ *
+ * Note: query-string `?key=` was previously supported but removed because keys
+ * leak into server logs, browser history, and Referer headers. SSE clients
+ * that can't set request headers should use a server-side proxy.
+ */
 function extractApiKey(
   req: import("node:http").IncomingMessage,
-  url: URL,
+  _url: URL,
 ): string | undefined {
   // Authorization: Bearer <key>
   const authHeader = req.headers["authorization"];
@@ -213,12 +219,6 @@ function extractApiKey(
   const xApiKey = req.headers["x-api-key"];
   if (typeof xApiKey === "string" && xApiKey.length > 0) {
     return xApiKey;
-  }
-
-  // Query parameter ?key=<key> (for SSE connections that can't set headers)
-  const queryKey = url.searchParams.get("key");
-  if (queryKey) {
-    return queryKey;
   }
 
   return undefined;
