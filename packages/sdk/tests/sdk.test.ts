@@ -36,9 +36,14 @@ const migration007 = readFileSync(
   "utf-8",
 );
 
+const migration030 = readFileSync(
+  resolve(__dirname, "../../core/src/db/migrations/030_audit_action_revoked_deleted.sqlite.sql"),
+  "utf-8",
+);
+
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
-  const sql = [migration001, migration002, migration006, migration007]
+  const sql = [migration001, migration002, migration006, migration007, migration030]
     .join("\n")
     .split("\n")
     .filter((line) => !line.trim().startsWith("PRAGMA"))
