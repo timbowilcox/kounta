@@ -1046,13 +1046,19 @@ export class LedgerEngine {
       return err(unbalancedTransactionError(debitTotal, creditTotal));
     }
 
-    // Resolve account codes to IDs and validate all accounts belong to this ledger
+    // Resolve account codes to IDs and validate all accounts belong to this ledger.
+    // Single batch lookup instead of one query per line — was previously O(n) round trips.
+    const uniqueCodes = Array.from(new Set(input.lines.map((l) => l.accountCode)));
+    const placeholders = uniqueCodes.map(() => "?").join(",");
+    const accountRows = await this.db.all<Pick<AccountRow, "id" | "code" | "status">>(
+      `SELECT id, code, status FROM accounts WHERE ledger_id = ? AND code IN (${placeholders})`,
+      [input.ledgerId, ...uniqueCodes],
+    );
+    const accountByCode = new Map(accountRows.map((a) => [a.code, a]));
+
     const resolvedLines: Array<{ accountId: string; line: PostLineInput }> = [];
     for (const line of input.lines) {
-      const account = await this.db.get<Pick<AccountRow, "id" | "status">>(
-        "SELECT id, status FROM accounts WHERE ledger_id = ? AND code = ?",
-        [input.ledgerId, line.accountCode]
-      );
+      const account = accountByCode.get(line.accountCode);
       if (!account) {
         return err(accountNotFoundError(line.accountCode));
       }
@@ -2960,11 +2966,22 @@ export class LedgerEngine {
     let created = 0;
     let updated = 0;
 
+    if (providerTransactions.length === 0) return ok({ created: 0, updated: 0 });
+
+    // Single batch lookup for existing rows — was previously O(n) round trips per sync.
+    const providerIds = providerTransactions.map((p) => p.providerTransactionId);
+    const placeholders = providerIds.map(() => "?").join(",");
+    const existingRows = await this.db.all<BankTransactionRow>(
+      `SELECT * FROM bank_transactions
+       WHERE bank_account_id = ? AND provider_transaction_id IN (${placeholders})`,
+      [bankAccountId, ...providerIds],
+    );
+    const existingByProviderId = new Map(
+      existingRows.map((r) => [r.provider_transaction_id, r]),
+    );
+
     for (const ptxn of providerTransactions) {
-      const existing = await this.db.get<BankTransactionRow>(
-        "SELECT * FROM bank_transactions WHERE bank_account_id = ? AND provider_transaction_id = ?",
-        [bankAccountId, ptxn.providerTransactionId]
-      );
+      const existing = existingByProviderId.get(ptxn.providerTransactionId);
 
       if (existing) {
         await this.db.run(
