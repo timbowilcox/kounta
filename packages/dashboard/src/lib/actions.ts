@@ -33,6 +33,15 @@ export interface TierError {
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: TierError };
 
 async function parseTierError(res: Response): Promise<TierError | null> {
+  // 401 indicates an expired or invalid session — surface that explicitly so
+  // callers can redirect to sign-in instead of treating it as a generic error.
+  if (res.status === 401) {
+    return {
+      type: "tier_feature",
+      message: "Your session has expired. Please sign in again.",
+      upgradeUrl: "/signin",
+    };
+  }
   if (res.status !== 403 && res.status !== 429) return null;
   try {
     const body = await res.json();
@@ -189,21 +198,54 @@ export interface BillingStatus {
   pendingTransactions: number;
 }
 
-async function billingFetch(path: string, method = "GET"): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env.KOUNTA_API_URL;
-  if (!apiUrl) throw new Error("KOUNTA_API_URL not configured");
-  if (!session?.apiKey) throw new Error("No authenticated session");
+/**
+ * Build a path-scoped fetch helper that handles auth, ledger switching,
+ * and consistent header/cache behavior.
+ *
+ * Reads the kounta_active_api_key cookie (set by switchLedgerAction) so
+ * that direct API calls follow the same active-ledger rules as the SDK
+ * client returned by getSessionClient().
+ *
+ * Pass an empty string for basePath to address absolute paths like
+ * "/v1/billing/status"; pass "/v1/invoices" to address paths relative
+ * to that resource.
+ */
+function createApiFetch(basePath: string) {
+  return async function apiFetch(
+    path: string,
+    method = "GET",
+    body?: unknown,
+  ): Promise<Response> {
+    const session = await auth();
+    const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
+    if (!session?.apiKey) throw new Error("No authenticated session");
 
-  return fetch(`${apiUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${session.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
+    // Honour the active-ledger override cookie (parity with getSessionClient).
+    let apiKey = session.apiKey;
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      const apiKeyOverride = cookieStore.get("kounta_active_api_key")?.value;
+      if (apiKeyOverride) apiKey = apiKeyOverride;
+    } catch {
+      // cookies() may not be available in all execution contexts
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${apiKey}`,
+    };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+
+    return fetch(`${apiUrl}${basePath}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+  };
 }
+
+const billingFetch = createApiFetch("");
 
 export async function fetchBillingStatus(): Promise<BillingStatus> {
   const res = await billingFetch("/v1/billing/status");
@@ -394,23 +436,7 @@ export interface SetupResult {
   steps: string[];
 }
 
-async function onboardingFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
-  if (!session?.apiKey) throw new Error("No authenticated session");
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.apiKey}`,
-  };
-  if (body) headers["Content-Type"] = "application/json";
-
-  return fetch(`${apiUrl}/v1/onboarding${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-}
+const onboardingFetch = createApiFetch("/v1/onboarding");
 
 export async function fetchOnboardingState(): Promise<OnboardingState | null> {
   const res = await onboardingFetch("/state");
@@ -1163,23 +1189,7 @@ export interface RevenueScheduleDetail extends RevenueScheduleSummary {
   entries: RevenueScheduleEntrySummary[];
 }
 
-async function revenueFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
-  if (!session?.apiKey) throw new Error("No authenticated session");
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.apiKey}`,
-  };
-  if (body) headers["Content-Type"] = "application/json";
-
-  return fetch(`${apiUrl}/v1/revenue${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-}
+const revenueFetch = createApiFetch("/v1/revenue");
 
 export async function fetchRevenueMetrics(): Promise<RevenueMetricsSummary> {
   const res = await revenueFetch("/metrics");
@@ -1309,23 +1319,7 @@ export async function revokeOAuthConnection(clientId: string): Promise<boolean> 
 // Fixed Assets
 // ---------------------------------------------------------------------------
 
-async function fixedAssetFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
-  if (!session?.apiKey) throw new Error("No authenticated session");
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.apiKey}`,
-  };
-  if (body) headers["Content-Type"] = "application/json";
-
-  return fetch(`${apiUrl}/v1/fixed-assets${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-}
+const fixedAssetFetch = createApiFetch("/v1/fixed-assets");
 
 export interface FixedAssetSummaryItem {
   id: string;
@@ -1457,23 +1451,7 @@ export async function capitalisationCheckAction(input: {
 
 // --- Invoices (direct fetch — matches fixedAssetFetch pattern) ----------------
 
-async function invoiceFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
-  if (!session?.apiKey) throw new Error("No authenticated session");
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.apiKey}`,
-  };
-  if (body) headers["Content-Type"] = "application/json";
-
-  return fetch(`${apiUrl}/v1/invoices${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-}
+const invoiceFetch = createApiFetch("/v1/invoices");
 
 export interface InvoiceListItem {
   id: string;
@@ -1650,23 +1628,7 @@ export async function deleteInvoiceAction(id: string): Promise<boolean> {
 
 // --- Customers ---------------------------------------------------------------
 
-async function customerFetch(path: string, method = "GET", body?: unknown): Promise<Response> {
-  const session = await auth();
-  const apiUrl = process.env["KOUNTA_API_URL"] ?? "http://localhost:3001";
-  if (!session?.apiKey) throw new Error("No authenticated session");
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.apiKey}`,
-  };
-  if (body) headers["Content-Type"] = "application/json";
-
-  return fetch(`${apiUrl}/v1/customers${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-}
+const customerFetch = createApiFetch("/v1/customers");
 
 export interface CustomerListItem {
   id: string;
