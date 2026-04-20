@@ -1077,16 +1077,33 @@ export class LedgerEngine {
       );
 
       if (existingTxn) {
-        // Compare key parameters to detect key reuse with different data
+        // Compare key parameters to detect key reuse with different data.
+        // Fingerprint each line-set as a sorted multiset of (account_id, direction, amount)
+        // so the comparison is independent of insertion order but sensitive to amounts.
         const existingLines = await this.db.all<LineItemRow>(
           "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
           [existingTxn.id]
         );
 
+        const fingerprint = (rows: ReadonlyArray<{ account_id: string; direction: string; amount: number }>) =>
+          rows
+            .map((r) => `${r.account_id}|${r.direction}|${r.amount}`)
+            .sort()
+            .join(";");
+
+        const existingFingerprint = fingerprint(existingLines);
+        const incomingFingerprint = fingerprint(
+          resolvedLines.map((rl) => ({
+            account_id: rl.accountId,
+            direction: rl.line.direction,
+            amount: rl.line.amount,
+          })),
+        );
+
         const paramMismatch =
           existingTxn.date !== input.date ||
           existingTxn.memo !== input.memo ||
-          existingLines.length !== input.lines.length;
+          existingFingerprint !== incomingFingerprint;
 
         if (paramMismatch) {
           throw Object.assign(
