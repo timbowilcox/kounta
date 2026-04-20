@@ -17,21 +17,29 @@ export function ApiKeysView({ initialKeys }: { initialKeys: ApiKeySafe[] }) {
   const handleCreate = () => {
     if (!newKeyName.trim()) return;
     startTransition(async () => {
-      const result = await createApiKey(newKeyName.trim());
-      setCreatedKey(result.rawKey);
-      setNewKeyName("");
-      // Refresh the list
-      const updated = await fetchApiKeys();
-      setKeys(updated);
+      try {
+        const result = await createApiKey(newKeyName.trim());
+        setCreatedKey(result.rawKey);
+        setNewKeyName("");
+        const updated = await fetchApiKeys();
+        setKeys(updated);
+      } catch (e) {
+        console.error("[api-keys] create failed:", e);
+      }
     });
   };
 
   const handleRevoke = (keyId: string) => {
     startTransition(async () => {
-      await revokeApiKey(keyId);
-      const updated = await fetchApiKeys();
-      setKeys(updated);
-      setConfirmRevoke(null);
+      try {
+        await revokeApiKey(keyId);
+        const updated = await fetchApiKeys();
+        setKeys(updated);
+        setConfirmRevoke(null);
+      } catch (e) {
+        console.error("[api-keys] revoke failed:", e);
+        setConfirmRevoke(null);
+      }
     });
   };
 

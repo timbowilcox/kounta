@@ -323,16 +323,24 @@ function BankTransactionsSection({ initialTxns }: { initialTxns: BankTransaction
   const handleFilterChange = (f: BankTxnFilter) => {
     setFilter(f);
     startTransition(async () => {
-      const result = await fetchBankTransactions(f);
-      setTxns(result);
+      try {
+        const result = await fetchBankTransactions(f);
+        setTxns(result);
+      } catch (e) {
+        console.error("[bank-feeds] filter change failed:", e);
+      }
     });
   };
 
   const handleMarkPersonal = (txnId: string) => {
     startTransition(async () => {
-      const ok = await markBankTransactionPersonal(txnId);
-      if (ok) {
-        setTxns((prev) => prev.filter((t) => t.id !== txnId));
+      try {
+        const ok = await markBankTransactionPersonal(txnId);
+        if (ok) {
+          setTxns((prev) => prev.filter((t) => t.id !== txnId));
+        }
+      } catch (e) {
+        console.error("[bank-feeds] mark personal failed:", e);
       }
     });
   };
