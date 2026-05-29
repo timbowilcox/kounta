@@ -351,6 +351,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "026_fix_invoice_approved_constraint.sql",
     "027_tier_usage_tracking.sql",
     "031_csv_import.sql",
+    "032_review_items.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -499,6 +500,7 @@ export const SQLITE_MIGRATION_FILES: readonly string[] = [
   // security/integrity blocker sprint). 031 only depends on 001/004, so it
   // applies correctly after 027 regardless.
   "031_csv_import.sqlite.sql",
+  "032_review_items.sqlite.sql",
 ];
 
 /** Apply all SQLite migrations in order. */

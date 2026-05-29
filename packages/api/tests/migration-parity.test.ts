@@ -51,4 +51,10 @@ describe("B1: production migration runner applies the bank-ingestion schema", ()
     const t = await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name='mapping_profiles'");
     expect(t.length).toBe(1);
   });
+
+  it("review_items table (032) exists on the production schema", async () => {
+    const db = await buildFromProductionList();
+    const t = await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name='review_items'");
+    expect(t.length).toBe(1);
+  });
 });

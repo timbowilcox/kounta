@@ -4,6 +4,28 @@
 // All IDs are UUID v7. All timestamps are UTC ISO 8601.
 // ---------------------------------------------------------------------------
 
+// Review queue — ledger-scoped escalations that need a human decision.
+export type ReviewItemType = "possible_duplicate_import" | "removed_reconciled_txn";
+export type ReviewItemStatus = "open" | "resolved" | "dismissed";
+export type ReviewResolution = "imported" | "dismissed" | "acknowledged";
+
+export interface ReviewItem {
+  readonly id: string;
+  readonly ledgerId: string;
+  readonly type: ReviewItemType;
+  readonly status: ReviewItemStatus;
+  /** Idempotency key per (ledger, type): dedupKey for imports, bank txn id for removals. */
+  readonly refKey: string;
+  readonly bankAccountId: string | null;
+  readonly bankTransactionId: string | null;
+  readonly reason: string;
+  readonly payload: Record<string, unknown>;
+  readonly resolution: ReviewResolution | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly resolvedAt: string | null;
+}
+
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 export type NormalBalance = "debit" | "credit";
 export type Direction = "debit" | "credit";

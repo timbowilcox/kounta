@@ -26,6 +26,10 @@ import type {
   User,
   Result,
   KountaError,
+  ReviewItem,
+  ReviewItemType,
+  ReviewItemStatus,
+  ReviewResolution,
   StatementResponse,
   CurrencySetting,
   ExchangeRate,
@@ -45,7 +49,7 @@ import type {
   ProviderBankTransaction,
 } from "../bank-feeds/types.js";
 import { bankTransactionToParseRow } from "../bank-feeds/adapter.js";
-import { fingerprintOf, lineFingerprint, looseKeyFromFingerprint } from "../bank-feeds/normalize.js";
+import { fingerprintOf, lineFingerprint } from "../bank-feeds/normalize.js";
 import { applyMapping, csvMappingSchema } from "../import/csv-mapping.js";
 import type {
   CsvMapping,
@@ -694,6 +698,45 @@ const toMappingProfile = (row: MappingProfileRow): MappingProfile => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+interface ReviewItemRow {
+  id: string;
+  ledger_id: string;
+  type: string;
+  status: string;
+  ref_key: string;
+  bank_account_id: string | null;
+  bank_transaction_id: string | null;
+  reason: string;
+  payload: string | Record<string, unknown>;
+  resolution: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+
+const toReviewItem = (row: ReviewItemRow): ReviewItem => ({
+  id: row.id,
+  ledgerId: row.ledger_id,
+  type: row.type as ReviewItemType,
+  status: row.status as ReviewItemStatus,
+  refKey: row.ref_key,
+  bankAccountId: row.bank_account_id,
+  bankTransactionId: row.bank_transaction_id,
+  reason: row.reason,
+  payload: parseJsonb(row.payload) as Record<string, unknown>,
+  resolution: (row.resolution as ReviewResolution | null) ?? null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  resolvedAt: row.resolved_at,
+});
+
+/** Absolute whole-day difference between two YYYY-MM-DD dates. */
+const daysBetween = (a: string, b: string): number =>
+  Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+
+/** Cross-source candidate date tolerance — covers Plaid pending→posted/settlement drift. */
+const CROSS_SOURCE_DATE_TOLERANCE_DAYS = 5;
 
 const toBankConnection = (row: BankConnectionRow): BankConnection => ({
   id: row.id,
@@ -3120,13 +3163,27 @@ export class LedgerEngine {
         }, ts);
         removed++;
       } else {
-        // Reconciled/posted — guard: do not delete or re-state. Surface + audit.
+        // Reconciled/posted — guard: do not delete or re-state. Surface + audit
+        // + raise a review item so it is user-resolvable, not just an audit row.
         await this.writeBankTxnAudit(row.ledger_id, row.id, "updated", {
           reason: "provider_reported_removed_but_reconciled",
           status: row.status,
           flaggedForReview: true,
           snapshot: toBankTransaction(row),
         }, ts);
+        await this.createReviewItem({
+          ledgerId: row.ledger_id,
+          type: "removed_reconciled_txn",
+          refKey: row.id,
+          reason: "Bank feed reported this reconciled transaction as removed — review before acting",
+          bankAccountId,
+          bankTransactionId: row.id,
+          payload: {
+            providerTransactionId: row.provider_transaction_id,
+            status: row.status,
+            snapshot: toBankTransaction(row),
+          },
+        });
         flaggedForReview++;
       }
     }
@@ -3214,13 +3271,13 @@ export class LedgerEngine {
    *   - manualCounts:     existing manual-import rows per fingerprint (for
    *                       occurrence-aware same-source dedup).
    *   - feedFingerprints: exact fingerprints of feed (Plaid/Basiq) rows.
-   *   - feedLooseKeys:    date+amount keys of feed rows (description-agnostic),
-   *                       for surfacing cross-source candidates.
+   *   - feedAmountDates:  signed-amount → feed dates, for cross-source candidate
+   *                       matching within a date tolerance (description-agnostic).
    */
   private async dedupContextForLedgerAccount(ledgerAccountId: string): Promise<{
     manualCounts: Map<string, number>;
     feedFingerprints: Set<string>;
-    feedLooseKeys: Set<string>;
+    feedAmountDates: Map<number, string[]>;
   }> {
     const rows = await this.db.all<{ provider: string; line_fingerprint: string | null }>(
       `SELECT bc.provider AS provider, bt.line_fingerprint AS line_fingerprint
@@ -3232,17 +3289,23 @@ export class LedgerEngine {
     );
     const manualCounts = new Map<string, number>();
     const feedFingerprints = new Set<string>();
-    const feedLooseKeys = new Set<string>();
+    const feedAmountDates = new Map<number, string[]>();
     for (const r of rows) {
       const fp = r.line_fingerprint!;
       if (r.provider === "manual") {
         manualCounts.set(fp, (manualCounts.get(fp) ?? 0) + 1);
       } else {
         feedFingerprints.add(fp);
-        feedLooseKeys.add(looseKeyFromFingerprint(fp));
+        // fingerprint format: `${date}|${signedAmount}|${normalisedDescription}`
+        const parts = fp.split("|");
+        const date = parts[0]!;
+        const signedAmount = Number(parts[1]);
+        const dates = feedAmountDates.get(signedAmount) ?? [];
+        dates.push(date);
+        feedAmountDates.set(signedAmount, dates);
       }
     }
-    return { manualCounts, feedFingerprints, feedLooseKeys };
+    return { manualCounts, feedFingerprints, feedAmountDates };
   }
 
   /**
@@ -3251,14 +3314,16 @@ export class LedgerEngine {
    *     if N prior identical rows already exist from this CSV source (so genuine
    *     same-day duplicates persist, and re-import adds zero);
    *   - cross-source exact (date+amount+description) → duplicate (auto-skip);
-   *   - cross-source loose (date+amount, different description) →
+   *   - cross-source within date tolerance (same amount, date within
+   *     CROSS_SOURCE_DATE_TOLERANCE_DAYS, different description/date) →
    *     possible_duplicate (held for user confirmation — never auto-merged,
-   *     never silently double-counted);
+   *     never silently double-counted; a Plaid pending→posted date shift must
+   *     not slip past as a new row);
    *   - otherwise → new.
    */
   private classifyDedup(
     rows: readonly MappedRow[],
-    ctx: { manualCounts: Map<string, number>; feedFingerprints: Set<string>; feedLooseKeys: Set<string> },
+    ctx: { manualCounts: Map<string, number>; feedFingerprints: Set<string>; feedAmountDates: Map<number, string[]> },
   ): Array<{ row: MappedRow; fp: string; occ: number; dedupKey: string; status: DedupStatus; reason: string }> {
     const occByFp = new Map<string, number>();
     return rows.map((row) => {
@@ -3267,6 +3332,9 @@ export class LedgerEngine {
       occByFp.set(fp, occ);
       const dedupKey = `${fp}#${occ}`;
       const existingManual = ctx.manualCounts.get(fp) ?? 0;
+      const signedAmount = row.type === "debit" ? -row.amount : row.amount;
+      const feedDates = ctx.feedAmountDates.get(signedAmount) ?? [];
+      const nearFeedDate = feedDates.some((d) => daysBetween(d, row.date) <= CROSS_SOURCE_DATE_TOLERANCE_DAYS);
 
       let status: DedupStatus;
       let reason: string;
@@ -3276,9 +3344,9 @@ export class LedgerEngine {
       } else if (ctx.feedFingerprints.has(fp)) {
         status = "duplicate";
         reason = "Matches an existing bank-feed transaction (date, amount and description)";
-      } else if (ctx.feedLooseKeys.has(looseKeyFromFingerprint(fp))) {
+      } else if (nearFeedDate) {
         status = "possible_duplicate";
-        reason = "Same date and amount as a bank-feed transaction but a different description — confirm before importing";
+        reason = `Same amount as a bank-feed transaction within ${CROSS_SOURCE_DATE_TOLERANCE_DAYS} days — confirm before importing`;
       } else {
         status = "new";
         reason = "No matching transaction found";
@@ -3385,8 +3453,32 @@ export class LedgerEngine {
         continue;
       }
       if (c.status === "possible_duplicate" && params.decisions?.[c.dedupKey] !== "import") {
-        // Held for confirmation: not imported (no silent double-count), reported.
+        // Held for confirmation: not imported (no silent double-count) and NOT
+        // written to bank_transactions. Persisted to the review queue so it is
+        // resolvable later instead of vanishing to an ephemeral count.
         possibleDuplicates++;
+        await this.createReviewItem({
+          ledgerId: params.ledgerId,
+          type: "possible_duplicate_import",
+          refKey: c.dedupKey,
+          reason: c.reason,
+          bankAccountId,
+          payload: {
+            dedupKey: c.dedupKey,
+            ledgerAccountId: params.ledgerAccountId,
+            filename: params.filename ?? null,
+            row: {
+              date: c.row.date,
+              amount: c.row.amount,
+              type: c.row.type,
+              description: c.row.description,
+              reference: c.row.reference,
+              balance: c.row.balance,
+              currency: c.row.currency,
+              rawData: c.row.rawData,
+            },
+          },
+        });
         continue;
       }
       // new, or possible_duplicate the user explicitly chose to import.
@@ -3520,6 +3612,132 @@ export class LedgerEngine {
     if (!existing) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
     await this.db.run("DELETE FROM mapping_profiles WHERE id = ?", [id]);
     return ok(undefined);
+  }
+
+  // -------------------------------------------------------------------------
+  // Review queue — ledger-scoped escalations needing a human decision
+  // -------------------------------------------------------------------------
+
+  /**
+   * Raise a review item. Idempotent per (ledger, type, ref_key): if one already
+   * exists in any status, this is a no-op — so re-importing the same file does
+   * not pile up duplicate review items, and a dismissed item is not resurrected.
+   */
+  private async createReviewItem(params: {
+    ledgerId: string;
+    type: ReviewItemType;
+    refKey: string;
+    reason: string;
+    payload: Record<string, unknown>;
+    bankAccountId?: string | null;
+    bankTransactionId?: string | null;
+  }): Promise<void> {
+    const existing = await this.db.get<{ id: string }>(
+      "SELECT id FROM review_items WHERE ledger_id = ? AND type = ? AND ref_key = ?",
+      [params.ledgerId, params.type, params.refKey],
+    );
+    if (existing) return;
+    const ts = nowUtc();
+    await this.db.run(
+      `INSERT INTO review_items (id, ledger_id, type, status, ref_key, bank_account_id, bank_transaction_id, reason, payload, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
+      [generateId(), params.ledgerId, params.type, params.refKey,
+       params.bankAccountId ?? null, params.bankTransactionId ?? null,
+       params.reason, JSON.stringify(params.payload), ts, ts],
+    );
+  }
+
+  async listReviewItems(
+    ledgerId: string,
+    status?: ReviewItemStatus,
+  ): Promise<Result<readonly ReviewItem[]>> {
+    const rows = status
+      ? await this.db.all<ReviewItemRow>(
+          "SELECT * FROM review_items WHERE ledger_id = ? AND status = ? ORDER BY created_at DESC",
+          [ledgerId, status])
+      : await this.db.all<ReviewItemRow>(
+          "SELECT * FROM review_items WHERE ledger_id = ? ORDER BY created_at DESC",
+          [ledgerId]);
+    return ok(rows.map(toReviewItem));
+  }
+
+  async getReviewItem(id: string): Promise<Result<ReviewItem>> {
+    const row = await this.db.get<ReviewItemRow>("SELECT * FROM review_items WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.REVIEW_ITEM_NOT_FOUND, "Review item not found"));
+    return ok(toReviewItem(row));
+  }
+
+  private async markReviewResolved(
+    id: string,
+    status: "resolved" | "dismissed",
+    resolution: ReviewResolution,
+    ts: string,
+  ): Promise<Result<ReviewItem>> {
+    await this.db.run(
+      "UPDATE review_items SET status = ?, resolution = ?, resolved_at = ?, updated_at = ? WHERE id = ?",
+      [status, resolution, ts, ts, id],
+    );
+    return this.getReviewItem(id);
+  }
+
+  /**
+   * Resolve a review item.
+   *   - possible_duplicate_import + "import": stage the held candidate DIRECTLY
+   *     to bank_transactions and run only classify/match. It MUST bypass the
+   *     dedup classifier — otherwise the candidate would re-flag and re-hold
+   *     itself in a loop.
+   *   - possible_duplicate_import + "dismiss": close it; nothing imported.
+   *   - removed_reconciled_txn + "acknowledge"/"dismiss": close it; the guarded
+   *     bank transaction and the ledger are untouched.
+   */
+  async resolveReviewItem(
+    id: string,
+    action: "import" | "dismiss" | "acknowledge",
+  ): Promise<Result<ReviewItem>> {
+    const row = await this.db.get<ReviewItemRow>("SELECT * FROM review_items WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.REVIEW_ITEM_NOT_FOUND, "Review item not found"));
+    if (row.status !== "open") {
+      return err(createError(ErrorCode.VALIDATION_ERROR, `Review item is already ${row.status}`));
+    }
+    const item = toReviewItem(row);
+    const ts = nowUtc();
+
+    if (item.type === "possible_duplicate_import") {
+      if (action === "dismiss") return this.markReviewResolved(id, "dismissed", "dismissed", ts);
+      if (action !== "import") {
+        return err(createError(ErrorCode.VALIDATION_ERROR, 'action must be "import" or "dismiss" for this item'));
+      }
+      const payload = item.payload as {
+        dedupKey: string;
+        row: { date: string; amount: number; type: "credit" | "debit"; description: string; reference: string | null; balance: number | null; currency: string; rawData: Record<string, unknown> };
+      };
+      const bankAccountId = item.bankAccountId;
+      if (!bankAccountId) {
+        return err(createError(ErrorCode.INTERNAL_ERROR, "Review item missing bank account context"));
+      }
+      const r = payload.row;
+      // BYPASS the dedup-hold gate: stage directly, never through classifyDedup.
+      const up = await this.upsertBankTransactions(bankAccountId, item.ledgerId, [{
+        providerTransactionId: `manual:${payload.dedupKey}`,
+        date: r.date,
+        amount: r.amount,
+        type: r.type,
+        description: r.description,
+        reference: r.reference,
+        category: null,
+        balance: r.balance,
+        rawData: { ...r.rawData, _source: "manual_csv", _currency: r.currency, _resolvedFromReview: id },
+      }]);
+      if (!up.ok) return err(up.error);
+      await this.classifyPendingBankTransactions(item.ledgerId);
+      await this.matchBankTransactions(item.ledgerId, bankAccountId);
+      return this.markReviewResolved(id, "resolved", "imported", ts);
+    }
+
+    // removed_reconciled_txn
+    if (action === "acknowledge") return this.markReviewResolved(id, "resolved", "acknowledged", ts);
+    if (action === "dismiss") return this.markReviewResolved(id, "dismissed", "dismissed", ts);
+    return err(createError(ErrorCode.VALIDATION_ERROR, 'action must be "acknowledge" or "dismiss" for this item'));
   }
 
   async listBankTransactions(params: {
@@ -3748,9 +3966,16 @@ export class LedgerEngine {
         providerTxns = [...added, ...modified];
         fetchedCount = added.length + modified.length;
 
-        // Apply removals before the cursor is persisted.
+        // Apply removals before the cursor is persisted. Reconciled rows are
+        // guarded and raised to the review queue inside removeBankTransactions;
+        // surface the count rather than discarding it.
         if (removedIds.length > 0) {
-          await this.removeBankTransactions(bankAccountId, removedIds);
+          const removal = await this.removeBankTransactions(bankAccountId, removedIds);
+          if (removal.ok && removal.value.flaggedForReview > 0) {
+            console.log(
+              `[bank-sync] ${removal.value.flaggedForReview} reconciled transaction(s) reported removed by the provider — raised to the review queue for ledger ${connRow.ledger_id}`,
+            );
+          }
         }
 
         // Persist the cursor so the next sync resumes from here.
