@@ -3057,33 +3057,78 @@ export class LedgerEngine {
    * rows already reconciled into the ledger are marked 'ignored' rather than
    * deleted, so we never silently drop a posted entry.
    */
+  /**
+   * Append-only audit entry for a bank-transaction state change. Uses only the
+   * audit actions the PRODUCTION schema allows (001+002: created/reversed/
+   * archived/updated) — 'deleted'/'revoked' come from migration 030 which the
+   * prod runner does not apply.
+   */
+  private async writeBankTxnAudit(
+    ledgerId: string,
+    bankTransactionId: string,
+    action: "archived" | "updated",
+    snapshot: Record<string, unknown>,
+    ts: string,
+  ): Promise<void> {
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'bank_transaction', ?, ?, 'system', 'engine', ?, ?)`,
+      [generateId(), ledgerId, bankTransactionId, action, JSON.stringify(snapshot), ts],
+    );
+  }
+
+  /**
+   * Handle transactions a cursor sync reports as `removed`.
+   *
+   *   - PENDING (un-reconciled) rows may be deleted — but an audit entry is
+   *     always written, so a removal is never untraceable.
+   *   - MATCHED / POSTED (reconciled) rows are GUARDED: their status is left
+   *     unchanged (never silently re-stated to 'ignored'), and the event is
+   *     recorded in the audit log and counted as flaggedForReview so it can be
+   *     reviewed rather than silently mutated.
+   *
+   * The immutable ledger is never touched here regardless.
+   */
   async removeBankTransactions(
     bankAccountId: string,
     providerTransactionIds: readonly string[],
-  ): Promise<Result<{ removed: number }>> {
-    if (providerTransactionIds.length === 0) return ok({ removed: 0 });
+  ): Promise<Result<{ removed: number; flaggedForReview: number }>> {
+    if (providerTransactionIds.length === 0) return ok({ removed: 0, flaggedForReview: 0 });
 
     const placeholders = providerTransactionIds.map(() => "?").join(",");
-    const ts = nowUtc();
-
-    // Delete pending (un-reconciled) rows outright.
-    const del = await this.db.run(
-      `DELETE FROM bank_transactions
-       WHERE bank_account_id = ? AND status = 'pending'
-         AND provider_transaction_id IN (${placeholders})`,
+    const rows = await this.db.all<BankTransactionRow>(
+      `SELECT * FROM bank_transactions
+       WHERE bank_account_id = ? AND provider_transaction_id IN (${placeholders})`,
       [bankAccountId, ...providerTransactionIds],
     );
 
-    // Anything already matched/posted is preserved but flagged ignored.
-    await this.db.run(
-      `UPDATE bank_transactions
-       SET status = 'ignored', updated_at = ?
-       WHERE bank_account_id = ? AND status != 'pending'
-         AND provider_transaction_id IN (${placeholders})`,
-      [ts, bankAccountId, ...providerTransactionIds],
-    );
+    const ts = nowUtc();
+    let removed = 0;
+    let flaggedForReview = 0;
 
-    return ok({ removed: del.changes });
+    for (const row of rows) {
+      if (row.status === "pending") {
+        await this.db.run("DELETE FROM bank_transactions WHERE id = ?", [row.id]);
+        await this.writeBankTxnAudit(row.ledger_id, row.id, "archived", {
+          reason: "provider_reported_removed",
+          previousStatus: "pending",
+          deleted: true,
+          snapshot: toBankTransaction(row),
+        }, ts);
+        removed++;
+      } else {
+        // Reconciled/posted — guard: do not delete or re-state. Surface + audit.
+        await this.writeBankTxnAudit(row.ledger_id, row.id, "updated", {
+          reason: "provider_reported_removed_but_reconciled",
+          status: row.status,
+          flaggedForReview: true,
+          snapshot: toBankTransaction(row),
+        }, ts);
+        flaggedForReview++;
+      }
+    }
+
+    return ok({ removed, flaggedForReview });
   }
 
   // -------------------------------------------------------------------------
