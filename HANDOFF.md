@@ -1,107 +1,57 @@
-# HANDOFF — Bank Data Ingestion: Mock Plaid Feed + Manual CSV Import
+# HANDOFF — Bank Ingestion: B1/B2/B3 fix session (PR #1)
 
 **Branch:** `feat/bank-ingestion-mock-plaid-csv`
-**Date:** 2026-05-29
-**Spec:** `SPRINT.md` (committed on this branch)
-**Baseline:** 601 passing → **636 passing** (+35, no regressions)
+**Scope:** `SPRINT.md` (fix the three blockers in `EVALUATION.md`).
+**Status:** all three blockers fixed, red→green. **Ready for a fresh evaluator pass** — I am NOT self-certifying mergeable (per DoD, a separate evaluator session re-verifies B1/B2/B3 before merge).
 
----
+## Test status
 
-## Status: COMPLETE
+Forced full run: **645 passing** (core 463 + api 103 + mcp 44 + sdk 35), 6 skipped — up from the 636 baseline (+9 new regression tests), **no regressions**. Typecheck clean across 9 packages; no new `any`/`ts-ignore`.
 
-Both acquisition channels (mock Plaid feed + manual CSV import) converge on the
-existing `bank_transactions` → classify → match pipeline through one
-normalisation boundary. All SPRINT.md acceptance criteria are met with evidence.
+The `usage_tracking` "no such table" warnings still print from the api/mcp/sdk fixtures — that's the pre-existing tier fail-open in *those* fixtures, **explicitly out of scope** for this sprint (handed to the blocker sprint).
 
-### Test results (forced, no cache)
+## What's fixed (with red→green evidence)
 
-| Package | Passed | Skipped |
-|---|---|---|
-| @kounta/core | 456 | — |
-| @kounta/api | 101 | 6 (pre-existing: 4 benchmark + 2) |
-| @kounta/mcp | 44 | — |
-| @kounta/sdk | 35 | — |
-| **Total** | **636** | 6 |
+### B1 — migration 031 registered in the production runner
+Root cause: `packages/api/src/index.ts` applies a **hardcoded** migration list, not a directory scan; the lists stopped at `027`, so `031` never shipped — and since this sprint made `upsertBankTransactions` write `line_fingerprint`, existing Basiq sync would throw in prod.
+- Added `031` to **both** `pgMigrations` and `SQLITE_MIGRATION_FILES` (after `027`). 031 depends only on `001`/`004`, so it applies cleanly with `028–030` still absent.
+- Hoisted `SQLITE_MIGRATION_FILES` to a module export so the regression test consumes the **real production list**, never `readdirSync`.
+- Red→green: `packages/api/tests/migration-parity.test.ts` — builds a DB from the production list; before: `table bank_transactions has no column named line_fingerprint`; after: `upsertBankTransactions` (a Basiq-provider connection) succeeds and `mapping_profiles` exists.
 
-`typecheck`: 9/9 packages clean. No new `any`, no `ts-ignore`.
+### B2 — escalate-when-uncertain dedup (money correctness)
+Root cause: a single fingerprint-set hard-skip — simultaneously over-collapsing genuine duplicates and double-counting the same txn described differently across channels.
+- **Same-source (manual vs prior manual): occurrence-aware.** The Nth identical row is a duplicate only if N identical rows already exist from this source; provider id is now `fingerprint#occurrence`. Genuine same-day duplicates persist; re-import adds zero.
+- **Cross-source exact** (date+amount+description) → `duplicate` (auto-skip).
+- **Cross-source loose** (date+amount, different description) → `possible_duplicate`: **held by default** and surfaced in the preview; importable only via an explicit per-row decision. Never auto-merged, never silently double-counted.
+- Provenance: each row's decision + reason recorded in `rawData._dedup`; preview exposes `dedupStatus`/`dedupReason`/`dedupKey`; commit takes `decisions` and reports `possibleDuplicates`.
+- UI: dashboard shows New / Duplicate / **Possible duplicate + "import anyway"** with a held-by-default explanation; verified in the browser preview (ticking the toggle moves the button "Import 1 row" → "Import 2 rows").
+- Red→green: `packages/core/tests/csv-dedup-edge.test.ts` — two coffees both stored; re-import adds zero; a third later coffee is recordable; OFFICEWORKS-0123 vs OFFICEWORKS-0123-SYDNEY stays exactly one (count-asserted). The prior test that had encoded the over-collapse bug was corrected.
 
----
+### B3 — removed-sync audit integrity
+Root cause: `removed` flipped matched/posted rows to `ignored` with no audit, and hard-deleted pending rows with no trace.
+- `removeBankTransactions` now: **pending** → delete **with** an audit entry; **matched/posted** → status left **unchanged** (guarded), audit entry written, counted as `flaggedForReview`. The immutable ledger is never touched.
+- Audit actions limited to `archived`/`updated` — the only removal-ish actions the **production** audit CHECK allows (001+002); `deleted`/`revoked` come from `030`, which prod doesn't apply.
+- Red→green: `packages/core/tests/removed-sync-audit.test.ts` — matched row stays `matched` and the change is audited; pending row deleted but audited.
 
-## Acceptance checklist — all ticked, with evidence
+### Recurrence prevention (in-sprint)
+- `CLAUDE.md` now documents that production registers migrations via the hardcoded lists in `index.ts`, and that a green `readdirSync` suite is **not** proof a migration ships.
+- The "Test/prod migration parity" rubric criterion is in `SPRINT.md`.
 
-### Mock Plaid feed
-- [x] Implements existing `BankFeedProvider`; selected via `BANK_FEED_PROVIDER=mock`; **throws if `NODE_ENV=production`** — `bank-feeds/mock.ts`, `factory.ts`, API `getProvider`. Tests: `bank-feeds-mock.test.ts` ("throws when constructed in production", "factory builds the mock and refuses production").
-- [x] Fixtures emit the real Plaid shape (`transaction_id, account_id, amount, iso_currency_code, date, name, merchant_name, pending, personal_finance_category`) — `bank-feeds/fixtures.ts`. Test: "emit the real Plaid shape".
-- [x] `/transactions/sync` model — added/modified/removed + `next_cursor`, pagination, **pending→posted transition** — `getSyncPage`/`syncTransactions`. Tests: "returns added/modified/removed + next_cursor and paginates", "exercises a pending -> posted transition and a removal".
-- [x] Single `normalizePlaidTransaction` boundary; normalised output equals expected Kounta records — `bank-feeds/normalize.ts`. Tests assert exact `toEqual` records (sign, cents, type, category).
-- [x] Sync idempotent (dedup on `provider_transaction_id`) — end-to-end test "ingests the first sync, then applies modified/removed without duplicating" (3rd sync is a no-op).
-- [x] Each fixture carries a ground-truth category label (accuracy-harness seed) — `labeledFixtures[].groundTruthCategory`. Test: "each carries a non-empty ground-truth category label".
+## Commits (this session)
+`6df0363` B1 register 031 · `ff11caa` B3 audit+guard removed · `4afdcbd` B2 core dedup · `e0d153b` B2 surface (SDK/API/UI) · docs commit (CLAUDE.md/SPRINT.md/HANDOFF).
 
-### Manual CSV import
-- [x] Upload in dashboard `/bank-feeds`; headers/quoted fields/BOM handled; **malformed rows surfaced, never dropped** — `import/csv-mapping.ts`, `csv-import.tsx`. Tests: "malformed rows are surfaced", "handles quoted fields … and strips a BOM".
-- [x] User selects the ledger account — UI dropdown + `commitCsvImport({ ledgerAccountId })`.
-- [x] Column-mapping: date, description, amount (single signed OR debit/credit), optional balance/reference/currency — `csvMappingSchema` + UI.
-- [x] Date-format selector (default **DD/MM/YYYY**) + explicit sign-convention control — `parseDateStrict`, mapping schema. Tests: date-format + sign-convention cases.
-- [x] Preview shows parsed rows + counts before any write; commit only on confirm — `previewCsvImport` (no writes). Test: "previews without writing, then commits".
-- [x] Reusable per-bank mapping profiles — `mapping_profiles` table + CRUD. Test: "creates, fetches, updates, lists, and deletes … preserving the mapping".
-- [x] **Cross-channel dedup** via line-fingerprint (date + amount + normalised description + account scope); overlapping re-import does not double-count — `commitCsvImport` + `existingFingerprintsForLedgerAccount`. Test: "does not double-count a manual row that overlaps a Plaid feed transaction".
-- [x] Imported rows flow into the same classify + reconcile pipeline as feeds — `commitCsvImport` stages into `bank_transactions` then runs `classifyPendingBankTransactions` + `matchBankTransactions`.
+## Files changed
+- `packages/api/src/index.ts` (register 031 + export list), `packages/api/src/routes/imports.ts` (decisions), `packages/api/tests/migration-parity.test.ts` (new).
+- `packages/core/src/engine/index.ts` (dedup context/classifier, preview/commit, removeBankTransactions audit+guard), `packages/core/src/bank-feeds/normalize.ts` (+index.ts) (looseKey), `packages/core/src/import/csv-mapping.ts` (+index.ts) (dedup types).
+- `packages/core/tests/{csv-dedup-edge,removed-sync-audit}.test.ts` (new), `csv-import-dedup.test.ts` (corrected).
+- `packages/sdk/src/index.ts` (decisions + types), `packages/dashboard/src/lib/actions.ts` + `.../bank-feeds/csv-import.tsx` (3-state UI + decisions).
+- `CLAUDE.md` (migration-list note), `SPRINT.md` (this session's scope).
 
-### Shared
-- [x] Both channels produce identical internal records for equivalent input — `channel-equivalence.test.ts`.
-- [x] Parsing/normalisation in core, not dashboard — dashboard only renders the mapping UI and calls the API.
-- [x] Tests added for every listed category (Plaid normalisation, sync idempotency + modified/removed, CSV edge cases, cross-channel dedup, mapping-profile round-trip).
-
-### Definition of Done
-- [x] Acceptance criteria checked with evidence (tests + mapping-UI screenshot captured in the build session).
-- [x] Tests passing; 636 ≥ 601; no regressions.
-- [x] No new TypeScript errors; no new `any`.
-- [x] HANDOFF.md (this file).
-- [x] Committed on a feature branch.
-
-### Quality rubric — 8/8
-Test coverage ✓ (hard) · Auth ✓ (hard, new endpoints under `apiKeyAuth` with `:ledgerId` scope) · Package boundaries ✓ · Env/secrets ✓ (`BANK_FEED_PROVIDER` documented below) · Bank feeds idempotent + errors surfaced ✓ · MCP signatures unchanged ✓ · TypeScript ✓ · Fail-closed ✓.
-
----
-
-## Architecture (one pipeline, two channels)
-
-```
-Mock Plaid  ─ normalizePlaidTransaction ─┐
-                                          ├─► ProviderBankTransaction ─► upsertBankTransactions
-CSV upload  ─ applyMapping (+ dedup)  ────┘        (bank_transactions)          │
-                                                                                 ▼
-                                                    classifyPendingBankTransactions + matchBankTransactions
-```
-
-- **Single normalisation boundary:** `packages/core/src/bank-feeds/normalize.ts` (`normalizePlaidTransaction`). The live Plaid client drops onto this and `syncTransactions` with no pipeline change.
-- **Cross-channel dedup:** shared `lineFingerprint(date, amount, type, description)`. Stored on every `bank_transactions` row (`line_fingerprint`). Manual imports skip a row if any bank account **mapped to the same ledger account** already has that fingerprint (covers Plaid/Basiq/manual). Manual rows also synthesize `provider_transaction_id = manual:<fingerprint>` so manual-vs-manual dedups via the unique index.
-- **Cursor sync:** optional `syncTransactions()` added to `BankFeedProvider` (additive — Basiq/Plaid-stub unaffected). `engine.syncBankAccount` prefers it, persists `bank_accounts.sync_cursor`, and applies removals via `removeBankTransactions`.
-
-## New env var
-- `BANK_FEED_PROVIDER` — `mock` | `basiq` (default `basiq`). `mock` emits Plaid-shaped fixtures for dev/test and **fail-closes in production**.
-
-## Migration
-- `031_csv_import.{sql,sqlite.sql}` — `mapping_profiles` table, `bank_transactions.line_fingerprint`, `bank_accounts.sync_cursor`. Auto-loaded by the new full-migration test fixture.
-
-## Test-fixture hardening
-- `packages/core/tests/helpers/migrate.ts` — `createFullTestDb()` loads the **full** SQLite migration set in order. New core tests use it, so a new table can never silently become "no such table" (this is the `usage_tracking` fail-open class the launch brief flagged). Smoke test: `migration-fixture.test.ts`.
-
----
-
-## NOT done / known issues / debt
-
-1. **Live Plaid client — out of scope (by design).** The mock + boundary make it a near-drop-in: implement a real `PlaidProvider.syncTransactions` that calls `/transactions/sync` and maps each txn via `normalizePlaidTransaction`. No pipeline changes needed.
-2. **`usage_tracking` fail-open warnings persist in api/mcp/sdk tests.** Those packages still hand-pick migrations in their own fixtures (the core fixture is fixed and guarantees migration 031 loads). Fix path: have those fixtures adopt a full-migration loader like `createFullTestDb`. **Risk:** enabling `usage_tracking` would make tier checks actually enforce in those tests, which may change current outcomes — do it deliberately, not as a drive-by.
-3. **Dashboard `lint` is broken (pre-existing).** `"lint": "next lint"` errors with "Invalid project directory … \dashboard\lint" on `main` too — a `next lint` invocation/version issue, unrelated to this work. Not a DoD gate. Typecheck is clean.
-4. **Accuracy harness:** labelled fixtures are delivered and exported (`labeledFixtures`) as the seed; a full *scored* accuracy run is future work and depends on classification tuning, which is explicitly out of scope.
-5. **Plaid pending→posted fidelity:** the mock models the transition as a `modified` event on the same `transaction_id`. Real Plaid issues a new id for the posted txn with `pending_transaction_id` linking back; reconciling that is a live-client concern (out of scope).
-6. **Removed handling:** removed pending rows are deleted; already-reconciled rows are flagged `ignored` (never silently dropped).
-7. **Security/integrity blocker sprint** (token-encryption fail-closed, audit snapshot) — separate, tracked elsewhere; must land before real banks connect.
+## NOT done — deliberately out of scope (→ security/integrity blocker sprint)
+1. **Single-source migration mechanism + anti-drift guard** (the systemic fix behind B1). I registered `031` only.
+2. **`028`/`029`/`030` are still unregistered** in the prod runner. They must be verified safe/idempotent against EXISTING production databases before registering — not blindly swept in with 031. (Note: `030` would add `revoked`/`deleted` audit actions; until it's applied, prod audit writes must avoid those — which is why B3 uses `archived`/`updated`.)
+3. **api/mcp/sdk test fixtures still hand-pick migrations** (tier fail-open in those suites). Re-pointing them + fixing the setups they break is the blocker sprint.
+4. Token-encryption fail-closed, Basiq webhook signature, transaction audit-snapshot completeness; live Plaid client; classification/algorithm changes; OFX/QIF/MT940.
 
 ## Exact next step
-Open a PR for `feat/bank-ingestion-mock-plaid-csv` → `main`. Then (separate task) implement the live `PlaidProvider` against `normalizePlaidTransaction` + `syncTransactions`, and decide on retrofitting the api/mcp/sdk test fixtures to the full-migration loader (item 2).
-
-## Files changed (26 files, +3018 / −17)
-Core: `bank-feeds/{mock,normalize,plaid-types,fixtures,factory,types,index}.ts`, `import/{csv-mapping,index}.ts`, `engine/index.ts`, `errors/index.ts`, `db/migrations/031_csv_import.{sql,sqlite.sql}`, `tests/helpers/migrate.ts` + 5 test files.
-API: `routes/{imports,bank-feeds}.ts`. SDK: `index.ts`. Dashboard: `bank-feeds/{csv-import.tsx,page.tsx}`, `lib/actions.ts`. Plus `SPRINT.md`.
+Run a **fresh evaluator pass** that independently re-verifies B1/B2/B3 (rebuild from the production migration list for B1; the two dedup scenarios with count assertions for B2; the removed-on-matched scenario for B3). If it confirms green, PR #1 is mergeable. The blocker-sprint items above are tracked separately and are not gating this PR's specific three blockers.

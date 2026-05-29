@@ -1,87 +1,93 @@
-# Sprint: Bank Data Ingestion — Mock Plaid Feed + Manual CSV Import
+# Sprint: Bank Ingestion — Fix B1/B2/B3 from Evaluation
 Date: 2026-05-29
 Repo: kounta
+Branch: feat/bank-ingestion-mock-plaid-csv (fixes land on the existing PR #1)
 
 ## Scope
-Build two new bank-data acquisition channels that converge on Kounta's existing
-normalised ingestion pipeline, so the full ingest → categorise → reconcile loop can be
-developed and tested before the live Plaid account is finalised.
+Fix the three blockers the evaluator proved in EVALUATION.md so PR #1 is correct and
+mergeable: B1 (migration 031 unregistered in the production runner → breaks existing Basiq
+sync in prod), B2 (cross-channel dedup wrong in both directions → silent data loss and
+double-counting), B3 (removed-sync path silently mutates/deletes reconciled rows with no
+audit entry). Read EVALUATION.md first — it contains the exact reproductions; each fix must
+make the specific failing scenario pass.
 
-(1) A mock Plaid provider implementing the same provider interface as the existing
-(throwing) Plaid stub, emitting fixtures shaped exactly like real Plaid responses and
-flowing through the same Plaid→Kounta normalisation boundary the live client will use.
-
-(2) A manual CSV import facility with a dashboard UI for mapping arbitrary bank-file
-columns to Kounta's canonical transaction fields, with preview, reusable per-bank
-mapping profiles, and cross-channel dedup.
-
-Explicitly NOT in scope: the live Plaid client/credentials; any new categorisation or
-reconciliation logic (both channels feed the existing engine unchanged); OFX/QIF/MT940.
+Explicitly NOT in scope (handed to the security-and-integrity blocker sprint): the systemic
+single-source-of-truth migration mechanism + anti-drift guard; reconciliation of the
+pre-existing unregistered migrations 028/029/030; re-pointing api/mcp/sdk fixtures to the
+full set and fixing suites that pass via tier fail-open; the other audit fail-open items
+(token encryption, Basiq webhook signature, transaction audit-snapshot completeness).
 
 ## Acceptance Criteria
 
-### Mock Plaid feed
-- [ ] Mock provider implements the existing bank-feed provider interface; selected via
-      explicit config (e.g. BANK_FEED_PROVIDER=mock) and THROWS if NODE_ENV=production.
-- [ ] Fixtures emit the real Plaid shape (transaction_id, account_id, amount,
-      iso_currency_code, date, name, merchant_name, pending, personal_finance_category).
-- [ ] Mock mimics the /transactions/sync model — returns added/modified/removed arrays
-      with a next_cursor, and exercises a pending→posted transition.
-- [ ] Data flows through the SAME Plaid→internal normalisation function the live client
-      will use; a test asserts normalised output equals expected Kounta transactions.
-- [ ] Sync is idempotent: re-running does not duplicate (dedup on provider_transaction_id,
-      consistent with existing bank-sync).
-- [ ] Each fixture transaction carries a ground-truth category label, so the dataset
-      doubles as the seed for the categorisation accuracy harness.
+### B1 — Register migration 031 (the prod regression)
+- [ ] 031 registered in BOTH production runner lists in packages/api/src/index.ts
+      (pgMigrations and SQLite migrationFiles), in correct order.
+- [ ] A test builds a DB from the PRODUCTION migration list (not the readdirSync fixture)
+      and asserts upsertBankTransactions succeeds — i.e. the evaluator's
+      "no column named line_fingerprint" failure now passes.
+- [ ] A test asserts existing Basiq bank sync still works against the production migration
+      set (the regression to existing functionality is gone).
+- [ ] mapping_profiles table is present when built from the production migration list.
 
-### Manual CSV import
-- [ ] Upload CSV in the dashboard /bank-feeds area; parser handles header rows, quoted
-      fields, and encodings defensively — malformed rows are SURFACED, never silently dropped.
-- [ ] User selects which ledger account the rows belong to.
-- [ ] Column-mapping UI maps file columns → canonical fields: date, description, amount
-      (single signed column OR separate debit/credit), optional balance, reference, currency.
-- [ ] Date-format selector defaulting to DD/MM/YYYY (AU); explicit sign-convention control
-      (which sign is money out).
-- [ ] Preview step shows parsed rows with mapping applied + row count before any write;
-      nothing is committed until the user confirms.
-- [ ] Mapping saved as a reusable per-bank profile so re-import skips remapping.
-- [ ] Import dedups against ALL existing transactions in that account regardless of source
-      (Plaid/Basiq/manual), using the engine's line-fingerprint (date + amount + normalised
-      description + account), since manual CSVs lack a stable provider id. Re-importing an
-      overlapping range does not double-count.
-- [ ] Imported rows flow into the same categorisation + reconciliation pipeline as feeds.
+### B2 — Dedup correctness, both directions
+- [ ] Same-source is occurrence-aware: a CSV with two genuinely identical rows (same
+      date/amount/description/account — the two $4.50 coffees) stores BOTH; re-importing the
+      same file adds zero. Asserted on stored count.
+- [ ] Cross-source overlap is neither auto-collapsed nor double-counted: when a CSV row and a
+      feed row represent the same real transaction with differing descriptions (Plaid
+      "OFFICEWORKS 0123" vs CSV "OFFICEWORKS 0123 SYDNEY AU"), the importer surfaces it as a
+      CANDIDATE duplicate for user confirmation in the existing preview step — it does not
+      silently merge and does not silently double-count. Asserted: candidate flagged, no
+      silent count change.
+- [ ] Both exact scenarios the evaluator used to break dedup have explicit regression tests
+      with count assertions.
+- [ ] Dedup outcomes (deduped / flagged-candidate / distinct) are recorded with enough
+      provenance to audit why each decision was made.
 
-### Shared
-- [ ] Both channels produce identical internal transaction records for equivalent input.
-- [ ] Parsing + normalisation logic lives in core (or a feed package), NOT in dashboard;
-      the dashboard only renders the mapping UI and calls the API.
-- [ ] Tests added: Plaid normalisation, sync idempotency + modified/removed handling, CSV
-      edge cases (debit/credit split, sign convention, bad dates, malformed rows),
-      cross-channel dedup, mapping-profile round-trip.
+### B3 — Removed-sync audit integrity
+- [ ] Every removal or state change on the removed path writes an audit entry (no silent
+      mutation; audit count changes as expected).
+- [ ] A removed event affecting a reconciled or posted bank transaction does NOT silently
+      delete or re-state it — it is guarded and surfaced for user review.
+- [ ] Pending (unreconciled, unposted) rows may still be removed, but each with an audit entry.
+- [ ] Regression test reproducing the evaluator's scenario (removed flips matched/posted →
+      ignored and hard-deletes pending) now shows audit entries written and reconciled rows
+      guarded.
+
+### Recurrence prevention (cheap, in-sprint)
+- [ ] CLAUDE.md documents that production registers migrations via the hardcoded lists in
+      packages/api/src/index.ts, and that a green suite using readdirSync is NOT proof a
+      migration ships to prod.
+- [ ] Kounta rubric gains a "test/prod migration parity" criterion.
 
 ## Definition of Done
-- [ ] All acceptance criteria checked with evidence (test output / screenshots)
-- [ ] Tests passing; total ≥ 601 or justified delta. No regressions.
+- [ ] All acceptance criteria checked with executable evidence
+- [ ] Tests passing; total ≥ 636 or justified delta; no regressions
 - [ ] No new TypeScript errors; no new `any` without comment
 - [ ] HANDOFF.md updated
-- [ ] Committed to git on a feature branch
+- [ ] Committed to the branch; EVALUATION.md re-verification noted
+- [ ] A FRESH evaluator pass independently re-verifies B1, B2, B3 before merge
 
 ## Quality Rubric (Kounta)
-- Test coverage: new logic tested; suite ≥ 601. Non-negotiable.
-- Auth patterns: new import endpoints check session/ledger scope. No bypass. Non-negotiable.
-- Package boundaries: core imports nothing from api/dashboard; parsing lives below the UI.
-- Env / secrets: no hardcoded secrets; new vars documented.
-- Bank feeds: ingestion idempotent; errors surface to user, not swallowed.
-- MCP contract: existing @kounta/mcp tool signatures unchanged.
+- Test coverage (hard): new logic tested; suite ≥ 636. Was the failed hard blocker — must pass.
+- Auth patterns (hard): ledger-scoping intact. No bypass.
+- Package boundaries: core imports nothing from api/dashboard.
+- Env / secrets: none hardcoded.
+- Stripe handling: unchanged, idempotency intact.
+- Bank feeds: ingestion idempotent; errors surface, not swallowed. Was failing — must pass.
+- MCP contract: @kounta/mcp signatures unchanged.
 - TypeScript: no `any` without comment; no `ts-ignore` without justification.
-- NEW — Fail-closed: mock provider throws in production; import rejects ambiguous mappings
-  rather than guessing; no silent fail-open anywhere in the new code.
+- Fail-closed: no silent fail-open on secrets/webhooks/limits/audit. Was failing — must pass.
+- NEW — Test/prod migration parity: tests must not certify schema production won't have.
 
-Pass 7/8. Test coverage and auth are hard blockers.
+Pass 9/10; test-coverage, auth, bank-feeds-idempotent, and fail-closed are hard blockers.
 
-## Out of Scope
-- Live Plaid client + credentials (near-drop-in later, given the normalisation boundary)
-- Categorisation / reconciliation algorithm changes
-- OFX/QIF/MT940 formats
-- The security-and-integrity blocker sprint (token-encryption fail-closed, audit snapshot)
-  — tracked separately; must land before real users connect real banks.
+## Out of Scope (→ blocker sprint)
+- Single source-of-truth migration mechanism + anti-drift guard (so fixtures and prod can't
+  diverge again — the systemic fix behind B1)
+- Reconcile unregistered migrations 028/029/030: investigate contents, verify safe and
+  idempotent against EXISTING production databases, then register. Affects live prod — must
+  be done with prod-schema verification, not blindly registered alongside 031.
+- Re-point api/mcp/sdk fixtures to the full set; fix suites passing via tier fail-open.
+- Token-encryption fail-closed; Basiq webhook signature; transaction audit-snapshot completeness.
+- Live Plaid client; classification/reconciliation algorithm changes; OFX/QIF/MT940.

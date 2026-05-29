@@ -74,6 +74,14 @@ Out of scope: bank feed APIs (Plaid, Basiq), notification layer, health dashboar
 - Keep domain logic in `@kounta/core`; other packages import from core, never the reverse.
 - Zod schemas are shared between API validation, SDK types, and MCP tool parameter definitions.
 - Database migrations live alongside the package that owns the schema.
+- **Migrations ship to production only if registered in the hardcoded lists in
+  `packages/api/src/index.ts`** (`pgMigrations` and `SQLITE_MIGRATION_FILES`).
+  The migrations directory is NOT scanned at runtime. Adding a `*.sql` /
+  `*.sqlite.sql` file is not enough — you MUST add it to both lists. A test
+  fixture that loads migrations via `readdirSync` (e.g. `createFullTestDb`)
+  proves nothing about what production applies; a green suite using it is NOT
+  evidence a migration ships. Verify schema-dependent changes against the
+  production list (see `packages/api/tests/migration-parity.test.ts`).
 - Use explicit error types, not thrown strings. Prefer `Result<T, E>` patterns where practical.
 - Every error response includes: error code, human-readable message, field-level details (field, expected, actual), and a suggested correction where determinable.
 - Tests should cover the balance constraint — every test that creates a transaction must assert debits === credits.
