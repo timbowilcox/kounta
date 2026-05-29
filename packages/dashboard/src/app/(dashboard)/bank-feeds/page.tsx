@@ -1,6 +1,7 @@
 import { getSessionClient } from "@/lib/kounta";
 import { BankFeedsView } from "./bank-feeds-view";
-import { fetchBankTransactions } from "@/lib/actions";
+import { CsvImport } from "./csv-import";
+import { fetchBankTransactions, fetchAccounts } from "@/lib/actions";
 import type { BankTransactionSummary } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export default async function BankFeedsPage() {
   let connections: unknown[] = [];
   let error: string | null = null;
   let bankTxns: BankTransactionSummary[] = [];
+  let accounts: { id: string; name: string; code: string }[] = [];
 
   try {
     const { client, ledgerId } = await getSessionClient();
@@ -29,5 +31,18 @@ export default async function BankFeedsPage() {
     }
   }
 
-  return <BankFeedsView connections={connections} error={error} initialBankTxns={bankTxns} />;
+  // Ledger accounts power the manual CSV import target dropdown. This is not
+  // plan-gated, so fetch it independently of the bank-feed connection state.
+  try {
+    accounts = (await fetchAccounts()).map((a) => ({ id: a.id, name: a.name, code: a.code }));
+  } catch {
+    accounts = [];
+  }
+
+  return (
+    <div>
+      <BankFeedsView connections={connections} error={error} initialBankTxns={bankTxns} />
+      {accounts.length > 0 && <CsvImport accounts={accounts} />}
+    </div>
+  );
 }
