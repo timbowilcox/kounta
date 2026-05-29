@@ -107,6 +107,24 @@ export interface WebhookResult {
   readonly shouldSync: boolean;
 }
 
+// Cursor-based sync (Plaid /transactions/sync model). Optional on the provider
+// interface — providers that only support a date-range pull (e.g. Basiq) omit it.
+export interface SyncTransactionsParams {
+  readonly connectionId: string;
+  readonly accountId: string;
+}
+
+export interface ProviderSyncResult {
+  // Already normalised to the internal representation via the provider's
+  // own normalisation boundary (e.g. normalizePlaidTransaction).
+  readonly added: readonly ProviderBankTransaction[];
+  readonly modified: readonly ProviderBankTransaction[];
+  // Provider transaction ids that no longer exist (e.g. a pending txn dropped).
+  readonly removed: readonly string[];
+  readonly nextCursor: string;
+  readonly hasMore: boolean;
+}
+
 export interface ProviderBankAccount {
   readonly providerAccountId: string;
   readonly name: string;
@@ -160,13 +178,24 @@ export interface BankFeedProvider {
     payload: unknown,
     signature: string,
   ): Promise<WebhookResult>;
+
+  /**
+   * Cursor-based incremental sync (Plaid /transactions/sync model). Optional:
+   * when present, the engine prefers it over fetchTransactions and resumes from
+   * the persisted cursor. Returns added/modified/removed already normalised to
+   * the internal representation, plus the next cursor.
+   */
+  syncTransactions?(
+    params: SyncTransactionsParams,
+    cursor: string | null,
+  ): Promise<ProviderSyncResult>;
 }
 
 // ---------------------------------------------------------------------------
 // Provider factory
 // ---------------------------------------------------------------------------
 
-export type ProviderName = "basiq" | "plaid";
+export type ProviderName = "basiq" | "plaid" | "mock";
 
 export interface ProviderConfig {
   readonly basiq?: {
@@ -177,5 +206,9 @@ export interface ProviderConfig {
     readonly clientId: string;
     readonly secret: string;
     readonly environment?: "sandbox" | "development" | "production";
+  };
+  readonly mock?: {
+    // Optional override of process.env.NODE_ENV for testing the production guard.
+    readonly nodeEnv?: string;
   };
 }

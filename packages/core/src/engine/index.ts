@@ -44,6 +44,7 @@ import type {
   ProviderBankTransaction,
 } from "../bank-feeds/types.js";
 import { bankTransactionToParseRow } from "../bank-feeds/adapter.js";
+import { fingerprintOf } from "../bank-feeds/normalize.js";
 import { getTemplate } from "../templates/index.js";
 import type { AccountBalanceData, CashFlowAccountData } from "../statements/index.js";
 import { buildIncomeStatement, buildBalanceSheet, buildCashFlowStatement } from "../statements/index.js";
@@ -406,6 +407,7 @@ interface BankAccountRow {
   available_balance: number | null;
   mapped_account_id: string | null;
   last_sync_at: string | null;
+  sync_cursor: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -428,6 +430,7 @@ interface BankTransactionRow {
   is_personal: number | boolean;
   suggested_account_id: string | null;
   raw_data: string | Record<string, unknown>;
+  line_fingerprint: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2992,31 +2995,69 @@ export class LedgerEngine {
 
     for (const ptxn of providerTransactions) {
       const existing = existingByProviderId.get(ptxn.providerTransactionId);
+      // Cross-channel dedup key — computed identically here and in manual CSV
+      // import so the same real transaction collides regardless of source.
+      const fingerprint = fingerprintOf(ptxn);
 
       if (existing) {
         await this.db.run(
           `UPDATE bank_transactions
            SET date = ?, amount = ?, type = ?, description = ?, reference = ?,
-               category = ?, balance = ?, raw_data = ?, updated_at = ?
+               category = ?, balance = ?, raw_data = ?, line_fingerprint = ?, updated_at = ?
            WHERE id = ?`,
           [ptxn.date, ptxn.amount, ptxn.type, ptxn.description, ptxn.reference,
-           ptxn.category, ptxn.balance, JSON.stringify(ptxn.rawData), ts, existing.id]
+           ptxn.category, ptxn.balance, JSON.stringify(ptxn.rawData), fingerprint, ts, existing.id]
         );
         updated++;
       } else {
         const id = generateId();
         await this.db.run(
-          `INSERT INTO bank_transactions (id, bank_account_id, ledger_id, provider_transaction_id, date, amount, type, description, reference, category, balance, status, raw_data, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+          `INSERT INTO bank_transactions (id, bank_account_id, ledger_id, provider_transaction_id, date, amount, type, description, reference, category, balance, status, raw_data, line_fingerprint, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
           [id, bankAccountId, ledgerId, ptxn.providerTransactionId, ptxn.date,
            ptxn.amount, ptxn.type, ptxn.description, ptxn.reference, ptxn.category,
-           ptxn.balance, JSON.stringify(ptxn.rawData), ts, ts]
+           ptxn.balance, JSON.stringify(ptxn.rawData), fingerprint, ts, ts]
         );
         created++;
       }
     }
 
     return ok({ created, updated });
+  }
+
+  /**
+   * Remove bank transactions reported as removed by a cursor sync (e.g. a
+   * pending Plaid authorisation that never posted). Pending rows are deleted;
+   * rows already reconciled into the ledger are marked 'ignored' rather than
+   * deleted, so we never silently drop a posted entry.
+   */
+  async removeBankTransactions(
+    bankAccountId: string,
+    providerTransactionIds: readonly string[],
+  ): Promise<Result<{ removed: number }>> {
+    if (providerTransactionIds.length === 0) return ok({ removed: 0 });
+
+    const placeholders = providerTransactionIds.map(() => "?").join(",");
+    const ts = nowUtc();
+
+    // Delete pending (un-reconciled) rows outright.
+    const del = await this.db.run(
+      `DELETE FROM bank_transactions
+       WHERE bank_account_id = ? AND status = 'pending'
+         AND provider_transaction_id IN (${placeholders})`,
+      [bankAccountId, ...providerTransactionIds],
+    );
+
+    // Anything already matched/posted is preserved but flagged ignored.
+    await this.db.run(
+      `UPDATE bank_transactions
+       SET status = 'ignored', updated_at = ?
+       WHERE bank_account_id = ? AND status != 'pending'
+         AND provider_transaction_id IN (${placeholders})`,
+      [ts, bankAccountId, ...providerTransactionIds],
+    );
+
+    return ok({ removed: del.changes });
   }
 
   async listBankTransactions(params: {
@@ -3212,13 +3253,58 @@ export class LedgerEngine {
     );
 
     try {
-      // Fetch transactions from provider
-      const providerTxns = await provider.fetchTransactions({
-        connectionId: connRow.provider_connection_id,
-        accountId: bankAcctRow.provider_account_id,
-        fromDate,
-        toDate,
-      });
+      // Acquire transactions from the provider. Two models:
+      //   * cursor sync (Plaid /transactions/sync) — preferred when available;
+      //     resumes from the persisted cursor and yields added/modified/removed
+      //   * date-range pull (Basiq) — fetchTransactions(fromDate, toDate)
+      // Both converge on the same upsert + match + classify pipeline below.
+      let providerTxns: readonly ProviderBankTransaction[];
+      let fetchedCount: number;
+
+      if (provider.syncTransactions) {
+        const added: ProviderBankTransaction[] = [];
+        const modified: ProviderBankTransaction[] = [];
+        const removedIds: string[] = [];
+        let cursor = bankAcctRow.sync_cursor ?? null;
+        // Page until the provider reports no more changes.
+        for (;;) {
+          const page = await provider.syncTransactions(
+            {
+              connectionId: connRow.provider_connection_id,
+              accountId: bankAcctRow.provider_account_id,
+            },
+            cursor,
+          );
+          added.push(...page.added);
+          modified.push(...page.modified);
+          removedIds.push(...page.removed);
+          cursor = page.nextCursor;
+          if (!page.hasMore) break;
+        }
+
+        // added + modified both upsert (dedup on provider_transaction_id).
+        providerTxns = [...added, ...modified];
+        fetchedCount = added.length + modified.length;
+
+        // Apply removals before the cursor is persisted.
+        if (removedIds.length > 0) {
+          await this.removeBankTransactions(bankAccountId, removedIds);
+        }
+
+        // Persist the cursor so the next sync resumes from here.
+        await this.db.run(
+          "UPDATE bank_accounts SET sync_cursor = ?, updated_at = ? WHERE id = ?",
+          [cursor, nowUtc(), bankAccountId],
+        );
+      } else {
+        providerTxns = await provider.fetchTransactions({
+          connectionId: connRow.provider_connection_id,
+          accountId: bankAcctRow.provider_account_id,
+          fromDate,
+          toDate,
+        });
+        fetchedCount = providerTxns.length;
+      }
 
       // Upsert into our database
       const upsertResult = await this.upsertBankTransactions(
@@ -3243,7 +3329,7 @@ export class LedgerEngine {
              transactions_matched = ?,
              completed_at = ?
          WHERE id = ?`,
-        [providerTxns.length, upsertResult.value.created,
+        [fetchedCount, upsertResult.value.created,
          matchResult.ok ? matchResult.value.matched : 0, completedAt, syncId]
       );
 
