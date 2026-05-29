@@ -15,6 +15,8 @@ export {
   normalizeDescription,
   lineFingerprint,
   fingerprintOf,
+  looseKey,
+  looseKeyFromFingerprint,
 } from "./normalize.js";
 export {
   labeledFixtures,

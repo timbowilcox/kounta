@@ -19,6 +19,8 @@ export type {
   CsvImportPreview,
   CsvImportPreviewRow,
   CsvImportResult,
+  CsvImportDecisions,
+  DedupStatus,
   DateFormat,
   SignConvention,
   AmountMode,

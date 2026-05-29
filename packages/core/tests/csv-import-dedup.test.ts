@@ -114,7 +114,10 @@ describe("manual CSV import", () => {
     expect(await countRowsForLedgerAccount()).toBe(1); // no double count
   });
 
-  it("dedups within a single file (two identical rows)", async () => {
+  it("preserves two genuinely-distinct identical rows in one file (occurrence-aware)", async () => {
+    // Two real identical transactions (e.g. two same-priced coffees that day)
+    // are BOTH legitimate — they must not collapse to one. (See B2; the prior
+    // behaviour silently dropped the second.)
     const csv = ["date,desc,amount", "01/04/2026,Officeworks,-89.95", "01/04/2026,Officeworks,-89.95"].join("\n");
     const commit = await engine.commitCsvImport({
       ledgerId,
@@ -122,8 +125,8 @@ describe("manual CSV import", () => {
       fileContent: csv,
       mapping: SIGNED_MAPPING,
     });
-    expect(commit.value!.imported).toBe(1);
-    expect(commit.value!.duplicates).toBe(1);
+    expect(commit.value!.imported).toBe(2);
+    expect(commit.value!.duplicates).toBe(0);
   });
 
   // -------------------------------------------------------------------------
@@ -174,7 +177,7 @@ describe("manual CSV import", () => {
     expect(preview.value!.duplicateCount).toBe(1);
     expect(preview.value!.newCount).toBe(1);
     const overlapRow = preview.value!.rows.find((r) => r.description === "OFFICEWORKS 0123")!;
-    expect(overlapRow.isDuplicate).toBe(true);
+    expect(overlapRow.dedupStatus).toBe("duplicate");
 
     const commit = await engine.commitCsvImport({
       ledgerId,

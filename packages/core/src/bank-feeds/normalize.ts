@@ -86,3 +86,21 @@ export function lineFingerprint(
 export function fingerprintOf(txn: ProviderBankTransaction): string {
   return lineFingerprint(txn.date, txn.amount, txn.type, txn.description);
 }
+
+/**
+ * The "loose" key — date + signed-amount, WITHOUT the description. Two rows
+ * sharing a loose key but differing on description are candidate cross-source
+ * duplicates (e.g. Plaid's cleaned merchant name vs a bank CSV's raw line):
+ * reliable enough to flag for confirmation, not to auto-merge.
+ */
+export function looseKey(date: string, amount: number, type: "credit" | "debit"): string {
+  const signedAmount = type === "debit" ? -amount : amount;
+  return `${date}|${signedAmount}`;
+}
+
+/** Derive the loose key (date|signedAmount) from a full line fingerprint. */
+export function looseKeyFromFingerprint(fingerprint: string): string {
+  const first = fingerprint.indexOf("|");
+  const second = fingerprint.indexOf("|", first + 1);
+  return second === -1 ? fingerprint : fingerprint.slice(0, second);
+}

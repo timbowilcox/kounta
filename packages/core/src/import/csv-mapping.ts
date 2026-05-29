@@ -103,9 +103,23 @@ export interface MappingProfile {
   readonly updatedAt: string;
 }
 
-/** A preview row: a mapped row annotated with whether it duplicates an existing one. */
+/**
+ * Dedup classification for a parsed row:
+ *   - `new`                — no match; will be imported.
+ *   - `duplicate`          — exact match against a prior same-source import OR
+ *                            an existing bank-feed row; auto-skipped.
+ *   - `possible_duplicate` — same date+amount as a bank-feed row but a different
+ *                            description; HELD for user confirmation (never
+ *                            silently merged, never silently double-counted).
+ */
+export type DedupStatus = "new" | "duplicate" | "possible_duplicate";
+
+/** A preview row: a mapped row annotated with its dedup decision and reason. */
 export interface CsvImportPreviewRow extends MappedRow {
-  readonly isDuplicate: boolean;
+  readonly dedupStatus: DedupStatus;
+  readonly dedupReason: string;
+  /** Stable key (fingerprint#occurrence) used to pass a decision back to commit. */
+  readonly dedupKey: string;
 }
 
 /** Dry-run preview of a CSV import — no writes performed. */
@@ -115,15 +129,21 @@ export interface CsvImportPreview {
   readonly headers: readonly string[];
   readonly newCount: number;
   readonly duplicateCount: number;
+  readonly possibleDuplicateCount: number;
   readonly errorCount: number;
   readonly totalDataRows: number;
 }
+
+/** Per-row decision for a `possible_duplicate`, keyed by `dedupKey`. */
+export type CsvImportDecisions = Record<string, "import" | "skip">;
 
 /** Result of committing a CSV import. */
 export interface CsvImportResult {
   readonly bankAccountId: string;
   readonly imported: number;
   readonly duplicates: number;
+  /** possible_duplicate rows that were held (not imported) pending confirmation. */
+  readonly possibleDuplicates: number;
   readonly errors: readonly RowError[];
   readonly matched: number;
 }

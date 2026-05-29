@@ -45,10 +45,13 @@ import type {
   ProviderBankTransaction,
 } from "../bank-feeds/types.js";
 import { bankTransactionToParseRow } from "../bank-feeds/adapter.js";
-import { fingerprintOf, lineFingerprint } from "../bank-feeds/normalize.js";
+import { fingerprintOf, lineFingerprint, looseKeyFromFingerprint } from "../bank-feeds/normalize.js";
 import { applyMapping, csvMappingSchema } from "../import/csv-mapping.js";
 import type {
   CsvMapping,
+  MappedRow,
+  DedupStatus,
+  CsvImportDecisions,
   MappingProfile,
   CsvImportPreview,
   CsvImportResult,
@@ -3206,19 +3209,82 @@ export class LedgerEngine {
    * bank accounts mapped to it (Plaid/Basiq/manual). This is the cross-channel
    * dedup scope.
    */
-  private async existingFingerprintsForLedgerAccount(
-    ledgerAccountId: string,
-  ): Promise<Set<string>> {
-    const rows = await this.db.all<{ line_fingerprint: string | null }>(
-      `SELECT bt.line_fingerprint
+  /**
+   * Dedup context for a ledger account, partitioned by source:
+   *   - manualCounts:     existing manual-import rows per fingerprint (for
+   *                       occurrence-aware same-source dedup).
+   *   - feedFingerprints: exact fingerprints of feed (Plaid/Basiq) rows.
+   *   - feedLooseKeys:    date+amount keys of feed rows (description-agnostic),
+   *                       for surfacing cross-source candidates.
+   */
+  private async dedupContextForLedgerAccount(ledgerAccountId: string): Promise<{
+    manualCounts: Map<string, number>;
+    feedFingerprints: Set<string>;
+    feedLooseKeys: Set<string>;
+  }> {
+    const rows = await this.db.all<{ provider: string; line_fingerprint: string | null }>(
+      `SELECT bc.provider AS provider, bt.line_fingerprint AS line_fingerprint
        FROM bank_transactions bt
        JOIN bank_accounts ba ON bt.bank_account_id = ba.id
+       JOIN bank_connections bc ON ba.connection_id = bc.id
        WHERE ba.mapped_account_id = ? AND bt.line_fingerprint IS NOT NULL`,
       [ledgerAccountId],
     );
-    const set = new Set<string>();
-    for (const r of rows) if (r.line_fingerprint) set.add(r.line_fingerprint);
-    return set;
+    const manualCounts = new Map<string, number>();
+    const feedFingerprints = new Set<string>();
+    const feedLooseKeys = new Set<string>();
+    for (const r of rows) {
+      const fp = r.line_fingerprint!;
+      if (r.provider === "manual") {
+        manualCounts.set(fp, (manualCounts.get(fp) ?? 0) + 1);
+      } else {
+        feedFingerprints.add(fp);
+        feedLooseKeys.add(looseKeyFromFingerprint(fp));
+      }
+    }
+    return { manualCounts, feedFingerprints, feedLooseKeys };
+  }
+
+  /**
+   * Classify each parsed row's dedup decision. Escalate-when-uncertain:
+   *   - same-source occurrence-aware: the Nth identical row is a duplicate only
+   *     if N prior identical rows already exist from this CSV source (so genuine
+   *     same-day duplicates persist, and re-import adds zero);
+   *   - cross-source exact (date+amount+description) → duplicate (auto-skip);
+   *   - cross-source loose (date+amount, different description) →
+   *     possible_duplicate (held for user confirmation — never auto-merged,
+   *     never silently double-counted);
+   *   - otherwise → new.
+   */
+  private classifyDedup(
+    rows: readonly MappedRow[],
+    ctx: { manualCounts: Map<string, number>; feedFingerprints: Set<string>; feedLooseKeys: Set<string> },
+  ): Array<{ row: MappedRow; fp: string; occ: number; dedupKey: string; status: DedupStatus; reason: string }> {
+    const occByFp = new Map<string, number>();
+    return rows.map((row) => {
+      const fp = lineFingerprint(row.date, row.amount, row.type, row.description);
+      const occ = (occByFp.get(fp) ?? 0) + 1;
+      occByFp.set(fp, occ);
+      const dedupKey = `${fp}#${occ}`;
+      const existingManual = ctx.manualCounts.get(fp) ?? 0;
+
+      let status: DedupStatus;
+      let reason: string;
+      if (occ <= existingManual) {
+        status = "duplicate";
+        reason = "Already imported from this CSV source (re-import)";
+      } else if (ctx.feedFingerprints.has(fp)) {
+        status = "duplicate";
+        reason = "Matches an existing bank-feed transaction (date, amount and description)";
+      } else if (ctx.feedLooseKeys.has(looseKeyFromFingerprint(fp))) {
+        status = "possible_duplicate";
+        reason = "Same date and amount as a bank-feed transaction but a different description — confirm before importing";
+      } else {
+        status = "new";
+        reason = "No matching transaction found";
+      }
+      return { row, fp, occ, dedupKey, status, reason };
+    });
   }
 
   private async validateLedgerAndAccount(
@@ -3255,24 +3321,26 @@ export class LedgerEngine {
       return err(createError(ErrorCode.VALIDATION_ERROR, e instanceof Error ? e.message : "Invalid mapping"));
     }
 
-    const existing = await this.existingFingerprintsForLedgerAccount(params.ledgerAccountId);
-    const seen = new Set<string>();
-    let duplicateCount = 0;
+    const ctx = await this.dedupContextForLedgerAccount(params.ledgerAccountId);
+    const classified = this.classifyDedup(mapped.rows, ctx);
 
-    const rows = mapped.rows.map((r) => {
-      const fp = lineFingerprint(r.date, r.amount, r.type, r.description);
-      const isDuplicate = existing.has(fp) || seen.has(fp);
-      seen.add(fp);
-      if (isDuplicate) duplicateCount++;
-      return { ...r, isDuplicate };
-    });
+    const rows = classified.map((c) => ({
+      ...c.row,
+      dedupStatus: c.status,
+      dedupReason: c.reason,
+      dedupKey: c.dedupKey,
+    }));
+    const newCount = classified.filter((c) => c.status === "new").length;
+    const duplicateCount = classified.filter((c) => c.status === "duplicate").length;
+    const possibleDuplicateCount = classified.filter((c) => c.status === "possible_duplicate").length;
 
     return ok({
       rows,
       errors: mapped.errors,
       headers: mapped.headers,
-      newCount: rows.length - duplicateCount,
+      newCount,
       duplicateCount,
+      possibleDuplicateCount,
       errorCount: mapped.errors.length,
       totalDataRows: mapped.totalDataRows,
     });
@@ -3290,6 +3358,8 @@ export class LedgerEngine {
     fileContent: string;
     mapping: CsvMapping;
     filename?: string;
+    /** Per-row decisions for possible_duplicate rows, keyed by dedupKey. */
+    decisions?: CsvImportDecisions;
   }): Promise<Result<CsvImportResult>> {
     const validationError = await this.validateLedgerAndAccount(params.ledgerId, params.ledgerAccountId);
     if (validationError) return err(validationError);
@@ -3302,28 +3372,40 @@ export class LedgerEngine {
     }
 
     const bankAccountId = await this.ensureManualBankAccount(params.ledgerId, params.ledgerAccountId);
-    const existing = await this.existingFingerprintsForLedgerAccount(params.ledgerAccountId);
-    const seen = new Set<string>();
-    let duplicates = 0;
+    const ctx = await this.dedupContextForLedgerAccount(params.ledgerAccountId);
+    const classified = this.classifyDedup(mapped.rows, ctx);
 
+    let duplicates = 0;
+    let possibleDuplicates = 0;
     const toInsert: ProviderBankTransaction[] = [];
-    for (const r of mapped.rows) {
-      const fp = lineFingerprint(r.date, r.amount, r.type, r.description);
-      if (existing.has(fp) || seen.has(fp)) {
+
+    for (const c of classified) {
+      if (c.status === "duplicate") {
         duplicates++;
         continue;
       }
-      seen.add(fp);
+      if (c.status === "possible_duplicate" && params.decisions?.[c.dedupKey] !== "import") {
+        // Held for confirmation: not imported (no silent double-count), reported.
+        possibleDuplicates++;
+        continue;
+      }
+      // new, or possible_duplicate the user explicitly chose to import.
       toInsert.push({
-        providerTransactionId: `manual:${fp}`,
-        date: r.date,
-        amount: r.amount,
-        type: r.type,
-        description: r.description,
-        reference: r.reference,
+        providerTransactionId: `manual:${c.dedupKey}`, // fingerprint#occurrence — stable, occurrence-aware
+        date: c.row.date,
+        amount: c.row.amount,
+        type: c.row.type,
+        description: c.row.description,
+        reference: c.row.reference,
         category: null,
-        balance: r.balance,
-        rawData: { ...r.rawData, _source: "manual_csv", _currency: r.currency, _filename: params.filename ?? null },
+        balance: c.row.balance,
+        rawData: {
+          ...c.row.rawData,
+          _source: "manual_csv",
+          _currency: c.row.currency,
+          _filename: params.filename ?? null,
+          _dedup: { status: c.status, reason: c.reason, decision: params.decisions?.[c.dedupKey] ?? null },
+        },
       });
     }
 
@@ -3347,6 +3429,7 @@ export class LedgerEngine {
           filename: params.filename ?? null,
           imported: up.value.created,
           duplicates,
+          possibleDuplicates,
           errors: mapped.errors.length,
         }),
         nowUtc(),
@@ -3357,6 +3440,7 @@ export class LedgerEngine {
       bankAccountId,
       imported: up.value.created,
       duplicates,
+      possibleDuplicates,
       errors: mapped.errors,
       matched: match.ok ? match.value.matched : 0,
     });
