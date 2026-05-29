@@ -51,6 +51,27 @@ const requirePaidPlan = async (c: Context<Env>) => {
 
 /** Get the configured bank feed provider or return error response. */
 const getProvider = (c: Context<Env>): { provider: BankFeedProvider; error: null } | { provider: null; error: Response } => {
+  // BANK_FEED_PROVIDER selects the provider explicitly. "mock" emits Plaid-shaped
+  // fixtures for development/testing the ingest pipeline; it fail-closes (throws)
+  // when NODE_ENV=production. Default is Basiq for AU/NZ.
+  const selected = (process.env["BANK_FEED_PROVIDER"] ?? "basiq").toLowerCase();
+
+  if (selected === "mock") {
+    try {
+      return { provider: createBankFeedProvider("mock", {}), error: null };
+    } catch (e) {
+      return {
+        provider: null,
+        error: errorResponse(
+          c,
+          createError(ErrorCode.BANK_FEED_NOT_CONFIGURED, e instanceof Error ? e.message : "Mock provider unavailable", [
+            { field: "BANK_FEED_PROVIDER", suggestion: "The mock provider cannot be used in production. Configure a real provider." },
+          ])
+        ) as unknown as Response,
+      };
+    }
+  }
+
   const basiqApiKey = process.env["BASIQ_API_KEY"];
   if (!basiqApiKey) {
     return {
@@ -61,7 +82,7 @@ const getProvider = (c: Context<Env>): { provider: BankFeedProvider; error: null
           {
             field: "provider",
             suggestion:
-              "Set BASIQ_API_KEY environment variable to enable bank feeds.",
+              "Set BASIQ_API_KEY environment variable to enable bank feeds, or BANK_FEED_PROVIDER=mock for development.",
           },
         ])
       ) as unknown as Response,

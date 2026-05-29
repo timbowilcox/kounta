@@ -195,6 +195,19 @@ export type { ConfirmAction } from "@kounta/core";
 
 export type { ClosedPeriod } from "@kounta/core";
 
+export type {
+  CsvMapping,
+  MappedRow,
+  RowError,
+  MappingProfile,
+  CsvImportPreview,
+  CsvImportPreviewRow,
+  CsvImportResult,
+  DateFormat,
+  SignConvention,
+  AmountMode,
+} from "@kounta/core";
+
 // --- Internal type imports -------------------------------------------------
 
 import type {
@@ -265,6 +278,10 @@ import type {
   Vendor,
   CreateVendorInput,
   UpdateVendorInput,
+  CsvMapping,
+  CsvImportPreview,
+  CsvImportResult,
+  MappingProfile,
 } from "@kounta/core";
 
 import type {
@@ -719,6 +736,52 @@ class ImportsModule {
     return this.c.request("POST", `/v1/imports/${batchId}/confirm`, {
       body: { actions },
     });
+  }
+
+  // --- Manual CSV import (column mapping + cross-channel dedup) -------------
+
+  /** Dry-run a CSV import: parsed rows with the mapping applied, plus dedup
+   * flags and surfaced row errors. Writes nothing. */
+  async previewCsv(
+    ledgerId: string,
+    input: { ledgerAccountId: string; fileContent: string; mapping: CsvMapping },
+  ): Promise<CsvImportPreview> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/preview`, { body: input });
+  }
+
+  /** Commit a CSV import: stages non-duplicate rows into the bank-feed pipeline. */
+  async commitCsv(
+    ledgerId: string,
+    input: { ledgerAccountId: string; fileContent: string; mapping: CsvMapping; filename?: string },
+  ): Promise<CsvImportResult> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/commit`, { body: input });
+  }
+
+  /** List reusable per-bank mapping profiles. */
+  async listMappings(ledgerId: string): Promise<MappingProfile[]> {
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/imports/mappings`);
+  }
+
+  /** Save a reusable per-bank mapping profile. */
+  async createMapping(
+    ledgerId: string,
+    input: { name: string; mapping: CsvMapping },
+  ): Promise<MappingProfile> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/mappings`, { body: input });
+  }
+
+  /** Update a mapping profile. */
+  async updateMapping(
+    ledgerId: string,
+    profileId: string,
+    input: { name?: string; mapping?: CsvMapping },
+  ): Promise<MappingProfile> {
+    return this.c.request("PUT", `/v1/ledgers/${ledgerId}/imports/mappings/${profileId}`, { body: input });
+  }
+
+  /** Delete a mapping profile. */
+  async deleteMapping(ledgerId: string, profileId: string): Promise<void> {
+    return this.c.request("DELETE", `/v1/ledgers/${ledgerId}/imports/mappings/${profileId}`);
   }
 }
 
