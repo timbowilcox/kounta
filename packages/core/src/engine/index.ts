@@ -25,6 +25,7 @@ import type {
   ImportRow,
   User,
   Result,
+  KountaError,
   StatementResponse,
   CurrencySetting,
   ExchangeRate,
@@ -44,7 +45,14 @@ import type {
   ProviderBankTransaction,
 } from "../bank-feeds/types.js";
 import { bankTransactionToParseRow } from "../bank-feeds/adapter.js";
-import { fingerprintOf } from "../bank-feeds/normalize.js";
+import { fingerprintOf, lineFingerprint } from "../bank-feeds/normalize.js";
+import { applyMapping, csvMappingSchema } from "../import/csv-mapping.js";
+import type {
+  CsvMapping,
+  MappingProfile,
+  CsvImportPreview,
+  CsvImportResult,
+} from "../import/csv-mapping.js";
 import { getTemplate } from "../templates/index.js";
 import type { AccountBalanceData, CashFlowAccountData } from "../statements/index.js";
 import { buildIncomeStatement, buildBalanceSheet, buildCashFlowStatement } from "../statements/index.js";
@@ -662,6 +670,24 @@ const toConversation = (row: ConversationRow): Conversation => ({
   ledgerId: row.ledger_id,
   title: row.title,
   messages: parseJsonb<ConversationMessage[]>(row.messages),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+interface MappingProfileRow {
+  id: string;
+  ledger_id: string;
+  name: string;
+  mapping: string | Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+const toMappingProfile = (row: MappingProfileRow): MappingProfile => ({
+  id: row.id,
+  ledgerId: row.ledger_id,
+  name: row.name,
+  mapping: parseJsonb(row.mapping) as unknown as CsvMapping,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -3058,6 +3084,313 @@ export class LedgerEngine {
     );
 
     return ok({ removed: del.changes });
+  }
+
+  // -------------------------------------------------------------------------
+  // Manual CSV import (acquisition channel #2)
+  //
+  // Converges on the SAME pipeline as the bank feeds: mapped rows become
+  // bank_transactions on a synthetic "manual" bank account mapped to the chosen
+  // ledger account, deduped cross-channel via the shared line-fingerprint, then
+  // classified + matched exactly like a feed sync.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Find or create the synthetic "manual" bank account mapped to a ledger
+   * account. One manual connection per ledger; one manual bank account per
+   * ledger account. Manual CSV rows are staged here so they share the ledger
+   * account's dedup scope with any Plaid/Basiq feed mapped to the same account.
+   */
+  private async ensureManualBankAccount(
+    ledgerId: string,
+    ledgerAccountId: string,
+  ): Promise<string> {
+    const provConnId = `manual:${ledgerId}`;
+    let connRow = await this.db.get<BankConnectionRow>(
+      "SELECT * FROM bank_connections WHERE ledger_id = ? AND provider = 'manual' AND provider_connection_id = ?",
+      [ledgerId, provConnId],
+    );
+    if (!connRow) {
+      const created = await this.createBankConnection({
+        ledgerId,
+        provider: "manual",
+        providerConnectionId: provConnId,
+        institutionId: "manual",
+        institutionName: "Manual Import",
+      });
+      if (!created.ok) throw new Error("Failed to create manual bank connection");
+      connRow = await this.db.get<BankConnectionRow>(
+        "SELECT * FROM bank_connections WHERE id = ?",
+        [created.value.id],
+      );
+    }
+    const connectionId = connRow!.id;
+
+    const provAcctId = `manual:${ledgerAccountId}`;
+    const existing = await this.db.get<BankAccountRow>(
+      "SELECT * FROM bank_accounts WHERE connection_id = ? AND provider_account_id = ?",
+      [connectionId, provAcctId],
+    );
+    if (existing) {
+      if (existing.mapped_account_id !== ledgerAccountId) {
+        await this.mapBankAccountToLedgerAccount(existing.id, ledgerAccountId);
+      }
+      return existing.id;
+    }
+
+    const ledgerRow = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const acct = await this.upsertBankAccount({
+      connectionId,
+      ledgerId,
+      providerAccountId: provAcctId,
+      name: "Manual Import",
+      accountNumber: provAcctId,
+      bsb: null,
+      type: "manual",
+      currency: ledgerRow?.currency ?? "AUD",
+      currentBalance: 0,
+      availableBalance: null,
+    });
+    if (!acct.ok) throw new Error("Failed to create manual bank account");
+    await this.mapBankAccountToLedgerAccount(acct.value.id, ledgerAccountId);
+    return acct.value.id;
+  }
+
+  /**
+   * Every line-fingerprint already staged for a ledger account, across ALL
+   * bank accounts mapped to it (Plaid/Basiq/manual). This is the cross-channel
+   * dedup scope.
+   */
+  private async existingFingerprintsForLedgerAccount(
+    ledgerAccountId: string,
+  ): Promise<Set<string>> {
+    const rows = await this.db.all<{ line_fingerprint: string | null }>(
+      `SELECT bt.line_fingerprint
+       FROM bank_transactions bt
+       JOIN bank_accounts ba ON bt.bank_account_id = ba.id
+       WHERE ba.mapped_account_id = ? AND bt.line_fingerprint IS NOT NULL`,
+      [ledgerAccountId],
+    );
+    const set = new Set<string>();
+    for (const r of rows) if (r.line_fingerprint) set.add(r.line_fingerprint);
+    return set;
+  }
+
+  private async validateLedgerAndAccount(
+    ledgerId: string,
+    ledgerAccountId: string,
+  ): Promise<KountaError | null> {
+    const ledger = await this.db.get<LedgerRow>("SELECT id FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return ledgerNotFoundError(ledgerId);
+    const acct = await this.db.get<{ id: string }>(
+      "SELECT id FROM accounts WHERE id = ? AND ledger_id = ?",
+      [ledgerAccountId, ledgerId],
+    );
+    if (!acct) return accountNotFoundError(ledgerAccountId);
+    return null;
+  }
+
+  /**
+   * Dry-run a CSV import: parse + map, surface malformed rows, and flag rows
+   * that already exist (cross-channel dedup + within-file dedup). Writes nothing.
+   */
+  async previewCsvImport(params: {
+    ledgerId: string;
+    ledgerAccountId: string;
+    fileContent: string;
+    mapping: CsvMapping;
+  }): Promise<Result<CsvImportPreview>> {
+    const validationError = await this.validateLedgerAndAccount(params.ledgerId, params.ledgerAccountId);
+    if (validationError) return err(validationError);
+
+    let mapped;
+    try {
+      mapped = applyMapping(params.fileContent, params.mapping);
+    } catch (e) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, e instanceof Error ? e.message : "Invalid mapping"));
+    }
+
+    const existing = await this.existingFingerprintsForLedgerAccount(params.ledgerAccountId);
+    const seen = new Set<string>();
+    let duplicateCount = 0;
+
+    const rows = mapped.rows.map((r) => {
+      const fp = lineFingerprint(r.date, r.amount, r.type, r.description);
+      const isDuplicate = existing.has(fp) || seen.has(fp);
+      seen.add(fp);
+      if (isDuplicate) duplicateCount++;
+      return { ...r, isDuplicate };
+    });
+
+    return ok({
+      rows,
+      errors: mapped.errors,
+      headers: mapped.headers,
+      newCount: rows.length - duplicateCount,
+      duplicateCount,
+      errorCount: mapped.errors.length,
+      totalDataRows: mapped.totalDataRows,
+    });
+  }
+
+  /**
+   * Commit a CSV import. Non-duplicate rows are staged as bank_transactions on
+   * the manual bank account, then run through the same classify + match
+   * pipeline as a feed sync. Re-importing an overlapping range does not
+   * double-count: existing fingerprints (any source) are skipped.
+   */
+  async commitCsvImport(params: {
+    ledgerId: string;
+    ledgerAccountId: string;
+    fileContent: string;
+    mapping: CsvMapping;
+    filename?: string;
+  }): Promise<Result<CsvImportResult>> {
+    const validationError = await this.validateLedgerAndAccount(params.ledgerId, params.ledgerAccountId);
+    if (validationError) return err(validationError);
+
+    let mapped;
+    try {
+      mapped = applyMapping(params.fileContent, params.mapping);
+    } catch (e) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, e instanceof Error ? e.message : "Invalid mapping"));
+    }
+
+    const bankAccountId = await this.ensureManualBankAccount(params.ledgerId, params.ledgerAccountId);
+    const existing = await this.existingFingerprintsForLedgerAccount(params.ledgerAccountId);
+    const seen = new Set<string>();
+    let duplicates = 0;
+
+    const toInsert: ProviderBankTransaction[] = [];
+    for (const r of mapped.rows) {
+      const fp = lineFingerprint(r.date, r.amount, r.type, r.description);
+      if (existing.has(fp) || seen.has(fp)) {
+        duplicates++;
+        continue;
+      }
+      seen.add(fp);
+      toInsert.push({
+        providerTransactionId: `manual:${fp}`,
+        date: r.date,
+        amount: r.amount,
+        type: r.type,
+        description: r.description,
+        reference: r.reference,
+        category: null,
+        balance: r.balance,
+        rawData: { ...r.rawData, _source: "manual_csv", _currency: r.currency, _filename: params.filename ?? null },
+      });
+    }
+
+    const up = await this.upsertBankTransactions(bankAccountId, params.ledgerId, toInsert);
+    if (!up.ok) return err(up.error);
+
+    // Same downstream pipeline as a feed sync.
+    await this.classifyPendingBankTransactions(params.ledgerId);
+    const match = await this.matchBankTransactions(params.ledgerId, bankAccountId);
+
+    // Audit the import (append-only).
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'csv_import', ?, 'created', 'system', 'engine', ?, ?)`,
+      [
+        generateId(),
+        params.ledgerId,
+        bankAccountId,
+        JSON.stringify({
+          ledgerAccountId: params.ledgerAccountId,
+          filename: params.filename ?? null,
+          imported: up.value.created,
+          duplicates,
+          errors: mapped.errors.length,
+        }),
+        nowUtc(),
+      ],
+    );
+
+    return ok({
+      bankAccountId,
+      imported: up.value.created,
+      duplicates,
+      errors: mapped.errors,
+      matched: match.ok ? match.value.matched : 0,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Mapping profiles — reusable per-bank column mappings
+  // -------------------------------------------------------------------------
+
+  async createMappingProfile(params: {
+    ledgerId: string;
+    name: string;
+    mapping: CsvMapping;
+  }): Promise<Result<MappingProfile>> {
+    const parsed = csvMappingSchema.safeParse(params.mapping);
+    if (!parsed.success) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "Invalid mapping", [
+        { field: "mapping", suggestion: parsed.error.issues[0]?.message },
+      ]));
+    }
+    const id = generateId();
+    const ts = nowUtc();
+    try {
+      await this.db.run(
+        `INSERT INTO mapping_profiles (id, ledger_id, name, mapping, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, params.ledgerId, params.name, JSON.stringify(parsed.data), ts, ts],
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("UNIQUE")) {
+        return err(createError(ErrorCode.VALIDATION_ERROR, `A mapping profile named "${params.name}" already exists`));
+      }
+      throw e;
+    }
+    return this.getMappingProfile(id);
+  }
+
+  async listMappingProfiles(ledgerId: string): Promise<Result<readonly MappingProfile[]>> {
+    const rows = await this.db.all<MappingProfileRow>(
+      "SELECT * FROM mapping_profiles WHERE ledger_id = ? ORDER BY name",
+      [ledgerId],
+    );
+    return ok(rows.map(toMappingProfile));
+  }
+
+  async getMappingProfile(id: string): Promise<Result<MappingProfile>> {
+    const row = await this.db.get<MappingProfileRow>("SELECT * FROM mapping_profiles WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+    return ok(toMappingProfile(row));
+  }
+
+  async updateMappingProfile(
+    id: string,
+    params: { name?: string; mapping?: CsvMapping },
+  ): Promise<Result<MappingProfile>> {
+    const existing = await this.db.get<MappingProfileRow>("SELECT * FROM mapping_profiles WHERE id = ?", [id]);
+    if (!existing) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+
+    let mappingJson = typeof existing.mapping === "string" ? existing.mapping : JSON.stringify(existing.mapping);
+    if (params.mapping !== undefined) {
+      const parsed = csvMappingSchema.safeParse(params.mapping);
+      if (!parsed.success) {
+        return err(createError(ErrorCode.VALIDATION_ERROR, "Invalid mapping"));
+      }
+      mappingJson = JSON.stringify(parsed.data);
+    }
+    await this.db.run(
+      "UPDATE mapping_profiles SET name = ?, mapping = ?, updated_at = ? WHERE id = ?",
+      [params.name ?? existing.name, mappingJson, nowUtc(), id],
+    );
+    return this.getMappingProfile(id);
+  }
+
+  async deleteMappingProfile(id: string): Promise<Result<void>> {
+    const existing = await this.db.get<{ id: string }>("SELECT id FROM mapping_profiles WHERE id = ?", [id]);
+    if (!existing) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+    await this.db.run("DELETE FROM mapping_profiles WHERE id = ?", [id]);
+    return ok(undefined);
   }
 
   async listBankTransactions(params: {

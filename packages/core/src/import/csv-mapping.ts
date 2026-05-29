@@ -93,6 +93,41 @@ export interface MappingResult {
   readonly totalDataRows: number;
 }
 
+/** A saved, reusable per-bank column mapping. */
+export interface MappingProfile {
+  readonly id: string;
+  readonly ledgerId: string;
+  readonly name: string;
+  readonly mapping: CsvMapping;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** A preview row: a mapped row annotated with whether it duplicates an existing one. */
+export interface CsvImportPreviewRow extends MappedRow {
+  readonly isDuplicate: boolean;
+}
+
+/** Dry-run preview of a CSV import — no writes performed. */
+export interface CsvImportPreview {
+  readonly rows: readonly CsvImportPreviewRow[];
+  readonly errors: readonly RowError[];
+  readonly headers: readonly string[];
+  readonly newCount: number;
+  readonly duplicateCount: number;
+  readonly errorCount: number;
+  readonly totalDataRows: number;
+}
+
+/** Result of committing a CSV import. */
+export interface CsvImportResult {
+  readonly bankAccountId: string;
+  readonly imported: number;
+  readonly duplicates: number;
+  readonly errors: readonly RowError[];
+  readonly matched: number;
+}
+
 // ---------------------------------------------------------------------------
 // Tokenizer — quoted fields, escaped quotes, CRLF/LF, BOM. Preserves every
 // physical row (we do NOT drop blanks here) so positions stay meaningful for
