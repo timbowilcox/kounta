@@ -350,6 +350,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     "025_invoice_approved_status.sql",
     "026_fix_invoice_approved_constraint.sql",
     "027_tier_usage_tracking.sql",
+    "031_csv_import.sql",
   ];
 
   // ── 4. Apply each unapplied migration in order ──
@@ -456,6 +457,50 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
   }
 };
 
+/**
+ * The ordered list of SQLite migrations the production runner applies.
+ * Exported so tests verify behaviour against the REAL production list (not a
+ * directory scan) — a readdir-based fixture diverges from this list and can
+ * silently hide a migration that was never registered here.
+ *
+ * IMPORTANT: when you add a migration file you MUST add it here (and to
+ * pgMigrations in applyPostgresMigrations). The migrations directory is NOT
+ * scanned in production. See migration-parity.test.ts.
+ */
+export const SQLITE_MIGRATION_FILES: readonly string[] = [
+  "001_initial_schema.sqlite.sql",
+  "002_audit_action_updated.sqlite.sql",
+  "003_billing.sqlite.sql",
+  "004_bank_feeds.sqlite.sql",
+  "005_intelligence.sqlite.sql",
+  "006_multi_currency.sqlite.sql",
+  "007_conversations.sqlite.sql",
+  "008_classification.sqlite.sql",
+  "009_email.sqlite.sql",
+  "010_onboarding.sqlite.sql",
+  "011_attachments.sqlite.sql",
+  "012_recurring_entries.sqlite.sql",
+  "013_closed_periods.sqlite.sql",
+  "014_global_classifications.sqlite.sql",
+  "015_stripe_connect.sqlite.sql",
+  "016_revenue_recognition.sqlite.sql",
+  "017_revenue_notifications.sqlite.sql",
+  "018_oauth.sqlite.sql",
+  "019_fixed_assets.sqlite.sql",
+  "020_capitalisation_notification.sqlite.sql",
+  "021_invoicing.sqlite.sql",
+  "022_invoice_payment_match_notification.sqlite.sql",
+  "023_invoice_sent_at.sqlite.sql",
+  "024_customers.sqlite.sql",
+  "025_invoice_approved_status.sqlite.sql",
+  "026_fix_invoice_approved_constraint.sqlite.sql",
+  "027_tier_usage_tracking.sqlite.sql",
+  // NOTE: 028–030 are intentionally NOT registered here yet (tracked by the
+  // security/integrity blocker sprint). 031 only depends on 001/004, so it
+  // applies correctly after 027 regardless.
+  "031_csv_import.sqlite.sql",
+];
+
 /** Apply all SQLite migrations in order. */
 const applySqliteMigrations = async (db: SqliteDatabase) => {
   const migrationsDir = findMigrationsDir();
@@ -464,35 +509,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     return;
   }
 
-  const migrationFiles = [
-    "001_initial_schema.sqlite.sql",
-    "002_audit_action_updated.sqlite.sql",
-    "003_billing.sqlite.sql",
-    "004_bank_feeds.sqlite.sql",
-    "005_intelligence.sqlite.sql",
-    "006_multi_currency.sqlite.sql",
-    "007_conversations.sqlite.sql",
-    "008_classification.sqlite.sql",
-    "009_email.sqlite.sql",
-    "010_onboarding.sqlite.sql",
-    "011_attachments.sqlite.sql",
-    "012_recurring_entries.sqlite.sql",
-    "013_closed_periods.sqlite.sql",
-    "014_global_classifications.sqlite.sql",
-    "015_stripe_connect.sqlite.sql",
-    "016_revenue_recognition.sqlite.sql",
-    "017_revenue_notifications.sqlite.sql",
-    "018_oauth.sqlite.sql",
-    "019_fixed_assets.sqlite.sql",
-    "020_capitalisation_notification.sqlite.sql",
-    "021_invoicing.sqlite.sql",
-    "022_invoice_payment_match_notification.sqlite.sql",
-    "023_invoice_sent_at.sqlite.sql",
-    "024_customers.sqlite.sql",
-    "025_invoice_approved_status.sqlite.sql",
-    "026_fix_invoice_approved_constraint.sqlite.sql",
-    "027_tier_usage_tracking.sqlite.sql",
-  ];
+  const migrationFiles = SQLITE_MIGRATION_FILES;
 
   for (const file of migrationFiles) {
     const filePath = join(migrationsDir, file);
