@@ -203,6 +203,8 @@ export type {
   CsvImportPreview,
   CsvImportPreviewRow,
   CsvImportResult,
+  CsvImportDecisions,
+  DedupStatus,
   DateFormat,
   SignConvention,
   AmountMode,
@@ -749,10 +751,17 @@ class ImportsModule {
     return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/preview`, { body: input });
   }
 
-  /** Commit a CSV import: stages non-duplicate rows into the bank-feed pipeline. */
+  /** Commit a CSV import: stages new rows into the bank-feed pipeline. `decisions`
+   * resolves possible-duplicate rows (keyed by the preview's dedupKey). */
   async commitCsv(
     ledgerId: string,
-    input: { ledgerAccountId: string; fileContent: string; mapping: CsvMapping; filename?: string },
+    input: {
+      ledgerAccountId: string;
+      fileContent: string;
+      mapping: CsvMapping;
+      filename?: string;
+      decisions?: Record<string, "import" | "skip">;
+    },
   ): Promise<CsvImportResult> {
     return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/commit`, { body: input });
   }

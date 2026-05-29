@@ -26,7 +26,7 @@ interface LedgerAccountOption {
 // demo/test render the component with stubbed data (no session required).
 export interface CsvImportApi {
   preview: (ledgerAccountId: string, fileContent: string, mapping: CsvMapping) => Promise<CsvImportPreview>;
-  commit: (ledgerAccountId: string, fileContent: string, mapping: CsvMapping, filename?: string) => Promise<CsvImportResult>;
+  commit: (ledgerAccountId: string, fileContent: string, mapping: CsvMapping, filename?: string, decisions?: Record<string, "import" | "skip">) => Promise<CsvImportResult>;
   listProfiles: () => Promise<MappingProfile[]>;
   saveProfile: (name: string, mapping: CsvMapping) => Promise<MappingProfile>;
 }
@@ -109,8 +109,12 @@ export function CsvImport({ accounts, api = defaultApi }: CsvImportProps) {
 
   const [profiles, setProfiles] = useState<MappingProfile[]>([]);
   const [profileName, setProfileName] = useState("");
+  // Per-row decisions for possible_duplicate rows (dedupKey -> import).
+  const [importAnyway, setImportAnyway] = useState<Record<string, boolean>>({});
 
   const headers = preview?.headers ?? [];
+  const chosenCount = preview ? preview.rows.filter((r) => r.dedupStatus === "possible_duplicate" && importAnyway[r.dedupKey]).length : 0;
+  const importableCount = (preview?.newCount ?? 0) + chosenCount;
 
   const setMap = (patch: Partial<CsvMapping>) =>
     setMapping((m) => ({ ...m, ...patch }) as CsvMapping);
@@ -152,11 +156,16 @@ export function CsvImport({ accounts, api = defaultApi }: CsvImportProps) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.commit(ledgerAccountId, fileContent, mapping, fileName ?? undefined);
+      const decisions: Record<string, "import" | "skip"> = {};
+      for (const [key, on] of Object.entries(importAnyway)) {
+        if (on) decisions[key] = "import";
+      }
+      const res = await api.commit(ledgerAccountId, fileContent, mapping, fileName ?? undefined, decisions);
       setResult(res);
       setPreview(null);
       setFileContent(null);
       setFileName(null);
+      setImportAnyway({});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -389,9 +398,18 @@ export function CsvImport({ accounts, api = defaultApi }: CsvImportProps) {
         <>
           <div className="flex" style={{ gap: 16, marginBottom: 12 }}>
             <Stat label="New rows" value={preview.newCount} tone="ok" />
+            <Stat label="Possible duplicates" value={preview.possibleDuplicateCount} tone={preview.possibleDuplicateCount > 0 ? "warn" : "muted"} />
             <Stat label="Duplicates" value={preview.duplicateCount} tone="muted" />
             <Stat label="Errors" value={preview.errorCount} tone={preview.errorCount > 0 ? "danger" : "muted"} />
           </div>
+
+          {preview.possibleDuplicateCount > 0 && (
+            <div className="text-xs" style={{ color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.5 }}>
+              Rows marked <strong>Possible duplicate</strong> share a date and amount with an existing bank-feed
+              transaction but have a different description. They are <strong>held</strong> by default to avoid
+              double-counting — tick “Import anyway” for any that are genuinely separate.
+            </div>
+          )}
 
           <div className="card" style={{ padding: 0, marginBottom: 16, maxHeight: 320, overflow: "auto" }}>
             <table className="w-full">
@@ -400,22 +418,40 @@ export function CsvImport({ accounts, api = defaultApi }: CsvImportProps) {
                   <th className="table-header" style={{ width: 110 }}>Date</th>
                   <th className="table-header">Description</th>
                   <th className="table-header text-right" style={{ width: 130 }}>Amount</th>
-                  <th className="table-header text-right" style={{ width: 110 }}>Status</th>
+                  <th className="table-header text-right" style={{ width: 200 }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {preview.rows.map((r, i) => (
-                  <tr key={i} className="table-row" style={{ opacity: r.isDuplicate ? 0.5 : 1 }}>
-                    <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{r.date}</td>
-                    <td className="table-cell" style={{ fontSize: 13, color: "var(--text-primary)" }}>{r.description}</td>
-                    <td className="table-cell text-right font-mono" style={{ fontSize: 13, color: r.type === "debit" ? "var(--text-primary)" : "var(--success, #1a7f4b)" }}>
-                      {formatCents(r.amount, r.type)}
-                    </td>
-                    <td className="table-cell text-right">
-                      <span className={r.isDuplicate ? "badge-amber" : "badge-green"}>{r.isDuplicate ? "Duplicate" : "New"}</span>
-                    </td>
-                  </tr>
-                ))}
+                {preview.rows.map((r, i) => {
+                  const isPossible = r.dedupStatus === "possible_duplicate";
+                  const isDup = r.dedupStatus === "duplicate";
+                  const chosen = !!importAnyway[r.dedupKey];
+                  const dimmed = isDup || (isPossible && !chosen);
+                  return (
+                    <tr key={i} className="table-row" style={{ opacity: dimmed ? 0.5 : 1 }} title={r.dedupReason}>
+                      <td className="table-cell font-mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>{r.date}</td>
+                      <td className="table-cell" style={{ fontSize: 13, color: "var(--text-primary)" }}>{r.description}</td>
+                      <td className="table-cell text-right font-mono" style={{ fontSize: 13, color: r.type === "debit" ? "var(--text-primary)" : "var(--success, #1a7f4b)" }}>
+                        {formatCents(r.amount, r.type)}
+                      </td>
+                      <td className="table-cell text-right">
+                        {isPossible ? (
+                          <label className="text-xs" style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                            <span className="badge-amber">Possible duplicate</span>
+                            <input
+                              type="checkbox"
+                              checked={chosen}
+                              onChange={(e) => setImportAnyway((m) => ({ ...m, [r.dedupKey]: e.target.checked }))}
+                            />
+                            <span style={{ color: "var(--text-tertiary)" }}>import anyway</span>
+                          </label>
+                        ) : (
+                          <span className={isDup ? "badge-amber" : "badge-green"}>{isDup ? "Duplicate" : "New"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -435,24 +471,29 @@ export function CsvImport({ accounts, api = defaultApi }: CsvImportProps) {
             </div>
           )}
 
-          <button onClick={onCommit} disabled={busy || preview.newCount === 0} style={primaryBtn(busy || preview.newCount === 0)}>
-            {busy ? "Importing…" : `Import ${preview.newCount} new row${preview.newCount === 1 ? "" : "s"}`}
+          <button onClick={onCommit} disabled={busy || importableCount === 0} style={primaryBtn(busy || importableCount === 0)}>
+            {busy ? "Importing…" : `Import ${importableCount} row${importableCount === 1 ? "" : "s"}`}
           </button>
         </>
       )}
 
       {result && (
         <div className="text-sm" style={{ marginTop: 12, color: "var(--text-secondary)" }}>
-          Imported {result.imported} · {result.duplicates} duplicates skipped · {result.errors.length} errors. They are
-          now in the pending bank-transaction queue.
+          Imported {result.imported} · {result.duplicates} duplicates skipped
+          {result.possibleDuplicates > 0 ? ` · ${result.possibleDuplicates} possible duplicates held` : ""} · {result.errors.length} errors.
+          They are now in the pending bank-transaction queue.
         </div>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: "ok" | "muted" | "danger" }) {
-  const color = tone === "ok" ? "var(--success, #1a7f4b)" : tone === "danger" ? "var(--danger, #c0392b)" : "var(--text-tertiary)";
+function Stat({ label, value, tone }: { label: string; value: number; tone: "ok" | "muted" | "danger" | "warn" }) {
+  const color =
+    tone === "ok" ? "var(--success, #1a7f4b)" :
+    tone === "danger" ? "var(--danger, #c0392b)" :
+    tone === "warn" ? "var(--warning, #b7791f)" :
+    "var(--text-tertiary)";
   return (
     <div>
       <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: "var(--font-family-display)" }}>{value}</div>

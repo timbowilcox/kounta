@@ -93,6 +93,7 @@ importRoutes.post("/csv/commit", async (c) => {
     fileContent: body.fileContent,
     mapping: body.mapping,
     filename: body.filename,
+    decisions: body.decisions,
   });
   if (!result.ok) return errorResponse(c, result.error);
   return created(c, result.value);

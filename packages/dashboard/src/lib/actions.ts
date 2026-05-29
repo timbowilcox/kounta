@@ -592,9 +592,10 @@ export async function commitCsvImport(
   fileContent: string,
   mapping: CsvMapping,
   filename?: string,
+  decisions?: Record<string, "import" | "skip">,
 ): Promise<CsvImportResult> {
   const { client, ledgerId } = await getSessionClient();
-  return client.imports.commitCsv(ledgerId, { ledgerAccountId, fileContent, mapping, filename });
+  return client.imports.commitCsv(ledgerId, { ledgerAccountId, fileContent, mapping, filename, decisions });
 }
 
 export async function fetchMappingProfiles(): Promise<MappingProfile[]> {
