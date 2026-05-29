@@ -1,8 +1,10 @@
 import { getSessionClient } from "@/lib/kounta";
 import { BankFeedsView } from "./bank-feeds-view";
 import { CsvImport } from "./csv-import";
-import { fetchBankTransactions, fetchAccounts } from "@/lib/actions";
+import { ReviewQueue } from "./review-queue";
+import { fetchBankTransactions, fetchAccounts, fetchReviewItems } from "@/lib/actions";
 import type { BankTransactionSummary } from "@/lib/actions";
+import type { ReviewItem } from "@kounta/sdk";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +41,17 @@ export default async function BankFeedsPage() {
     accounts = [];
   }
 
+  let reviewItems: ReviewItem[] = [];
+  try {
+    reviewItems = await fetchReviewItems("open");
+  } catch {
+    reviewItems = [];
+  }
+
   return (
     <div>
       <BankFeedsView connections={connections} error={error} initialBankTxns={bankTxns} />
+      <ReviewQueue initialItems={reviewItems} />
       {accounts.length > 0 && <CsvImport accounts={accounts} />}
     </div>
   );

@@ -208,6 +208,10 @@ export type {
   DateFormat,
   SignConvention,
   AmountMode,
+  ReviewItem,
+  ReviewItemType,
+  ReviewItemStatus,
+  ReviewResolution,
 } from "@kounta/core";
 
 // --- Internal type imports -------------------------------------------------
@@ -284,6 +288,8 @@ import type {
   CsvImportPreview,
   CsvImportResult,
   MappingProfile,
+  ReviewItem,
+  ReviewItemStatus,
 } from "@kounta/core";
 
 import type {
@@ -378,6 +384,7 @@ export class Kounta {
   readonly apiKeys: ApiKeysModule;
   readonly admin: AdminModule;
   readonly bankFeeds: BankFeedsModule;
+  readonly reviewItems: ReviewItemsModule;
   readonly notifications: NotificationsModule;
   readonly currencies: CurrenciesModule;
   readonly conversations: ConversationsModule;
@@ -410,6 +417,7 @@ export class Kounta {
     this.apiKeys = new ApiKeysModule(this);
     this.admin = new AdminModule(this);
     this.bankFeeds = new BankFeedsModule(this);
+    this.reviewItems = new ReviewItemsModule(this);
     this.notifications = new NotificationsModule(this);
     this.currencies = new CurrenciesModule(this);
     this.conversations = new ConversationsModule(this);
@@ -791,6 +799,27 @@ class ImportsModule {
   /** Delete a mapping profile. */
   async deleteMapping(ledgerId: string, profileId: string): Promise<void> {
     return this.c.request("DELETE", `/v1/ledgers/${ledgerId}/imports/mappings/${profileId}`);
+  }
+}
+
+// --- Review queue ----------------------------------------------------------
+
+class ReviewItemsModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List review-queue items (optionally filtered by status). */
+  async list(ledgerId: string, status?: ReviewItemStatus): Promise<ReviewItem[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/review-items${qs}`);
+  }
+
+  /** Resolve a review item: import|dismiss (held candidate) or acknowledge|dismiss (removed txn). */
+  async resolve(
+    ledgerId: string,
+    id: string,
+    action: "import" | "dismiss" | "acknowledge",
+  ): Promise<ReviewItem> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/review-items/${id}/resolve`, { body: { action } });
   }
 }
 

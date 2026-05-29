@@ -18,6 +18,7 @@ import type {
 } from "@kounta/sdk";
 import type { ApiKeySafe, ApiKeyWithRaw } from "@kounta/sdk";
 import type { CsvMapping, CsvImportPreview, CsvImportResult, MappingProfile } from "@kounta/sdk";
+import type { ReviewItem, ReviewItemStatus } from "@kounta/sdk";
 
 // --- Tier error handling -----------------------------------------------------
 
@@ -601,6 +602,21 @@ export async function commitCsvImport(
 export async function fetchMappingProfiles(): Promise<MappingProfile[]> {
   const { client, ledgerId } = await getSessionClient();
   return client.imports.listMappings(ledgerId);
+}
+
+// --- Review queue ----------------------------------------------------------
+
+export async function fetchReviewItems(status: ReviewItemStatus = "open"): Promise<ReviewItem[]> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.reviewItems.list(ledgerId, status);
+}
+
+export async function resolveReviewItem(
+  id: string,
+  action: "import" | "dismiss" | "acknowledge",
+): Promise<ReviewItem> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.reviewItems.resolve(ledgerId, id, action);
 }
 
 export async function saveMappingProfile(name: string, mapping: CsvMapping): Promise<MappingProfile> {
