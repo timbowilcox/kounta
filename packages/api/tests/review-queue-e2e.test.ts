@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 import { SqliteDatabase, LedgerEngine, MockPlaidProvider, MOCK_ACCOUNT_ID } from "@kounta/core";
 import type { Database } from "@kounta/core";
 import { createApp } from "../src/app.js";
-import { SQLITE_MIGRATION_FILES } from "../src/index.js";
+import { SQLITE_MIGRATION_FILES } from "../src/migrations.js";
 import type { Hono } from "hono";
 import type { Env } from "../src/lib/context.js";
 

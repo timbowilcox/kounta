@@ -13,7 +13,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { SqliteDatabase, LedgerEngine } from "@kounta/core";
 import type { Database } from "@kounta/core";
-import { SQLITE_MIGRATION_FILES } from "../src/index.js";
+import { SQLITE_MIGRATION_FILES } from "../src/migrations.js";
 
 const migDir = resolve(__dirname, "../../core/src/db/migrations");
 
