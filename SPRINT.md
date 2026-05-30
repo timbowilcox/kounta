@@ -1,61 +1,77 @@
-# SPRINT — Session C fix: ledger soft-delete migration (unblock merge)
+# SPRINT — Session D: close the residual isolation + Stripe-Connect gaps
 
 ## Context
-EVALUATION-6 blocked the merge: softDeleteLedger writes status='deleted', but ledger_status permits
-only ('active','archived') on BOTH backends, so the UPDATE throws on the constraint before any audit
-write — the atomicity proof is vacuous and DELETE /v1/ledgers/:ledgerId 500s in prod. SAME class as
-030: the engine intent ('deleted') is correct; the schema enum/CHECK never got the value. Fix the
-schema, not the op. Everything else in Session C verified solid.
+Session C merged the fail-closed hardening. Two gaps the evaluators surfaced remain — both things
+that pass auth/encryption but then leak or break:
+1. Soft-delete only HALF-isolates a ledger — an existing OAuth token still validates against a
+   deleted ledger, and ledger-scoped reads (listAccounts, etc.) do raw `SELECT * FROM ledgers`
+   with only `if (!ledger)` (no status filter), so they return a deleted ledger's data. (API-key
+   access, the by-id getLedger, and the owner list are already closed.)
+2. getStripeConnectionByAccountId returns webhook_secret UNDECRYPTED; the Stripe-Connect webhook
+   route HMACs with it, so now that encryption is mandatory, legit Stripe webhooks 400.
+No new migrations, no prod-DB action.
 
-Continue on feat/fail-closed-hardening (unmerged), worktree C:\dev\kounta-hardening.
+Cut feat/session-d-residuals from main (Session C merged). Dedicated worktree.
 
-## Scope
-Add 'deleted' to ledger_status via a new migration 033 (mirror 030's audit_action add); register it;
-make softDeleteLedger genuinely work and its atomicity proof real. NO change to the engine write —
-it already writes 'deleted' correctly.
+## Scope — two contained fixes
+1. Deleted-ledger isolation (the bigger one).  2. Stripe-Connect webhook-secret decrypt (small).
 
 ## Before any code
-1. Read SPRINT.md, CLAUDE.md, HANDOFF.md, EVALUATION-6.md (esp. the softDeleteLedger finding).
-2. Orient: 030 (PG ALTER TYPE ADD VALUE + SQLite table-recreate) as the template; the runner's
-   special-case branches (017/020/022/030, now narrowed to swallow only 42710); the manifest;
-   softDeleteLedger + its vacuous audit test; any TS ledger_status union; the ledger get/list/access
-   queries (soft-delete must actually HIDE the ledger).
-3. Baseline: pnpm test --concurrency=1 → confirm 690/5-skip/0-fail.
+1. Read SPRINT.md, CLAUDE.md, HANDOFF.md, EVALUATION-6.md, EVALUATION-7.md (the OAuth-residual +
+   Stripe findings).
+2. Locate precisely:
+   - validateOAuthToken (oauth-scopes.ts) — confirm no ledger-status check; oauth_tokens +
+     its revoked_at column; softDeleteLedger (confirm it doesn't touch oauth_tokens).
+   - validateApiKey / the auth chokepoint (active-only check — already correct; the model to mirror).
+   - the ledger-scoped engine reads doing raw `SELECT * FROM ledgers WHERE id=?` (listAccounts and
+     the rest) — enumerate them; this is the data-layer leak.
+   - getStripeConnectionByAccountId + toStripeConnection (already decrypts) + the stripe-connect
+     webhook route consuming webhookSecret; enumerate ALL callers of getStripeConnectionByAccountId.
+3. Baseline: pnpm test --concurrency=1 → expect 692/5/0.
+
+## GATE — report findings + fix plan + blast radius (STOP, report, then proceed)
+Item 1's must-fix is the auth-layer closure; the data-layer centralization has a real blast-radius
+call. Report:
+   - every external + internal path that resolves to / reads a ledger, and which leak vs already reject
+   - your chokepoint design: one shared "resolve active ledger / assert accessible" helper the
+     ledger-scoped reads route through, vs patching each raw SELECT — and how many methods it touches
+   - the OAuth-revoke-on-delete plan (mirror the API-key revocation already in softDeleteLedger)
+   - for item 2: confirm every caller of getStripeConnectionByAccountId expects DECRYPTED (so
+     decrypting won't double-decrypt), and whether the clean fix is routing it through
+     toStripeConnection rather than its raw SELECT
+Proceed after reporting. STOP and flag if the data-layer centralization is materially large (then do
+the auth closure + a bounded data-layer fix and flag the rest).
 
 ## The work
-1. Migration 033 (033_ledger_status_deleted): PG `ALTER TYPE ledger_status ADD VALUE IF NOT EXISTS
-   'deleted'`; SQLite table-recreate adding 'deleted' to the CHECK (mirror 030's .sqlite.sql).
-   Append-only — 033 is new, never edit an applied migration.
-2. Register 033 in the manifest (REGISTERED, after 032); anti-drift guard stays green. Update any TS
-   ledger_status union to include 'deleted'.
-3. Runner: add the 033 PG ALTER TYPE special-case mirroring 030 (per-statement db.exec, the
-   now-narrowed 42710-only catch). 033 is the only runner addition.
-4. Checkpoint — report before changing read behaviour: do the ledger get/list/access paths exclude
-   status='deleted'? A soft-deleted ledger must not be returned to normal reads. If they don't hide
-   it, fixing that is part of making the op genuinely work.
-5. Make the proof REAL: the existing audit test must now reach the audit write and prove (a)
-   happy-path soft-delete works and hides the ledger, (b) the nested softDeleteLedger→revokeApiKey
-   audit-injection rolls back BOTH the ledger status AND the key revocations. Add the missing
-   happy-path test (there is none today).
-6. Update any parity assertion enumerating ledger_status values.
+Item 1:
+- softDeleteLedger: also revoke the ledger's OAuth tokens (set revoked_at), INSIDE the existing
+  transaction wrapper — so the audit-injection rollback still undoes it.
+- validateOAuthToken: reject a token whose ledger is status='deleted' (belt for any issued/raced token).
+- Data-layer gate: route ledger-scoped reads through a shared accessible-ledger check so a deleted
+  ledger is uniformly not-found/forbidden (per the gate's bounded design).
+Item 2:
+- getStripeConnectionByAccountId returns the webhook_secret (and tokens) DECRYPTED — ideally by
+  reusing toStripeConnection's decryption, not a raw SELECT (+ decryptToken import). The webhook
+  route then HMACs with the plaintext secret.
 
 ## Definition of done (proof, not assertion)
-- Real-PG: full manifest 001–033 applies clean from empty on a UTF-8 throwaway Postgres, twice
-  (33 applied / re-runnable), 033's ALTER TYPE succeeding via its special-case. Reuse the Session C
-  proof harness; init UTF-8.
-- softDeleteLedger happy-path works on real PG and the ledger is hidden from reads; the
-  audit-injection test genuinely rolls back the nested op — prove non-vacuity by unwrapping →
-  RED → revert.
-- Full suite green serially, 0 fail-open warnings, typecheck clean.
+Item 1 — an isolation proof (the inverse of EVALUATION-7's leak demo): create a ledger + API key +
+   OAuth token + child account; soft-delete; then assert ALL of: OAuth token no longer validates,
+   API key rejected, getLedger not-found, listAccounts (+ a sample of other ledger-scoped reads)
+   return not-found/forbidden — the deleted ledger leaks nowhere. Confirm the softDeleteLedger
+   audit-injection rollback still fully rolls back (now incl. the OAuth revocation) — prove
+   non-vacuity by unwrapping → RED → revert.
+Item 2 — a Stripe-Connect webhook signed with the PLAINTEXT secret is now ACCEPTED (was 400); a
+   tampered/wrong-secret one is still REJECTED. Confirm no caller double-decrypts.
+Full suite green serially, 0 fail-open warnings, typecheck clean.
 
 ## Scope guardrails
-ONLY: migration 033 + registration + runner special-case + read-path hiding + the softDeleteLedger
-tests + the TS union. Do NOT touch the other Session C fixes, the Stripe-webhook secret (post-merge
-follow-up), or commitCsvImport (deferred). No squashing.
+No new migrations (oauth_tokens.revoked_at already exists). No prod-DB action. Don't touch the merged
+Session C fixes beyond wiring OAuth-revoke into softDeleteLedger. commitCsvImport stays deferred. No
+launch-strategy / feature work.
 
 ## At the end
-- HANDOFF.md: 033 added + proven on real PG, softDeleteLedger now works + proof is real, the
-  read-path decision, test status, files changed.
-- Commit per chunk. Do NOT self-certify mergeable — the evaluator re-checks the softDeleteLedger
-  path (happy + nested rollback) and the real-PG 001–033 apply, then the whole Session C branch
-  merges.
+- HANDOFF.md: both fixes + proofs, the chokepoint design + any bounded-out remainder, callers checked,
+  test status, files changed, next step.
+- Commit per item. Do NOT self-certify mergeable — a fresh evaluator re-runs the isolation proof
+  (every access path closed) + the Stripe accept/reject, and re-proves non-vacuity.

@@ -121,6 +121,17 @@ export const validateOAuthToken = async (
     return { ok: false, error: "Token has expired" };
   }
 
+  // Reject tokens whose ledger has been soft-deleted. softDeleteLedger also
+  // revokes the ledger's tokens, but this is a belt: any token issued or raced
+  // around the delete must still be rejected so a deleted ledger leaks nowhere.
+  const ledgerRow = await db.get<{ status: string }>(
+    "SELECT status FROM ledgers WHERE id = ?",
+    [tokenRow.ledger_id],
+  );
+  if (!ledgerRow || ledgerRow.status === "deleted") {
+    return { ok: false, error: "Ledger not found" };
+  }
+
   // Check scope enforcement
   const scopes = parseScopesFromDb(tokenRow.scopes);
   if (!isScopeAllowed(method, path, scopes)) {

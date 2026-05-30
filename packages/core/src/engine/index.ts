@@ -953,6 +953,21 @@ export class LedgerEngine {
     return ok(toLedger(row));
   }
 
+  /**
+   * Resolve a ledger row only when it is accessible — i.e. NOT soft-deleted.
+   * Returns undefined for a missing OR deleted ledger so each caller's existing
+   * `if (!ledger)` guard uniformly yields not-found, closing the soft-delete
+   * data leak for every ledger-scoped read (and, via the pre-read guard, every
+   * write). Archived ledgers stay readable: the filter is `status != 'deleted'`,
+   * not `status = 'active'`.
+   */
+  private async getActiveLedgerRow(ledgerId: string): Promise<LedgerRow | undefined> {
+    return this.db.get<LedgerRow>(
+      "SELECT * FROM ledgers WHERE id = ? AND status != 'deleted'",
+      [ledgerId],
+    );
+  }
+
   async findUserByProvider(authProvider: string, authProviderId: string): Promise<Result<User | null>> {
     const row = await this.db.get<UserRow>(
       "SELECT * FROM users WHERE auth_provider = ? AND auth_provider_id = ?",
@@ -1000,7 +1015,7 @@ export class LedgerEngine {
     }
 
     // Verify ledger exists
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [params.ledgerId]);
+    const ledger = await this.getActiveLedgerRow(params.ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(params.ledgerId));
     }
@@ -1078,7 +1093,7 @@ export class LedgerEngine {
   }
 
   async listAccounts(ledgerId: string): Promise<Result<AccountWithBalance[]>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -1113,7 +1128,7 @@ export class LedgerEngine {
 
     // Verify ledger exists (select only needed columns)
     const ledger = await this.db.get<Pick<LedgerRow, "id" | "currency" | "closed_through">>(
-      "SELECT id, currency, closed_through FROM ledgers WHERE id = ?",
+      "SELECT id, currency, closed_through FROM ledgers WHERE id = ? AND status != 'deleted'",
       [input.ledgerId],
     );
     if (!ledger) {
@@ -1332,7 +1347,7 @@ export class LedgerEngine {
     ledgerId: string,
     params?: { cursor?: string; limit?: number }
   ): Promise<Result<{ data: TransactionWithLines[]; nextCursor: string | null }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -1631,7 +1646,7 @@ export class LedgerEngine {
     }
 
     // Verify ledger exists
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [params.ledgerId]);
+    const ledger = await this.getActiveLedgerRow(params.ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(params.ledgerId));
     }
@@ -1690,7 +1705,7 @@ export class LedgerEngine {
   }
 
   async listApiKeys(ledgerId: string): Promise<Result<ApiKey[]>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -1752,15 +1767,27 @@ export class LedgerEngine {
     await this.db.transaction(async () => {
       await this.db.run("UPDATE ledgers SET status = 'deleted', updated_at = ? WHERE id = ?", [now, ledgerId]);
 
-      const keysResult = await this.listApiKeys(ledgerId);
-      if (keysResult.ok) {
-        for (const key of keysResult.value) {
-          if (key.status === "active") {
-            const revoked = await this.revokeApiKey(key.id);
-            if (!revoked.ok) throw new Error(`Failed to revoke key ${key.id} during ledger deletion`);
-          }
-        }
+      // Revoke the ledger's active API keys. Read api_keys directly rather than
+      // via listApiKeys: listApiKeys now resolves the ledger through the
+      // active-ledger gate, which (correctly) treats this just-deleted ledger as
+      // not-found — so depending on it here would silently skip revocation.
+      const keyRows = await this.db.all<ApiKeyRow>(
+        "SELECT * FROM api_keys WHERE ledger_id = ? AND status = 'active'",
+        [ledgerId],
+      );
+      for (const key of keyRows) {
+        const revoked = await this.revokeApiKey(key.id);
+        if (!revoked.ok) throw new Error(`Failed to revoke key ${key.id} during ledger deletion`);
       }
+
+      // Revoke any OAuth access tokens issued for this ledger so a previously
+      // authorized (unexpired) token can no longer reach the deleted ledger's
+      // sub-resources. Mirrors the API-key revocation above and runs inside the
+      // same transaction, so an audit-write failure rolls this back too.
+      await this.db.run(
+        "UPDATE oauth_tokens SET revoked_at = ? WHERE ledger_id = ? AND revoked_at IS NULL",
+        [now, ledgerId],
+      );
 
       const auditId = generateId();
       await this.db.run(
@@ -1778,7 +1805,7 @@ export class LedgerEngine {
   // -------------------------------------------------------------------------
 
   async getLedgerJurisdiction(ledgerId: string): Promise<Result<{ jurisdiction: string; taxId: string | null; taxBasis: string; fiscalYearStart: number }>> {
-    const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const row = await this.getActiveLedgerRow(ledgerId);
     if (!row) return err(ledgerNotFoundError(ledgerId));
 
     return ok({
@@ -1793,7 +1820,7 @@ export class LedgerEngine {
     ledgerId: string,
     updates: { jurisdiction?: string; taxId?: string | null; taxBasis?: string },
   ): Promise<Result<{ jurisdiction: string; taxId: string | null; taxBasis: string }>> {
-    const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const row = await this.getActiveLedgerRow(ledgerId);
     if (!row) return err(ledgerNotFoundError(ledgerId));
 
     const sets: string[] = [];
@@ -1822,7 +1849,7 @@ export class LedgerEngine {
 
     await this.db.run(`UPDATE ledgers SET ${sets.join(", ")} WHERE id = ?`, params);
 
-    const updated = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const updated = await this.getActiveLedgerRow(ledgerId);
     return ok({
       jurisdiction: updated?.jurisdiction ?? "AU",
       taxId: updated?.tax_id ?? null,
@@ -1913,7 +1940,7 @@ export class LedgerEngine {
       business_email: string | null; business_phone: string | null;
       tax_id: string | null;
     }>(
-      "SELECT name, jurisdiction, currency, business_name, business_address, business_email, business_phone, tax_id FROM ledgers WHERE id = ?",
+      "SELECT name, jurisdiction, currency, business_name, business_address, business_email, business_phone, tax_id FROM ledgers WHERE id = ? AND status != 'deleted'",
       [ledgerId],
     );
     if (!row) return err(ledgerNotFoundError(ledgerId));
@@ -2093,7 +2120,11 @@ export class LedgerEngine {
       "SELECT id, webhook_secret, ledger_id FROM stripe_connections WHERE stripe_account_id = ? AND status = 'active'",
       [accountId],
     );
-    return row ? { id: row.id, webhookSecret: row.webhook_secret, ledgerId: row.ledger_id } : null;
+    // Decrypt the webhook secret so the Stripe-Connect webhook route can HMAC
+    // with the plaintext (it is stored encrypted; mandatory encryption made the
+    // raw value an `enc:` envelope, which would reject every legit webhook).
+    // This is the only caller and it expects plaintext — no double-decrypt.
+    return row ? { id: row.id, webhookSecret: row.webhook_secret ? decryptToken(row.webhook_secret) : null, ledgerId: row.ledger_id } : null;
   }
 
   async createStripeConnection(input: CreateStripeConnectionInput) {
@@ -2201,7 +2232,7 @@ export class LedgerEngine {
     ledgerId: string,
     params?: { cursor?: string; limit?: number }
   ): Promise<Result<{ data: AuditEntry[]; nextCursor: string | null }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -2238,7 +2269,7 @@ export class LedgerEngine {
       return err(createError(ErrorCode.TEMPLATE_NOT_FOUND, `Template not found: ${templateSlug}`));
     }
 
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -2318,7 +2349,7 @@ export class LedgerEngine {
     startDate: string,
     endDate: string,
   ): Promise<Result<StatementResponse>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const rows = await this.db.all<AccountRow>(
@@ -2372,7 +2403,7 @@ export class LedgerEngine {
     ledgerId: string,
     asOfDate: string,
   ): Promise<Result<StatementResponse>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     // Balance sheet accounts
@@ -2430,7 +2461,7 @@ export class LedgerEngine {
     startDate: string,
     endDate: string,
   ): Promise<Result<StatementResponse>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     // Compute net income for the period
@@ -2509,7 +2540,7 @@ export class LedgerEngine {
     }
 
     // Verify ledger exists
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [params.ledgerId]);
+    const ledger = await this.getActiveLedgerRow(params.ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(params.ledgerId));
     }
@@ -2641,7 +2672,7 @@ export class LedgerEngine {
     ledgerId: string,
     params?: { cursor?: string; limit?: number },
   ): Promise<Result<{ data: ImportBatch[]; nextCursor: string | null }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) {
       return err(ledgerNotFoundError(ledgerId));
     }
@@ -2762,7 +2793,7 @@ export class LedgerEngine {
   // Reads from old usage_periods table. Retained for backward compat; not called by any route.
   async getUsage(ledgerId: string): Promise<Result<{ count: number; limit: number; plan: string; periodStart: string; periodEnd: string }>> {
     // Get the user's plan via ledger owner
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const user = await this.db.get<UserRow>("SELECT * FROM users WHERE id = ?", [ledger.owner_id]);
@@ -3288,7 +3319,7 @@ export class LedgerEngine {
       return existing.id;
     }
 
-    const ledgerRow = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledgerRow = await this.getActiveLedgerRow(ledgerId);
     const acct = await this.upsertBankAccount({
       connectionId,
       ledgerId,
@@ -3404,7 +3435,7 @@ export class LedgerEngine {
     ledgerId: string,
     ledgerAccountId: string,
   ): Promise<KountaError | null> {
-    const ledger = await this.db.get<LedgerRow>("SELECT id FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.db.get<LedgerRow>("SELECT id FROM ledgers WHERE id = ? AND status != 'deleted'", [ledgerId]);
     if (!ledger) return ledgerNotFoundError(ledgerId);
     const acct = await this.db.get<{ id: string }>(
       "SELECT id FROM accounts WHERE id = ? AND ledger_id = ?",
@@ -4424,7 +4455,7 @@ export class LedgerEngine {
     decimalPlaces?: number,
     symbol?: string,
   ): Promise<Result<CurrencySetting>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const code = currencyCode.toUpperCase();
@@ -4462,7 +4493,7 @@ export class LedgerEngine {
   }
 
   async listEnabledCurrencies(ledgerId: string): Promise<Result<CurrencySetting[]>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const rows = await this.db.all<CurrencySettingRow>(
@@ -4480,7 +4511,7 @@ export class LedgerEngine {
     effectiveDate: string,
     source: ExchangeRateSource = "manual",
   ): Promise<Result<ExchangeRate>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const from = fromCurrency.toUpperCase();
@@ -4540,7 +4571,7 @@ export class LedgerEngine {
     ledgerId: string,
     opts?: { fromCurrency?: string; toCurrency?: string; limit?: number; cursor?: string },
   ): Promise<Result<{ rates: ExchangeRate[]; nextCursor: string | null }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const limit = Math.min(opts?.limit ?? 50, 200);
@@ -4613,7 +4644,7 @@ export class LedgerEngine {
     ledgerId: string,
     date: string,
   ): Promise<Result<RevaluationResult[]>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     // Find all accounts with a specific currency different from base
@@ -5073,7 +5104,7 @@ export class LedgerEngine {
     periodEnd: string,
     closedBy: string,
   ): Promise<Result<{ periodEnd: string; closedAt: string }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     // If already closed through a later date, nothing to do
@@ -5122,7 +5153,7 @@ export class LedgerEngine {
     periodEnd: string,
     reopenedBy: string,
   ): Promise<Result<{ periodEnd: string; reopenedAt: string }>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const now = nowUtc();
@@ -5166,7 +5197,7 @@ export class LedgerEngine {
    * Check if a specific date falls within a closed period.
    */
   async isPeriodClosed(ledgerId: string, date: string): Promise<boolean> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return false;
     return !!(ledger.closed_through && date <= ledger.closed_through);
   }
@@ -5190,7 +5221,7 @@ export class LedgerEngine {
     ledgerId: string,
     updates: { name?: string; fiscalYearStart?: number },
   ): Promise<Result<Ledger>> {
-    const ledger = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const ledger = await this.getActiveLedgerRow(ledgerId);
     if (!ledger) return err(ledgerNotFoundError(ledgerId));
 
     const now = nowUtc();
@@ -5222,7 +5253,7 @@ export class LedgerEngine {
       params,
     );
 
-    const updated = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const updated = await this.getActiveLedgerRow(ledgerId);
     return ok(toLedger(updated!));
   }
 

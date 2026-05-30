@@ -176,6 +176,12 @@ describe("audit writes fail closed (op rolls back if its audit entry can't be wr
       expect(statuses).toEqual(["active", "active"]);
     }
 
+    const tok = await real.get<{ revoked_at: string | null }>(
+      "SELECT revoked_at FROM oauth_tokens WHERE access_token = ?",
+      ['tok_rollback_test'],
+    );
+    expect(tok?.revoked_at ?? null).toBeNull();
+
     // No 'deleted'/'revoked' audit rows were persisted.
     const rows = await real.all<{ action: string }>(
       "SELECT action FROM audit_entries WHERE ledger_id = ? AND action IN ('deleted', 'revoked')",
