@@ -3104,10 +3104,17 @@ export class LedgerEngine {
    * deleted, so we never silently drop a posted entry.
    */
   /**
-   * Append-only audit entry for a bank-transaction state change. Uses only the
-   * audit actions the PRODUCTION schema allows (001+002: created/reversed/
-   * archived/updated) — 'deleted'/'revoked' come from migration 030 which the
-   * prod runner does not apply.
+   * Append-only audit entry for a bank-transaction state change.
+   *
+   * Deliberately restricted to 'archived'/'updated' — NOT a 030 workaround
+   * (030 is registered now, so 'revoked'/'deleted' are accepted by the schema).
+   * A bank_transaction is an external-feed MIRROR/staging row, not a posted
+   * domain entity: withdrawing a provider-reported-removed pending mirror is an
+   * archive of staging ('archived'), and guarding a reconciled row reported
+   * removed is an update/flag ('updated'). Neither is an API-key revocation
+   * ('revoked') nor a ledger soft-delete ('deleted') — those literal actions are
+   * written directly by revokeApiKey/softDeleteLedger. The immutable ledger is
+   * never touched here regardless.
    */
   private async writeBankTxnAudit(
     ledgerId: string,
