@@ -9,6 +9,11 @@ import { resolve } from "node:path";
 import { calculateMonthlyDepreciation, generateSchedule, adviseOnCapitalisation, createFixedAsset, regenerateSchedule, getFixedAsset } from "./engine.js";
 import { SqliteDatabase } from "../db/sqlite.js";
 import type { Database } from "../db/database.js";
+import { registeredSqliteMigrationFiles } from "../db/migration-manifest.js";
+
+// FULL registered schema from the single source of truth
+// (../db/migration-manifest.ts) — not a hand-picked subset.
+const MIGRATIONS_DIR = resolve(__dirname, "../db/migrations");
 
 // ---------------------------------------------------------------------------
 // 1. Jurisdiction config — FY labels via generateSchedule
@@ -634,23 +639,14 @@ describe("regenerateSchedule", () => {
 
   beforeEach(async () => {
     db = await SqliteDatabase.create();
-    // Apply migrations
-    const migration001 = readFileSync(
-      resolve(__dirname, "../db/migrations/001_initial_schema.sqlite.sql"), "utf-8"
-    );
-    const migration006 = readFileSync(
-      resolve(__dirname, "../db/migrations/006_multi_currency.sqlite.sql"), "utf-8"
-    );
-    const migration019 = readFileSync(
-      resolve(__dirname, "../db/migrations/019_fixed_assets.sqlite.sql"), "utf-8"
-    );
-    const schemaWithoutPragmas = migration001
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("PRAGMA"))
-      .join("\n");
-    db.exec(schemaWithoutPragmas);
-    db.exec(migration006);
-    db.exec(migration019);
+    // Apply the FULL registered migration set, in order.
+    for (const file of registeredSqliteMigrationFiles()) {
+      const sql = readFileSync(resolve(MIGRATIONS_DIR, file), "utf-8")
+        .split("\n")
+        .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+        .join("\n");
+      db.exec(sql);
+    }
 
     // Create user, ledger, and accounts
     db.run(

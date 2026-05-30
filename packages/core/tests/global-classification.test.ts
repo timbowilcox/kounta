@@ -3,8 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { SqliteDatabase, LedgerEngine } from "../src/index.js";
 import type { Database } from "../src/index.js";
 import {
@@ -13,50 +11,14 @@ import {
   findMatchingAccount,
 } from "../src/classification/global.js";
 import type { GlobalClassificationResult } from "../src/classification/global.js";
+import { createFullTestDb } from "./helpers/migrate.js";
 
 // ---------------------------------------------------------------------------
-// Migration setup
+// Migration setup — FULL registered schema from the single source of truth
+// (src/db/migration-manifest.ts), not a hand-picked subset.
 // ---------------------------------------------------------------------------
 
-const migration001 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/001_initial_schema.sqlite.sql"),
-  "utf-8",
-);
-const migration004 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/004_bank_feeds.sqlite.sql"),
-  "utf-8",
-);
-const migration006 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/006_multi_currency.sqlite.sql"),
-  "utf-8",
-);
-const migration007 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/007_conversations.sqlite.sql"),
-  "utf-8",
-);
-const migration008 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/008_classification.sqlite.sql"),
-  "utf-8",
-);
-const migration014 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/014_global_classifications.sqlite.sql"),
-  "utf-8",
-);
-
-const createTestDb = async (): Promise<Database> => {
-  const db = await SqliteDatabase.create();
-  const schemaWithoutPragmas = migration001
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  db.exec(schemaWithoutPragmas);
-  db.exec(migration004);
-  db.exec(migration006);
-  db.exec(migration007);
-  db.exec(migration008);
-  db.exec(migration014);
-  return db;
-};
+const createTestDb = (): Promise<Database> => createFullTestDb();
 
 // ---------------------------------------------------------------------------
 // Helpers

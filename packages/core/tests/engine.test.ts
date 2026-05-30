@@ -12,44 +12,22 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { SqliteDatabase } from "../src/db/sqlite.js";
 import { LedgerEngine } from "../src/engine/index.js";
 import { ErrorCode } from "../src/errors/index.js";
 import type { Database } from "../src/db/database.js";
+import { createFullTestDb } from "./helpers/migrate.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
-/** Load the SQLite migration SQL */
-const migrationSql = readFileSync(
-  resolve(__dirname, "../src/db/migrations/001_initial_schema.sqlite.sql"),
-  "utf-8"
-);
-const migration006 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/006_multi_currency.sqlite.sql"),
-  "utf-8"
-);
-const migration007 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/007_conversations.sqlite.sql"),
-  "utf-8"
-);
-
-/** Create a fresh in-memory database with the schema applied */
-const createTestDb = async (): Promise<Database> => {
-  const db = await SqliteDatabase.create();
-  // Apply schema — skip PRAGMA lines as they're already set by SqliteDatabase.create()
-  const schemaWithoutPragmas = migrationSql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  await db.exec(schemaWithoutPragmas);
-  await db.exec(migration006);
-  await db.exec(migration007);
-  return db;
-};
+/**
+ * Create a fresh in-memory database with the FULL registered schema applied,
+ * derived from the single source of truth in src/db/migration-manifest.ts (the
+ * same set production applies) — not a hand-picked subset.
+ */
+const createTestDb = (): Promise<Database> => createFullTestDb();
 
 /** Create a system user (ledgers require an owner_id foreign key) */
 const createSystemUser = async (db: Database): Promise<string> => {

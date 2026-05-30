@@ -10,8 +10,6 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { SqliteDatabase } from "../src/db/sqlite.js";
 import { LedgerEngine } from "../src/engine/index.js";
 import type { Database } from "../src/db/database.js";
@@ -31,28 +29,14 @@ import {
 } from "../src/revenue/index.js";
 import { buildBalanceSheet, buildIncomeStatement } from "../src/statements/index.js";
 import type { AccountBalanceData } from "../src/statements/index.js";
+import { createFullTestDb } from "./helpers/migrate.js";
 
 // ---------------------------------------------------------------------------
-// Test helpers
+// Test helpers — FULL registered schema from the single source of truth
+// (src/db/migration-manifest.ts), not a hand-picked subset.
 // ---------------------------------------------------------------------------
 
-const loadMigration = (name: string): string =>
-  readFileSync(resolve(__dirname, `../src/db/migrations/${name}`), "utf-8");
-
-const createTestDb = async (): Promise<Database> => {
-  const db = await SqliteDatabase.create();
-  const schema = loadMigration("001_initial_schema.sqlite.sql");
-  const schemaWithoutPragmas = schema
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  await db.exec(schemaWithoutPragmas);
-  // Apply additional migrations needed for intelligence, multi-currency, and revenue tables
-  await db.exec(loadMigration("005_intelligence.sqlite.sql"));
-  await db.exec(loadMigration("006_multi_currency.sqlite.sql"));
-  await db.exec(loadMigration("016_revenue_recognition.sqlite.sql"));
-  return db;
-};
+const createTestDb = (): Promise<Database> => createFullTestDb();
 
 const createSystemUser = async (db: Database): Promise<string> => {
   const userId = "00000000-0000-7000-8000-000000000001";

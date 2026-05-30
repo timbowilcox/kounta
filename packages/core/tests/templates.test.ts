@@ -10,8 +10,6 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { SqliteDatabase } from "../src/db/sqlite.js";
 import { LedgerEngine } from "../src/engine/index.js";
 import { ErrorCode } from "../src/errors/index.js";
@@ -23,35 +21,14 @@ import {
 } from "../src/templates/index.js";
 import type { Database } from "../src/db/database.js";
 import type { Ledger, StatementResponse } from "../src/types/index.js";
+import { createFullTestDb } from "./helpers/migrate.js";
 
 // ---------------------------------------------------------------------------
-// Test helpers (same pattern as engine.test.ts)
+// Test helpers — FULL registered schema from the single source of truth
+// (src/db/migration-manifest.ts), not a hand-picked subset.
 // ---------------------------------------------------------------------------
 
-const migrationSql = readFileSync(
-  resolve(__dirname, "../src/db/migrations/001_initial_schema.sqlite.sql"),
-  "utf-8",
-);
-const migration006 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/006_multi_currency.sqlite.sql"),
-  "utf-8",
-);
-const migration007 = readFileSync(
-  resolve(__dirname, "../src/db/migrations/007_conversations.sqlite.sql"),
-  "utf-8",
-);
-
-const createTestDb = async (): Promise<Database> => {
-  const db = await SqliteDatabase.create();
-  const schemaWithoutPragmas = migrationSql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  await db.exec(schemaWithoutPragmas);
-  await db.exec(migration006);
-  await db.exec(migration007);
-  return db;
-};
+const createTestDb = (): Promise<Database> => createFullTestDb();
 
 const createSystemUser = async (db: Database): Promise<string> => {
   const userId = "00000000-0000-7000-8000-000000000001";

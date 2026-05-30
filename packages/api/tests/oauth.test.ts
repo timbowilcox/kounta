@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { SqliteDatabase, LedgerEngine } from "@kounta/core";
+import { SqliteDatabase, LedgerEngine, registeredSqliteMigrationFiles } from "@kounta/core";
 import type { Database } from "@kounta/core";
 import { createApp } from "../src/app.js";
 import type { Hono } from "hono";
@@ -30,34 +30,20 @@ import type { Env } from "../src/lib/context.js";
 // Test helpers
 // ---------------------------------------------------------------------------
 
-const migrationSql = readFileSync(
-  resolve(__dirname, "../../core/src/db/migrations/001_initial_schema.sqlite.sql"),
-  "utf-8"
-);
-
-const migration006Sql = readFileSync(
-  resolve(__dirname, "../../core/src/db/migrations/006_multi_currency.sqlite.sql"),
-  "utf-8"
-);
-const migration007Sql = readFileSync(
-  resolve(__dirname, "../../core/src/db/migrations/007_conversations.sqlite.sql"),
-  "utf-8"
-);
-const migration018Sql = readFileSync(
-  resolve(__dirname, "../../core/src/db/migrations/018_oauth.sqlite.sql"),
-  "utf-8"
-);
+// Apply the FULL registered migration set (the production schema), in order,
+// derived from the single source of truth in @kounta/core — not a hand-picked
+// subset.
+const MIGRATIONS_DIR = resolve(__dirname, "../../core/src/db/migrations");
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
-  const schemaWithoutPragmas = migrationSql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  db.exec(schemaWithoutPragmas);
-  db.exec(migration006Sql);
-  db.exec(migration007Sql);
-  db.exec(migration018Sql);
+  for (const file of registeredSqliteMigrationFiles()) {
+    const sql = readFileSync(resolve(MIGRATIONS_DIR, file), "utf-8")
+      .split("\n")
+      .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+      .join("\n");
+    db.exec(sql);
+  }
   return db;
 };
 

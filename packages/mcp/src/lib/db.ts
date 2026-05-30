@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SqliteDatabase, PostgresDatabase, LedgerEngine } from "@kounta/core";
+import { SqliteDatabase, PostgresDatabase, LedgerEngine, registeredSqliteMigrationFiles } from "@kounta/core";
 import type { Database } from "@kounta/core";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -42,40 +42,17 @@ export interface InitResult {
 async function initSqlite(): Promise<InitResult> {
   const db = await SqliteDatabase.create();
 
-  // Apply schema — skip PRAGMA lines (already set by SqliteDatabase.create())
-  const migration001 = loadMigrationSql("001_initial_schema.sqlite.sql");
-  const schemaWithoutPragmas = migration001
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  await db.exec(schemaWithoutPragmas);
-
-  // Apply additional migrations
-  const sqliteMigrations = [
-    "002_audit_action_updated.sqlite.sql",
-    "003_billing.sqlite.sql",
-    "004_bank_feeds.sqlite.sql",
-    "005_intelligence.sqlite.sql",
-    "006_multi_currency.sqlite.sql",
-    "007_conversations.sqlite.sql",
-    "008_classification.sqlite.sql",
-    "009_email.sqlite.sql",
-    "010_onboarding.sqlite.sql",
-    "011_attachments.sqlite.sql",
-    "012_recurring_entries.sqlite.sql",
-    "013_closed_periods.sqlite.sql",
-    "014_global_classifications.sqlite.sql",
-    "015_stripe_connect.sqlite.sql",
-    "016_revenue_recognition.sqlite.sql",
-  ];
-
-  for (const file of sqliteMigrations) {
-    try {
-      const sql = loadMigrationSql(file);
-      await db.exec(sql);
-    } catch {
-      // Some migration files may not exist for SQLite — skip
-    }
+  // Apply the FULL registered migration set (the production schema), in order,
+  // derived from the single source of truth in @kounta/core. This is the same
+  // list the production runner applies — previously this hand-picked only
+  // 001–016, so local SQLite dev silently lacked usage_tracking (027) and tier
+  // checks failed open. Skip PRAGMA lines (already set by SqliteDatabase.create()).
+  for (const file of registeredSqliteMigrationFiles()) {
+    const sql = loadMigrationSql(file)
+      .split("\n")
+      .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+      .join("\n");
+    await db.exec(sql);
   }
 
   // Seed system user

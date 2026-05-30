@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { SqliteDatabase } from "../db/sqlite.js";
 import { LedgerEngine } from "../engine/index.js";
 import type { Database } from "../db/database.js";
+import { registeredSqliteMigrationFiles } from "../db/migration-manifest.js";
 import {
   generateInvoiceNumber,
   calculateLineItems,
@@ -31,36 +32,19 @@ const arAccountId = "00000000-0000-7000-8000-000000000021";
 const revenueAccountId = "00000000-0000-7000-8000-000000000022";
 const taxAccountId = "00000000-0000-7000-8000-000000000023";
 
+const MIGRATIONS_DIR = resolve(__dirname, "../db/migrations");
+
+// Apply the FULL registered migration set (the production schema), in order,
+// derived from the single source of truth (../db/migration-manifest.ts) — not
+// a hand-picked subset.
 const applyMigrations = (db: Database) => {
-  const m001 = readFileSync(
-    resolve(__dirname, "../db/migrations/001_initial_schema.sqlite.sql"), "utf-8",
-  );
-  const m006 = readFileSync(
-    resolve(__dirname, "../db/migrations/006_multi_currency.sqlite.sql"), "utf-8",
-  );
-  const m019 = readFileSync(
-    resolve(__dirname, "../db/migrations/019_fixed_assets.sqlite.sql"), "utf-8",
-  );
-  const m021 = readFileSync(
-    resolve(__dirname, "../db/migrations/021_invoicing.sqlite.sql"), "utf-8",
-  );
-  const m023 = readFileSync(
-    resolve(__dirname, "../db/migrations/023_invoice_sent_at.sqlite.sql"), "utf-8",
-  );
-  const m024 = readFileSync(
-    resolve(__dirname, "../db/migrations/024_customers.sqlite.sql"), "utf-8",
-  );
-  const schemaWithoutPragmas = m001
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  db.exec(schemaWithoutPragmas);
-  db.exec(m006);
-  db.exec(m019);
-  db.exec(m021);
-  try { db.exec(m023); } catch { /* column may already exist */ }
-  // 024 has ALTER TABLE which may fail if columns already exist in SQLite
-  try { db.exec(m024); } catch { /* columns may already exist */ }
+  for (const file of registeredSqliteMigrationFiles()) {
+    const sql = readFileSync(resolve(MIGRATIONS_DIR, file), "utf-8")
+      .split("\n")
+      .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+      .join("\n");
+    db.exec(sql);
+  }
 };
 
 const seedTestData = async (db: Database) => {

@@ -58,3 +58,40 @@ describe("B1: production migration runner applies the bank-ingestion schema", ()
     expect(t.length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The PENDING migrations (028/029/030) are NOT applied by the production
+// runner, so their schema effects must be ABSENT from the production schema.
+// This proves the fixtures match prod EXACTLY (not a superset) — the divergence
+// that previously let api/sdk tests pass against schema prod doesn't have.
+// When 028–030 are verified + registered (after the live-DB checks), these
+// expectations flip — update them then.
+// ---------------------------------------------------------------------------
+
+describe("PENDING migrations (028/029/030) are absent from the production schema", () => {
+  it("029: bills/vendors tables do NOT exist (feature is mounted in prod but unmigrated)", async () => {
+    const db = await buildFromProductionList();
+    const t = await db.all<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('bills','vendors','bill_line_items','bill_payments')",
+    );
+    expect(t.map((r) => r.name).sort()).toEqual([]);
+  });
+
+  it("029: usage_tracking has no bills_count/vendors_count columns", async () => {
+    const db = await buildFromProductionList();
+    const cols = await db.all<{ name: string }>("PRAGMA table_info(usage_tracking)");
+    const names = cols.map((c) => c.name);
+    expect(names).not.toContain("bills_count");
+    expect(names).not.toContain("vendors_count");
+  });
+
+  it("030: audit_entries action CHECK rejects 'revoked'/'deleted' (engine writes these — prod bug)", async () => {
+    const db = await buildFromProductionList();
+    const row = await db.get<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_entries'",
+    );
+    expect(row?.sql).toContain("'updated'"); // 002 IS applied
+    expect(row?.sql).not.toContain("'revoked'"); // 030 is NOT applied
+    expect(row?.sql).not.toContain("'deleted'");
+  });
+});
