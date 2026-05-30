@@ -10,7 +10,7 @@
 // of the production runner unnoticed (B1).
 //
 // Two sets:
-//   REGISTERED — what PRODUCTION applies, in order. The full set 001–032.
+//   REGISTERED — what PRODUCTION applies, in order. The full set 001–033.
 //   PENDING    — files that exist on disk but are NOT applied in production yet.
 //                Currently EMPTY. 028/029/030 were the last holdouts (gated on a
 //                live-DB safety check that protected the old prod volume); that
@@ -65,6 +65,7 @@ export const REGISTERED_MIGRATIONS: readonly string[] = [
   "030_audit_action_revoked_deleted", // PG: ALTER TYPE ADD VALUE — runner special-cases this (cf. 017/020/022)
   "031_csv_import",
   "032_review_items",
+  "033_ledger_status_deleted", // PG: ALTER TYPE ledger_status ADD VALUE — runner special-cases this (cf. 030)
 ];
 
 /**
