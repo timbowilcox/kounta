@@ -944,7 +944,10 @@ export class LedgerEngine {
 
   async getLedger(id: string): Promise<Result<Ledger>> {
     const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [id]);
-    if (!row) {
+    // A soft-deleted ledger must not be returned to normal reads — treat it as
+    // not-found (the owner list already filters status='active', and a delete
+    // revokes the ledger's API keys so API access is blocked at auth).
+    if (!row || row.status === "deleted") {
       return err(ledgerNotFoundError(id));
     }
     return ok(toLedger(row));
