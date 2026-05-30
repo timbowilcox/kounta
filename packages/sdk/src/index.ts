@@ -195,6 +195,25 @@ export type { ConfirmAction } from "@kounta/core";
 
 export type { ClosedPeriod } from "@kounta/core";
 
+export type {
+  CsvMapping,
+  MappedRow,
+  RowError,
+  MappingProfile,
+  CsvImportPreview,
+  CsvImportPreviewRow,
+  CsvImportResult,
+  CsvImportDecisions,
+  DedupStatus,
+  DateFormat,
+  SignConvention,
+  AmountMode,
+  ReviewItem,
+  ReviewItemType,
+  ReviewItemStatus,
+  ReviewResolution,
+} from "@kounta/core";
+
 // --- Internal type imports -------------------------------------------------
 
 import type {
@@ -265,6 +284,12 @@ import type {
   Vendor,
   CreateVendorInput,
   UpdateVendorInput,
+  CsvMapping,
+  CsvImportPreview,
+  CsvImportResult,
+  MappingProfile,
+  ReviewItem,
+  ReviewItemStatus,
 } from "@kounta/core";
 
 import type {
@@ -359,6 +384,7 @@ export class Kounta {
   readonly apiKeys: ApiKeysModule;
   readonly admin: AdminModule;
   readonly bankFeeds: BankFeedsModule;
+  readonly reviewItems: ReviewItemsModule;
   readonly notifications: NotificationsModule;
   readonly currencies: CurrenciesModule;
   readonly conversations: ConversationsModule;
@@ -391,6 +417,7 @@ export class Kounta {
     this.apiKeys = new ApiKeysModule(this);
     this.admin = new AdminModule(this);
     this.bankFeeds = new BankFeedsModule(this);
+    this.reviewItems = new ReviewItemsModule(this);
     this.notifications = new NotificationsModule(this);
     this.currencies = new CurrenciesModule(this);
     this.conversations = new ConversationsModule(this);
@@ -719,6 +746,80 @@ class ImportsModule {
     return this.c.request("POST", `/v1/imports/${batchId}/confirm`, {
       body: { actions },
     });
+  }
+
+  // --- Manual CSV import (column mapping + cross-channel dedup) -------------
+
+  /** Dry-run a CSV import: parsed rows with the mapping applied, plus dedup
+   * flags and surfaced row errors. Writes nothing. */
+  async previewCsv(
+    ledgerId: string,
+    input: { ledgerAccountId: string; fileContent: string; mapping: CsvMapping },
+  ): Promise<CsvImportPreview> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/preview`, { body: input });
+  }
+
+  /** Commit a CSV import: stages new rows into the bank-feed pipeline. `decisions`
+   * resolves possible-duplicate rows (keyed by the preview's dedupKey). */
+  async commitCsv(
+    ledgerId: string,
+    input: {
+      ledgerAccountId: string;
+      fileContent: string;
+      mapping: CsvMapping;
+      filename?: string;
+      decisions?: Record<string, "import" | "skip">;
+    },
+  ): Promise<CsvImportResult> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/csv/commit`, { body: input });
+  }
+
+  /** List reusable per-bank mapping profiles. */
+  async listMappings(ledgerId: string): Promise<MappingProfile[]> {
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/imports/mappings`);
+  }
+
+  /** Save a reusable per-bank mapping profile. */
+  async createMapping(
+    ledgerId: string,
+    input: { name: string; mapping: CsvMapping },
+  ): Promise<MappingProfile> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/imports/mappings`, { body: input });
+  }
+
+  /** Update a mapping profile. */
+  async updateMapping(
+    ledgerId: string,
+    profileId: string,
+    input: { name?: string; mapping?: CsvMapping },
+  ): Promise<MappingProfile> {
+    return this.c.request("PUT", `/v1/ledgers/${ledgerId}/imports/mappings/${profileId}`, { body: input });
+  }
+
+  /** Delete a mapping profile. */
+  async deleteMapping(ledgerId: string, profileId: string): Promise<void> {
+    return this.c.request("DELETE", `/v1/ledgers/${ledgerId}/imports/mappings/${profileId}`);
+  }
+}
+
+// --- Review queue ----------------------------------------------------------
+
+class ReviewItemsModule {
+  constructor(private readonly c: Kounta) {}
+
+  /** List review-queue items (optionally filtered by status). */
+  async list(ledgerId: string, status?: ReviewItemStatus): Promise<ReviewItem[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.c.request("GET", `/v1/ledgers/${ledgerId}/review-items${qs}`);
+  }
+
+  /** Resolve a review item: import|dismiss (held candidate) or acknowledge|dismiss (removed txn). */
+  async resolve(
+    ledgerId: string,
+    id: string,
+    action: "import" | "dismiss" | "acknowledge",
+  ): Promise<ReviewItem> {
+    return this.c.request("POST", `/v1/ledgers/${ledgerId}/review-items/${id}/resolve`, { body: { action } });
   }
 }
 

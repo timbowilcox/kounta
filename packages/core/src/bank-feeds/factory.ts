@@ -5,6 +5,7 @@
 import type { BankFeedProvider, ProviderConfig, ProviderName } from "./types.js";
 import { BasiqProvider } from "./basiq.js";
 import { PlaidProvider } from "./plaid.js";
+import { MockPlaidProvider } from "./mock.js";
 
 export function createBankFeedProvider(
   name: ProviderName,
@@ -22,6 +23,10 @@ export function createBankFeedProvider(
         throw new Error("Plaid configuration is required.");
       }
       return new PlaidProvider();
+    }
+    case "mock": {
+      // Fail-closed: the constructor throws if NODE_ENV=production.
+      return new MockPlaidProvider(config.mock);
     }
     default:
       throw new Error(`Unknown bank feed provider: ${name}`);

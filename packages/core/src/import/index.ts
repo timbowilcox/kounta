@@ -3,3 +3,25 @@ export * from "./types.js";
 export { parseCSV, normalizeDate, normalizeAmount } from "./csv-parser.js";
 export { parseOFX } from "./ofx-parser.js";
 export { matchRows } from "./matcher.js";
+export {
+  applyMapping,
+  tokenizeCsv,
+  parseDateStrict,
+  csvMappingSchema,
+  DATE_FORMATS,
+} from "./csv-mapping.js";
+export type {
+  CsvMapping,
+  MappedRow,
+  RowError,
+  MappingResult,
+  MappingProfile,
+  CsvImportPreview,
+  CsvImportPreviewRow,
+  CsvImportResult,
+  CsvImportDecisions,
+  DedupStatus,
+  DateFormat,
+  SignConvention,
+  AmountMode,
+} from "./csv-mapping.js";

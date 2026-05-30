@@ -19,6 +19,7 @@ import type { Database } from "@kounta/core";
 import { SqliteDatabase, PostgresDatabase, LedgerEngine, LocalFileStorage } from "@kounta/core";
 import type { AttachmentStorage } from "@kounta/core";
 import { createApp } from "./app.js";
+import { PG_MIGRATIONS, SQLITE_MIGRATION_FILES } from "./migrations.js";
 import { checkAndSendDigests, checkAndSendMonthlyClose, checkOnboardingSequence, processRecurringEntries, processAllPendingRecognition, runDepreciation, checkOverdueInvoices } from "@kounta/core";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -321,36 +322,8 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
     }
   }
 
-  // ── 3. Ordered list of all PostgreSQL migrations ──
-  const pgMigrations = [
-    "001_initial_schema.sql",
-    "002_audit_action_updated.sql",   // virtual — handled inline below
-    "003_billing.sql",
-    "004_bank_feeds.sql",
-    "005_intelligence.sql",
-    "006_multi_currency.sql",
-    "007_conversations.sql",
-    "008_classification.sql",
-    "009_email.sql",
-    "010_onboarding.sql",
-    "011_attachments.sql",
-    "012_recurring_entries.sql",
-    "013_closed_periods.sql",
-    "014_global_classifications.sql",
-    "015_stripe_connect.sql",
-    "016_revenue_recognition.sql",
-    "017_revenue_notifications.sql",
-    "018_oauth.sql",
-    "019_fixed_assets.sql",
-    "020_capitalisation_notification.sql",
-    "021_invoicing.sql",
-    "022_invoice_payment_match_notification.sql",
-    "023_invoice_sent_at.sql",
-    "024_customers.sql",
-    "025_invoice_approved_status.sql",
-    "026_fix_invoice_approved_constraint.sql",
-    "027_tier_usage_tracking.sql",
-  ];
+  // ── 3. Ordered list of all PostgreSQL migrations (see ./migrations.ts) ──
+  const pgMigrations = PG_MIGRATIONS;
 
   // ── 4. Apply each unapplied migration in order ──
   let applied = 0;
@@ -464,35 +437,7 @@ const applySqliteMigrations = async (db: SqliteDatabase) => {
     return;
   }
 
-  const migrationFiles = [
-    "001_initial_schema.sqlite.sql",
-    "002_audit_action_updated.sqlite.sql",
-    "003_billing.sqlite.sql",
-    "004_bank_feeds.sqlite.sql",
-    "005_intelligence.sqlite.sql",
-    "006_multi_currency.sqlite.sql",
-    "007_conversations.sqlite.sql",
-    "008_classification.sqlite.sql",
-    "009_email.sqlite.sql",
-    "010_onboarding.sqlite.sql",
-    "011_attachments.sqlite.sql",
-    "012_recurring_entries.sqlite.sql",
-    "013_closed_periods.sqlite.sql",
-    "014_global_classifications.sqlite.sql",
-    "015_stripe_connect.sqlite.sql",
-    "016_revenue_recognition.sqlite.sql",
-    "017_revenue_notifications.sqlite.sql",
-    "018_oauth.sqlite.sql",
-    "019_fixed_assets.sqlite.sql",
-    "020_capitalisation_notification.sqlite.sql",
-    "021_invoicing.sqlite.sql",
-    "022_invoice_payment_match_notification.sqlite.sql",
-    "023_invoice_sent_at.sqlite.sql",
-    "024_customers.sqlite.sql",
-    "025_invoice_approved_status.sqlite.sql",
-    "026_fix_invoice_approved_constraint.sqlite.sql",
-    "027_tier_usage_tracking.sqlite.sql",
-  ];
+  const migrationFiles = SQLITE_MIGRATION_FILES;
 
   for (const file of migrationFiles) {
     const filePath = join(migrationsDir, file);

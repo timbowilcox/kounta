@@ -17,6 +17,8 @@ import type {
   PostTransactionParams,
 } from "@kounta/sdk";
 import type { ApiKeySafe, ApiKeyWithRaw } from "@kounta/sdk";
+import type { CsvMapping, CsvImportPreview, CsvImportResult, MappingProfile } from "@kounta/sdk";
+import type { ReviewItem, ReviewItemStatus } from "@kounta/sdk";
 
 // --- Tier error handling -----------------------------------------------------
 
@@ -573,6 +575,53 @@ export async function markBankTransactionPersonal(bankTxnId: string): Promise<bo
   );
 
   return res.ok;
+}
+
+// --- Manual CSV import -----------------------------------------------------
+
+export async function previewCsvImport(
+  ledgerAccountId: string,
+  fileContent: string,
+  mapping: CsvMapping,
+): Promise<CsvImportPreview> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.imports.previewCsv(ledgerId, { ledgerAccountId, fileContent, mapping });
+}
+
+export async function commitCsvImport(
+  ledgerAccountId: string,
+  fileContent: string,
+  mapping: CsvMapping,
+  filename?: string,
+  decisions?: Record<string, "import" | "skip">,
+): Promise<CsvImportResult> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.imports.commitCsv(ledgerId, { ledgerAccountId, fileContent, mapping, filename, decisions });
+}
+
+export async function fetchMappingProfiles(): Promise<MappingProfile[]> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.imports.listMappings(ledgerId);
+}
+
+// --- Review queue ----------------------------------------------------------
+
+export async function fetchReviewItems(status: ReviewItemStatus = "open"): Promise<ReviewItem[]> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.reviewItems.list(ledgerId, status);
+}
+
+export async function resolveReviewItem(
+  id: string,
+  action: "import" | "dismiss" | "acknowledge",
+): Promise<ReviewItem> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.reviewItems.resolve(ledgerId, id, action);
+}
+
+export async function saveMappingProfile(name: string, mapping: CsvMapping): Promise<MappingProfile> {
+  const { client, ledgerId } = await getSessionClient();
+  return client.imports.createMapping(ledgerId, { name, mapping });
 }
 
 // --- Attachments -----------------------------------------------------------

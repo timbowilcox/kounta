@@ -25,6 +25,11 @@ import type {
   ImportRow,
   User,
   Result,
+  KountaError,
+  ReviewItem,
+  ReviewItemType,
+  ReviewItemStatus,
+  ReviewResolution,
   StatementResponse,
   CurrencySetting,
   ExchangeRate,
@@ -44,6 +49,17 @@ import type {
   ProviderBankTransaction,
 } from "../bank-feeds/types.js";
 import { bankTransactionToParseRow } from "../bank-feeds/adapter.js";
+import { fingerprintOf, lineFingerprint } from "../bank-feeds/normalize.js";
+import { applyMapping, csvMappingSchema } from "../import/csv-mapping.js";
+import type {
+  CsvMapping,
+  MappedRow,
+  DedupStatus,
+  CsvImportDecisions,
+  MappingProfile,
+  CsvImportPreview,
+  CsvImportResult,
+} from "../import/csv-mapping.js";
 import { getTemplate } from "../templates/index.js";
 import type { AccountBalanceData, CashFlowAccountData } from "../statements/index.js";
 import { buildIncomeStatement, buildBalanceSheet, buildCashFlowStatement } from "../statements/index.js";
@@ -406,6 +422,7 @@ interface BankAccountRow {
   available_balance: number | null;
   mapped_account_id: string | null;
   last_sync_at: string | null;
+  sync_cursor: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -428,6 +445,7 @@ interface BankTransactionRow {
   is_personal: number | boolean;
   suggested_account_id: string | null;
   raw_data: string | Record<string, unknown>;
+  line_fingerprint: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -662,6 +680,63 @@ const toConversation = (row: ConversationRow): Conversation => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+interface MappingProfileRow {
+  id: string;
+  ledger_id: string;
+  name: string;
+  mapping: string | Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+const toMappingProfile = (row: MappingProfileRow): MappingProfile => ({
+  id: row.id,
+  ledgerId: row.ledger_id,
+  name: row.name,
+  mapping: parseJsonb(row.mapping) as unknown as CsvMapping,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+interface ReviewItemRow {
+  id: string;
+  ledger_id: string;
+  type: string;
+  status: string;
+  ref_key: string;
+  bank_account_id: string | null;
+  bank_transaction_id: string | null;
+  reason: string;
+  payload: string | Record<string, unknown>;
+  resolution: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+
+const toReviewItem = (row: ReviewItemRow): ReviewItem => ({
+  id: row.id,
+  ledgerId: row.ledger_id,
+  type: row.type as ReviewItemType,
+  status: row.status as ReviewItemStatus,
+  refKey: row.ref_key,
+  bankAccountId: row.bank_account_id,
+  bankTransactionId: row.bank_transaction_id,
+  reason: row.reason,
+  payload: parseJsonb(row.payload) as Record<string, unknown>,
+  resolution: (row.resolution as ReviewResolution | null) ?? null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  resolvedAt: row.resolved_at,
+});
+
+/** Absolute whole-day difference between two YYYY-MM-DD dates. */
+const daysBetween = (a: string, b: string): number =>
+  Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+
+/** Cross-source candidate date tolerance — covers Plaid pending→posted/settlement drift. */
+const CROSS_SOURCE_DATE_TOLERANCE_DAYS = 5;
 
 const toBankConnection = (row: BankConnectionRow): BankConnection => ({
   id: row.id,
@@ -2992,31 +3067,677 @@ export class LedgerEngine {
 
     for (const ptxn of providerTransactions) {
       const existing = existingByProviderId.get(ptxn.providerTransactionId);
+      // Cross-channel dedup key — computed identically here and in manual CSV
+      // import so the same real transaction collides regardless of source.
+      const fingerprint = fingerprintOf(ptxn);
 
       if (existing) {
         await this.db.run(
           `UPDATE bank_transactions
            SET date = ?, amount = ?, type = ?, description = ?, reference = ?,
-               category = ?, balance = ?, raw_data = ?, updated_at = ?
+               category = ?, balance = ?, raw_data = ?, line_fingerprint = ?, updated_at = ?
            WHERE id = ?`,
           [ptxn.date, ptxn.amount, ptxn.type, ptxn.description, ptxn.reference,
-           ptxn.category, ptxn.balance, JSON.stringify(ptxn.rawData), ts, existing.id]
+           ptxn.category, ptxn.balance, JSON.stringify(ptxn.rawData), fingerprint, ts, existing.id]
         );
         updated++;
       } else {
         const id = generateId();
         await this.db.run(
-          `INSERT INTO bank_transactions (id, bank_account_id, ledger_id, provider_transaction_id, date, amount, type, description, reference, category, balance, status, raw_data, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+          `INSERT INTO bank_transactions (id, bank_account_id, ledger_id, provider_transaction_id, date, amount, type, description, reference, category, balance, status, raw_data, line_fingerprint, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
           [id, bankAccountId, ledgerId, ptxn.providerTransactionId, ptxn.date,
            ptxn.amount, ptxn.type, ptxn.description, ptxn.reference, ptxn.category,
-           ptxn.balance, JSON.stringify(ptxn.rawData), ts, ts]
+           ptxn.balance, JSON.stringify(ptxn.rawData), fingerprint, ts, ts]
         );
         created++;
       }
     }
 
     return ok({ created, updated });
+  }
+
+  /**
+   * Remove bank transactions reported as removed by a cursor sync (e.g. a
+   * pending Plaid authorisation that never posted). Pending rows are deleted;
+   * rows already reconciled into the ledger are marked 'ignored' rather than
+   * deleted, so we never silently drop a posted entry.
+   */
+  /**
+   * Append-only audit entry for a bank-transaction state change. Uses only the
+   * audit actions the PRODUCTION schema allows (001+002: created/reversed/
+   * archived/updated) — 'deleted'/'revoked' come from migration 030 which the
+   * prod runner does not apply.
+   */
+  private async writeBankTxnAudit(
+    ledgerId: string,
+    bankTransactionId: string,
+    action: "archived" | "updated",
+    snapshot: Record<string, unknown>,
+    ts: string,
+  ): Promise<void> {
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'bank_transaction', ?, ?, 'system', 'engine', ?, ?)`,
+      [generateId(), ledgerId, bankTransactionId, action, JSON.stringify(snapshot), ts],
+    );
+  }
+
+  /**
+   * Handle transactions a cursor sync reports as `removed`.
+   *
+   *   - PENDING (un-reconciled) rows may be deleted — but an audit entry is
+   *     always written, so a removal is never untraceable.
+   *   - MATCHED / POSTED (reconciled) rows are GUARDED: their status is left
+   *     unchanged (never silently re-stated to 'ignored'), and the event is
+   *     recorded in the audit log and counted as flaggedForReview so it can be
+   *     reviewed rather than silently mutated.
+   *
+   * The immutable ledger is never touched here regardless.
+   */
+  async removeBankTransactions(
+    bankAccountId: string,
+    providerTransactionIds: readonly string[],
+  ): Promise<Result<{ removed: number; flaggedForReview: number }>> {
+    if (providerTransactionIds.length === 0) return ok({ removed: 0, flaggedForReview: 0 });
+
+    const placeholders = providerTransactionIds.map(() => "?").join(",");
+    const rows = await this.db.all<BankTransactionRow>(
+      `SELECT * FROM bank_transactions
+       WHERE bank_account_id = ? AND provider_transaction_id IN (${placeholders})`,
+      [bankAccountId, ...providerTransactionIds],
+    );
+
+    const ts = nowUtc();
+    let removed = 0;
+    let flaggedForReview = 0;
+
+    for (const row of rows) {
+      if (row.status === "pending") {
+        await this.db.run("DELETE FROM bank_transactions WHERE id = ?", [row.id]);
+        await this.writeBankTxnAudit(row.ledger_id, row.id, "archived", {
+          reason: "provider_reported_removed",
+          previousStatus: "pending",
+          deleted: true,
+          snapshot: toBankTransaction(row),
+        }, ts);
+        removed++;
+      } else {
+        // Reconciled/posted — guard: do not delete or re-state. Surface + audit
+        // + raise a review item so it is user-resolvable, not just an audit row.
+        await this.writeBankTxnAudit(row.ledger_id, row.id, "updated", {
+          reason: "provider_reported_removed_but_reconciled",
+          status: row.status,
+          flaggedForReview: true,
+          snapshot: toBankTransaction(row),
+        }, ts);
+        await this.createReviewItem({
+          ledgerId: row.ledger_id,
+          type: "removed_reconciled_txn",
+          refKey: row.id,
+          reason: "Bank feed reported this reconciled transaction as removed — review before acting",
+          bankAccountId,
+          bankTransactionId: row.id,
+          payload: {
+            providerTransactionId: row.provider_transaction_id,
+            status: row.status,
+            snapshot: toBankTransaction(row),
+          },
+        });
+        flaggedForReview++;
+      }
+    }
+
+    return ok({ removed, flaggedForReview });
+  }
+
+  // -------------------------------------------------------------------------
+  // Manual CSV import (acquisition channel #2)
+  //
+  // Converges on the SAME pipeline as the bank feeds: mapped rows become
+  // bank_transactions on a synthetic "manual" bank account mapped to the chosen
+  // ledger account, deduped cross-channel via the shared line-fingerprint, then
+  // classified + matched exactly like a feed sync.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Find or create the synthetic "manual" bank account mapped to a ledger
+   * account. One manual connection per ledger; one manual bank account per
+   * ledger account. Manual CSV rows are staged here so they share the ledger
+   * account's dedup scope with any Plaid/Basiq feed mapped to the same account.
+   */
+  private async ensureManualBankAccount(
+    ledgerId: string,
+    ledgerAccountId: string,
+  ): Promise<string> {
+    const provConnId = `manual:${ledgerId}`;
+    let connRow = await this.db.get<BankConnectionRow>(
+      "SELECT * FROM bank_connections WHERE ledger_id = ? AND provider = 'manual' AND provider_connection_id = ?",
+      [ledgerId, provConnId],
+    );
+    if (!connRow) {
+      const created = await this.createBankConnection({
+        ledgerId,
+        provider: "manual",
+        providerConnectionId: provConnId,
+        institutionId: "manual",
+        institutionName: "Manual Import",
+      });
+      if (!created.ok) throw new Error("Failed to create manual bank connection");
+      connRow = await this.db.get<BankConnectionRow>(
+        "SELECT * FROM bank_connections WHERE id = ?",
+        [created.value.id],
+      );
+    }
+    const connectionId = connRow!.id;
+
+    const provAcctId = `manual:${ledgerAccountId}`;
+    const existing = await this.db.get<BankAccountRow>(
+      "SELECT * FROM bank_accounts WHERE connection_id = ? AND provider_account_id = ?",
+      [connectionId, provAcctId],
+    );
+    if (existing) {
+      if (existing.mapped_account_id !== ledgerAccountId) {
+        await this.mapBankAccountToLedgerAccount(existing.id, ledgerAccountId);
+      }
+      return existing.id;
+    }
+
+    const ledgerRow = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [ledgerId]);
+    const acct = await this.upsertBankAccount({
+      connectionId,
+      ledgerId,
+      providerAccountId: provAcctId,
+      name: "Manual Import",
+      accountNumber: provAcctId,
+      bsb: null,
+      type: "manual",
+      currency: ledgerRow?.currency ?? "AUD",
+      currentBalance: 0,
+      availableBalance: null,
+    });
+    if (!acct.ok) throw new Error("Failed to create manual bank account");
+    await this.mapBankAccountToLedgerAccount(acct.value.id, ledgerAccountId);
+    return acct.value.id;
+  }
+
+  /**
+   * Every line-fingerprint already staged for a ledger account, across ALL
+   * bank accounts mapped to it (Plaid/Basiq/manual). This is the cross-channel
+   * dedup scope.
+   */
+  /**
+   * Dedup context for a ledger account, partitioned by source:
+   *   - manualCounts:     existing manual-import rows per fingerprint (for
+   *                       occurrence-aware same-source dedup).
+   *   - feedFingerprints: exact fingerprints of feed (Plaid/Basiq) rows.
+   *   - feedAmountDates:  signed-amount → feed dates, for cross-source candidate
+   *                       matching within a date tolerance (description-agnostic).
+   */
+  private async dedupContextForLedgerAccount(ledgerAccountId: string): Promise<{
+    manualCounts: Map<string, number>;
+    feedFingerprints: Set<string>;
+    feedAmountDates: Map<number, string[]>;
+  }> {
+    const rows = await this.db.all<{ provider: string; line_fingerprint: string | null }>(
+      `SELECT bc.provider AS provider, bt.line_fingerprint AS line_fingerprint
+       FROM bank_transactions bt
+       JOIN bank_accounts ba ON bt.bank_account_id = ba.id
+       JOIN bank_connections bc ON ba.connection_id = bc.id
+       WHERE ba.mapped_account_id = ? AND bt.line_fingerprint IS NOT NULL`,
+      [ledgerAccountId],
+    );
+    const manualCounts = new Map<string, number>();
+    const feedFingerprints = new Set<string>();
+    const feedAmountDates = new Map<number, string[]>();
+    for (const r of rows) {
+      const fp = r.line_fingerprint!;
+      if (r.provider === "manual") {
+        manualCounts.set(fp, (manualCounts.get(fp) ?? 0) + 1);
+      } else {
+        feedFingerprints.add(fp);
+        // fingerprint format: `${date}|${signedAmount}|${normalisedDescription}`
+        const parts = fp.split("|");
+        const date = parts[0]!;
+        const signedAmount = Number(parts[1]);
+        const dates = feedAmountDates.get(signedAmount) ?? [];
+        dates.push(date);
+        feedAmountDates.set(signedAmount, dates);
+      }
+    }
+    return { manualCounts, feedFingerprints, feedAmountDates };
+  }
+
+  /**
+   * Classify each parsed row's dedup decision. Escalate-when-uncertain:
+   *   - same-source occurrence-aware: the Nth identical row is a duplicate only
+   *     if N prior identical rows already exist from this CSV source (so genuine
+   *     same-day duplicates persist, and re-import adds zero);
+   *   - cross-source exact (date+amount+description) → duplicate (auto-skip);
+   *   - cross-source within date tolerance (same amount, date within
+   *     CROSS_SOURCE_DATE_TOLERANCE_DAYS, different description/date) →
+   *     possible_duplicate (held for user confirmation — never auto-merged,
+   *     never silently double-counted; a Plaid pending→posted date shift must
+   *     not slip past as a new row);
+   *   - otherwise → new.
+   */
+  private classifyDedup(
+    rows: readonly MappedRow[],
+    ctx: { manualCounts: Map<string, number>; feedFingerprints: Set<string>; feedAmountDates: Map<number, string[]> },
+  ): Array<{ row: MappedRow; fp: string; occ: number; dedupKey: string; status: DedupStatus; reason: string }> {
+    const occByFp = new Map<string, number>();
+    return rows.map((row) => {
+      const fp = lineFingerprint(row.date, row.amount, row.type, row.description);
+      const occ = (occByFp.get(fp) ?? 0) + 1;
+      occByFp.set(fp, occ);
+      const dedupKey = `${fp}#${occ}`;
+      const existingManual = ctx.manualCounts.get(fp) ?? 0;
+      const signedAmount = row.type === "debit" ? -row.amount : row.amount;
+      const feedDates = ctx.feedAmountDates.get(signedAmount) ?? [];
+      const nearFeedDate = feedDates.some((d) => daysBetween(d, row.date) <= CROSS_SOURCE_DATE_TOLERANCE_DAYS);
+
+      let status: DedupStatus;
+      let reason: string;
+      if (occ <= existingManual) {
+        status = "duplicate";
+        reason = "Already imported from this CSV source (re-import)";
+      } else if (ctx.feedFingerprints.has(fp)) {
+        status = "duplicate";
+        reason = "Matches an existing bank-feed transaction (date, amount and description)";
+      } else if (nearFeedDate) {
+        status = "possible_duplicate";
+        reason = `Same amount as a bank-feed transaction within ${CROSS_SOURCE_DATE_TOLERANCE_DAYS} days — confirm before importing`;
+      } else {
+        status = "new";
+        reason = "No matching transaction found";
+      }
+      return { row, fp, occ, dedupKey, status, reason };
+    });
+  }
+
+  private async validateLedgerAndAccount(
+    ledgerId: string,
+    ledgerAccountId: string,
+  ): Promise<KountaError | null> {
+    const ledger = await this.db.get<LedgerRow>("SELECT id FROM ledgers WHERE id = ?", [ledgerId]);
+    if (!ledger) return ledgerNotFoundError(ledgerId);
+    const acct = await this.db.get<{ id: string }>(
+      "SELECT id FROM accounts WHERE id = ? AND ledger_id = ?",
+      [ledgerAccountId, ledgerId],
+    );
+    if (!acct) return accountNotFoundError(ledgerAccountId);
+    return null;
+  }
+
+  /**
+   * Dry-run a CSV import: parse + map, surface malformed rows, and flag rows
+   * that already exist (cross-channel dedup + within-file dedup). Writes nothing.
+   */
+  async previewCsvImport(params: {
+    ledgerId: string;
+    ledgerAccountId: string;
+    fileContent: string;
+    mapping: CsvMapping;
+  }): Promise<Result<CsvImportPreview>> {
+    const validationError = await this.validateLedgerAndAccount(params.ledgerId, params.ledgerAccountId);
+    if (validationError) return err(validationError);
+
+    let mapped;
+    try {
+      mapped = applyMapping(params.fileContent, params.mapping);
+    } catch (e) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, e instanceof Error ? e.message : "Invalid mapping"));
+    }
+
+    const ctx = await this.dedupContextForLedgerAccount(params.ledgerAccountId);
+    const classified = this.classifyDedup(mapped.rows, ctx);
+
+    const rows = classified.map((c) => ({
+      ...c.row,
+      dedupStatus: c.status,
+      dedupReason: c.reason,
+      dedupKey: c.dedupKey,
+    }));
+    const newCount = classified.filter((c) => c.status === "new").length;
+    const duplicateCount = classified.filter((c) => c.status === "duplicate").length;
+    const possibleDuplicateCount = classified.filter((c) => c.status === "possible_duplicate").length;
+
+    return ok({
+      rows,
+      errors: mapped.errors,
+      headers: mapped.headers,
+      newCount,
+      duplicateCount,
+      possibleDuplicateCount,
+      errorCount: mapped.errors.length,
+      totalDataRows: mapped.totalDataRows,
+    });
+  }
+
+  /**
+   * Commit a CSV import. Non-duplicate rows are staged as bank_transactions on
+   * the manual bank account, then run through the same classify + match
+   * pipeline as a feed sync. Re-importing an overlapping range does not
+   * double-count: existing fingerprints (any source) are skipped.
+   */
+  async commitCsvImport(params: {
+    ledgerId: string;
+    ledgerAccountId: string;
+    fileContent: string;
+    mapping: CsvMapping;
+    filename?: string;
+    /** Per-row decisions for possible_duplicate rows, keyed by dedupKey. */
+    decisions?: CsvImportDecisions;
+  }): Promise<Result<CsvImportResult>> {
+    const validationError = await this.validateLedgerAndAccount(params.ledgerId, params.ledgerAccountId);
+    if (validationError) return err(validationError);
+
+    let mapped;
+    try {
+      mapped = applyMapping(params.fileContent, params.mapping);
+    } catch (e) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, e instanceof Error ? e.message : "Invalid mapping"));
+    }
+
+    const bankAccountId = await this.ensureManualBankAccount(params.ledgerId, params.ledgerAccountId);
+    const ctx = await this.dedupContextForLedgerAccount(params.ledgerAccountId);
+    const classified = this.classifyDedup(mapped.rows, ctx);
+
+    let duplicates = 0;
+    let possibleDuplicates = 0;
+    const toInsert: ProviderBankTransaction[] = [];
+
+    for (const c of classified) {
+      if (c.status === "duplicate") {
+        duplicates++;
+        continue;
+      }
+      if (c.status === "possible_duplicate" && params.decisions?.[c.dedupKey] !== "import") {
+        // Held for confirmation: not imported (no silent double-count) and NOT
+        // written to bank_transactions. Persisted to the review queue so it is
+        // resolvable later instead of vanishing to an ephemeral count.
+        possibleDuplicates++;
+        await this.createReviewItem({
+          ledgerId: params.ledgerId,
+          type: "possible_duplicate_import",
+          refKey: c.dedupKey,
+          reason: c.reason,
+          bankAccountId,
+          payload: {
+            dedupKey: c.dedupKey,
+            ledgerAccountId: params.ledgerAccountId,
+            filename: params.filename ?? null,
+            row: {
+              date: c.row.date,
+              amount: c.row.amount,
+              type: c.row.type,
+              description: c.row.description,
+              reference: c.row.reference,
+              balance: c.row.balance,
+              currency: c.row.currency,
+              rawData: c.row.rawData,
+            },
+          },
+        });
+        continue;
+      }
+      // new, or possible_duplicate the user explicitly chose to import.
+      toInsert.push({
+        providerTransactionId: `manual:${c.dedupKey}`, // fingerprint#occurrence — stable, occurrence-aware
+        date: c.row.date,
+        amount: c.row.amount,
+        type: c.row.type,
+        description: c.row.description,
+        reference: c.row.reference,
+        category: null,
+        balance: c.row.balance,
+        rawData: {
+          ...c.row.rawData,
+          _source: "manual_csv",
+          _currency: c.row.currency,
+          _filename: params.filename ?? null,
+          _dedup: { status: c.status, reason: c.reason, decision: params.decisions?.[c.dedupKey] ?? null },
+        },
+      });
+    }
+
+    const up = await this.upsertBankTransactions(bankAccountId, params.ledgerId, toInsert);
+    if (!up.ok) return err(up.error);
+
+    // Same downstream pipeline as a feed sync.
+    await this.classifyPendingBankTransactions(params.ledgerId);
+    const match = await this.matchBankTransactions(params.ledgerId, bankAccountId);
+
+    // Audit the import (append-only).
+    await this.db.run(
+      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+       VALUES (?, ?, 'csv_import', ?, 'created', 'system', 'engine', ?, ?)`,
+      [
+        generateId(),
+        params.ledgerId,
+        bankAccountId,
+        JSON.stringify({
+          ledgerAccountId: params.ledgerAccountId,
+          filename: params.filename ?? null,
+          imported: up.value.created,
+          duplicates,
+          possibleDuplicates,
+          errors: mapped.errors.length,
+        }),
+        nowUtc(),
+      ],
+    );
+
+    return ok({
+      bankAccountId,
+      imported: up.value.created,
+      duplicates,
+      possibleDuplicates,
+      errors: mapped.errors,
+      matched: match.ok ? match.value.matched : 0,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Mapping profiles — reusable per-bank column mappings
+  // -------------------------------------------------------------------------
+
+  async createMappingProfile(params: {
+    ledgerId: string;
+    name: string;
+    mapping: CsvMapping;
+  }): Promise<Result<MappingProfile>> {
+    const parsed = csvMappingSchema.safeParse(params.mapping);
+    if (!parsed.success) {
+      return err(createError(ErrorCode.VALIDATION_ERROR, "Invalid mapping", [
+        { field: "mapping", suggestion: parsed.error.issues[0]?.message },
+      ]));
+    }
+    const id = generateId();
+    const ts = nowUtc();
+    try {
+      await this.db.run(
+        `INSERT INTO mapping_profiles (id, ledger_id, name, mapping, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, params.ledgerId, params.name, JSON.stringify(parsed.data), ts, ts],
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("UNIQUE")) {
+        return err(createError(ErrorCode.VALIDATION_ERROR, `A mapping profile named "${params.name}" already exists`));
+      }
+      throw e;
+    }
+    return this.getMappingProfile(id);
+  }
+
+  async listMappingProfiles(ledgerId: string): Promise<Result<readonly MappingProfile[]>> {
+    const rows = await this.db.all<MappingProfileRow>(
+      "SELECT * FROM mapping_profiles WHERE ledger_id = ? ORDER BY name",
+      [ledgerId],
+    );
+    return ok(rows.map(toMappingProfile));
+  }
+
+  async getMappingProfile(id: string): Promise<Result<MappingProfile>> {
+    const row = await this.db.get<MappingProfileRow>("SELECT * FROM mapping_profiles WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+    return ok(toMappingProfile(row));
+  }
+
+  async updateMappingProfile(
+    id: string,
+    params: { name?: string; mapping?: CsvMapping },
+  ): Promise<Result<MappingProfile>> {
+    const existing = await this.db.get<MappingProfileRow>("SELECT * FROM mapping_profiles WHERE id = ?", [id]);
+    if (!existing) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+
+    let mappingJson = typeof existing.mapping === "string" ? existing.mapping : JSON.stringify(existing.mapping);
+    if (params.mapping !== undefined) {
+      const parsed = csvMappingSchema.safeParse(params.mapping);
+      if (!parsed.success) {
+        return err(createError(ErrorCode.VALIDATION_ERROR, "Invalid mapping"));
+      }
+      mappingJson = JSON.stringify(parsed.data);
+    }
+    await this.db.run(
+      "UPDATE mapping_profiles SET name = ?, mapping = ?, updated_at = ? WHERE id = ?",
+      [params.name ?? existing.name, mappingJson, nowUtc(), id],
+    );
+    return this.getMappingProfile(id);
+  }
+
+  async deleteMappingProfile(id: string): Promise<Result<void>> {
+    const existing = await this.db.get<{ id: string }>("SELECT id FROM mapping_profiles WHERE id = ?", [id]);
+    if (!existing) return err(createError(ErrorCode.MAPPING_PROFILE_NOT_FOUND, "Mapping profile not found"));
+    await this.db.run("DELETE FROM mapping_profiles WHERE id = ?", [id]);
+    return ok(undefined);
+  }
+
+  // -------------------------------------------------------------------------
+  // Review queue — ledger-scoped escalations needing a human decision
+  // -------------------------------------------------------------------------
+
+  /**
+   * Raise a review item. Idempotent per (ledger, type, ref_key): if one already
+   * exists in any status, this is a no-op — so re-importing the same file does
+   * not pile up duplicate review items, and a dismissed item is not resurrected.
+   */
+  private async createReviewItem(params: {
+    ledgerId: string;
+    type: ReviewItemType;
+    refKey: string;
+    reason: string;
+    payload: Record<string, unknown>;
+    bankAccountId?: string | null;
+    bankTransactionId?: string | null;
+  }): Promise<void> {
+    const existing = await this.db.get<{ id: string }>(
+      "SELECT id FROM review_items WHERE ledger_id = ? AND type = ? AND ref_key = ?",
+      [params.ledgerId, params.type, params.refKey],
+    );
+    if (existing) return;
+    const ts = nowUtc();
+    await this.db.run(
+      `INSERT INTO review_items (id, ledger_id, type, status, ref_key, bank_account_id, bank_transaction_id, reason, payload, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
+      [generateId(), params.ledgerId, params.type, params.refKey,
+       params.bankAccountId ?? null, params.bankTransactionId ?? null,
+       params.reason, JSON.stringify(params.payload), ts, ts],
+    );
+  }
+
+  async listReviewItems(
+    ledgerId: string,
+    status?: ReviewItemStatus,
+  ): Promise<Result<readonly ReviewItem[]>> {
+    const rows = status
+      ? await this.db.all<ReviewItemRow>(
+          "SELECT * FROM review_items WHERE ledger_id = ? AND status = ? ORDER BY created_at DESC",
+          [ledgerId, status])
+      : await this.db.all<ReviewItemRow>(
+          "SELECT * FROM review_items WHERE ledger_id = ? ORDER BY created_at DESC",
+          [ledgerId]);
+    return ok(rows.map(toReviewItem));
+  }
+
+  async getReviewItem(id: string): Promise<Result<ReviewItem>> {
+    const row = await this.db.get<ReviewItemRow>("SELECT * FROM review_items WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.REVIEW_ITEM_NOT_FOUND, "Review item not found"));
+    return ok(toReviewItem(row));
+  }
+
+  private async markReviewResolved(
+    id: string,
+    status: "resolved" | "dismissed",
+    resolution: ReviewResolution,
+    ts: string,
+  ): Promise<Result<ReviewItem>> {
+    await this.db.run(
+      "UPDATE review_items SET status = ?, resolution = ?, resolved_at = ?, updated_at = ? WHERE id = ?",
+      [status, resolution, ts, ts, id],
+    );
+    return this.getReviewItem(id);
+  }
+
+  /**
+   * Resolve a review item.
+   *   - possible_duplicate_import + "import": stage the held candidate DIRECTLY
+   *     to bank_transactions and run only classify/match. It MUST bypass the
+   *     dedup classifier — otherwise the candidate would re-flag and re-hold
+   *     itself in a loop.
+   *   - possible_duplicate_import + "dismiss": close it; nothing imported.
+   *   - removed_reconciled_txn + "acknowledge"/"dismiss": close it; the guarded
+   *     bank transaction and the ledger are untouched.
+   */
+  async resolveReviewItem(
+    id: string,
+    action: "import" | "dismiss" | "acknowledge",
+  ): Promise<Result<ReviewItem>> {
+    const row = await this.db.get<ReviewItemRow>("SELECT * FROM review_items WHERE id = ?", [id]);
+    if (!row) return err(createError(ErrorCode.REVIEW_ITEM_NOT_FOUND, "Review item not found"));
+    if (row.status !== "open") {
+      return err(createError(ErrorCode.VALIDATION_ERROR, `Review item is already ${row.status}`));
+    }
+    const item = toReviewItem(row);
+    const ts = nowUtc();
+
+    if (item.type === "possible_duplicate_import") {
+      if (action === "dismiss") return this.markReviewResolved(id, "dismissed", "dismissed", ts);
+      if (action !== "import") {
+        return err(createError(ErrorCode.VALIDATION_ERROR, 'action must be "import" or "dismiss" for this item'));
+      }
+      const payload = item.payload as {
+        dedupKey: string;
+        row: { date: string; amount: number; type: "credit" | "debit"; description: string; reference: string | null; balance: number | null; currency: string; rawData: Record<string, unknown> };
+      };
+      const bankAccountId = item.bankAccountId;
+      if (!bankAccountId) {
+        return err(createError(ErrorCode.INTERNAL_ERROR, "Review item missing bank account context"));
+      }
+      const r = payload.row;
+      // BYPASS the dedup-hold gate: stage directly, never through classifyDedup.
+      const up = await this.upsertBankTransactions(bankAccountId, item.ledgerId, [{
+        providerTransactionId: `manual:${payload.dedupKey}`,
+        date: r.date,
+        amount: r.amount,
+        type: r.type,
+        description: r.description,
+        reference: r.reference,
+        category: null,
+        balance: r.balance,
+        rawData: { ...r.rawData, _source: "manual_csv", _currency: r.currency, _resolvedFromReview: id },
+      }]);
+      if (!up.ok) return err(up.error);
+      await this.classifyPendingBankTransactions(item.ledgerId);
+      await this.matchBankTransactions(item.ledgerId, bankAccountId);
+      return this.markReviewResolved(id, "resolved", "imported", ts);
+    }
+
+    // removed_reconciled_txn
+    if (action === "acknowledge") return this.markReviewResolved(id, "resolved", "acknowledged", ts);
+    if (action === "dismiss") return this.markReviewResolved(id, "dismissed", "dismissed", ts);
+    return err(createError(ErrorCode.VALIDATION_ERROR, 'action must be "acknowledge" or "dismiss" for this item'));
   }
 
   async listBankTransactions(params: {
@@ -3212,13 +3933,65 @@ export class LedgerEngine {
     );
 
     try {
-      // Fetch transactions from provider
-      const providerTxns = await provider.fetchTransactions({
-        connectionId: connRow.provider_connection_id,
-        accountId: bankAcctRow.provider_account_id,
-        fromDate,
-        toDate,
-      });
+      // Acquire transactions from the provider. Two models:
+      //   * cursor sync (Plaid /transactions/sync) — preferred when available;
+      //     resumes from the persisted cursor and yields added/modified/removed
+      //   * date-range pull (Basiq) — fetchTransactions(fromDate, toDate)
+      // Both converge on the same upsert + match + classify pipeline below.
+      let providerTxns: readonly ProviderBankTransaction[];
+      let fetchedCount: number;
+
+      if (provider.syncTransactions) {
+        const added: ProviderBankTransaction[] = [];
+        const modified: ProviderBankTransaction[] = [];
+        const removedIds: string[] = [];
+        let cursor = bankAcctRow.sync_cursor ?? null;
+        // Page until the provider reports no more changes.
+        for (;;) {
+          const page = await provider.syncTransactions(
+            {
+              connectionId: connRow.provider_connection_id,
+              accountId: bankAcctRow.provider_account_id,
+            },
+            cursor,
+          );
+          added.push(...page.added);
+          modified.push(...page.modified);
+          removedIds.push(...page.removed);
+          cursor = page.nextCursor;
+          if (!page.hasMore) break;
+        }
+
+        // added + modified both upsert (dedup on provider_transaction_id).
+        providerTxns = [...added, ...modified];
+        fetchedCount = added.length + modified.length;
+
+        // Apply removals before the cursor is persisted. Reconciled rows are
+        // guarded and raised to the review queue inside removeBankTransactions;
+        // surface the count rather than discarding it.
+        if (removedIds.length > 0) {
+          const removal = await this.removeBankTransactions(bankAccountId, removedIds);
+          if (removal.ok && removal.value.flaggedForReview > 0) {
+            console.log(
+              `[bank-sync] ${removal.value.flaggedForReview} reconciled transaction(s) reported removed by the provider — raised to the review queue for ledger ${connRow.ledger_id}`,
+            );
+          }
+        }
+
+        // Persist the cursor so the next sync resumes from here.
+        await this.db.run(
+          "UPDATE bank_accounts SET sync_cursor = ?, updated_at = ? WHERE id = ?",
+          [cursor, nowUtc(), bankAccountId],
+        );
+      } else {
+        providerTxns = await provider.fetchTransactions({
+          connectionId: connRow.provider_connection_id,
+          accountId: bankAcctRow.provider_account_id,
+          fromDate,
+          toDate,
+        });
+        fetchedCount = providerTxns.length;
+      }
 
       // Upsert into our database
       const upsertResult = await this.upsertBankTransactions(
@@ -3243,7 +4016,7 @@ export class LedgerEngine {
              transactions_matched = ?,
              completed_at = ?
          WHERE id = ?`,
-        [providerTxns.length, upsertResult.value.created,
+        [fetchedCount, upsertResult.value.created,
          matchResult.ok ? matchResult.value.matched : 0, completedAt, syncId]
       );
 

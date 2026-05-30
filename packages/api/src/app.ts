@@ -21,6 +21,7 @@ import { templateRoutes } from "./routes/templates.js";
 import { reportRoutes } from "./routes/reports.js";
 import { importRoutes, importBatchRoutes } from "./routes/imports.js";
 import { bankFeedRoutes } from "./routes/bank-feeds.js";
+import { reviewItemRoutes } from "./routes/review-items.js";
 import { classificationRoutes } from "./routes/classification.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { currencyRoutes } from "./routes/currencies.js";
@@ -120,6 +121,7 @@ export const createApp = (engine: LedgerEngine, storage?: AttachmentStorage): Ho
   app.route("/v1/ledgers/:ledgerId/reports", reportRoutes);
   app.route("/v1/ledgers/:ledgerId/imports", importRoutes);
   app.route("/v1/ledgers/:ledgerId/bank-feeds", bankFeedRoutes);
+  app.route("/v1/ledgers/:ledgerId/review-items", reviewItemRoutes);
   app.route("/v1/ledgers/:ledgerId/classification", classificationRoutes);
   app.route("/v1/ledgers/:ledgerId/notifications", notificationRoutes);
   app.route("/v1/ledgers/:ledgerId/currencies", currencyRoutes);
