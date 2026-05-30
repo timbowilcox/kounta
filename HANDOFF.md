@@ -1,128 +1,160 @@
-# HANDOFF — Launch migration registration (028/029/030)
+# HANDOFF — Fail-closed hardening (Session C)
 
-**Branch:** `feat/launch-migrations` (cut from `main` after PR #1 + PR #2).
-**Scope:** `SPRINT.md` — graduate 028/029/030 from PENDING to REGISTERED, make the runner
-apply 030 correctly, un-skip the two 030-gated revoke tests, and PROVE the full manifest
-001–032 applies cleanly to a fresh empty Postgres. The Session A live-DB safety gate is VOID:
-prod has been offline ~3 months with only disposable pre-launch data and a FRESH empty Postgres
-volume is provisioned at launch — so the three migrations apply, in order, to an empty DB on
-first boot.
-**Status:** all SPRINT criteria met; full suite green serially; **fresh-PG apply proven on real
-Postgres 18.3, twice, from empty.** **NOT self-certifying mergeable** — a fresh evaluator should
-re-verify (see Definition of Done / next step).
+**Branch:** `feat/fail-closed-hardening` (cut from `main` @ `1f32509`, after PRs #1/#2/#4).
+**Scope:** `SPRINT.md` — convert the four remaining FAIL-OPEN paths to fail CLOSED. No prod-DB
+action, no new migrations, no manifest/028-029-030 changes.
+**Status:** all four fixed, each with an injected-failure test; runner proven on a real throwaway
+Postgres. Full suite green serially (**690 pass / 5 skip / 0 fail**), typecheck 9/9 clean, 0
+fail-open warnings. **NOT self-certifying mergeable** — a fresh evaluator should inject each
+failure mode (see Definition of Done).
 
-## What's done
-1. **Manifest** (`packages/core/src/db/migration-manifest.ts`) — 028/029/030 moved into
-   `REGISTERED_MIGRATIONS` in order (`…027, 028, 029, 030, 031, 032`). `PENDING_MIGRATIONS` is
-   now `[]`. The derived PG + SQLite lists extend the old lists by **exactly** {028,029,030} in
-   the right positions (29 → 32 entries; all other entries unchanged in membership and order).
-2. **Runner** (`packages/api/src/index.ts`) — added the per-statement special-case for 030's
-   `ALTER TYPE audit_action ADD VALUE`, mirroring 017/020/022: three separate `db.exec()` calls
-   (`'updated'`/`'revoked'`/`'deleted'`, each `IF NOT EXISTS`) so each runs in autocommit. A
-   multi-statement file sent as one query is an implicit transaction, and Postgres rejects
-   `ALTER TYPE … ADD VALUE` inside a txn block. **This is the only runner change.**
-3. **029 Postgres bug fix** (`packages/core/src/db/migrations/029_bills.sql`) — **caught by the
-   fresh-PG apply, not by sql.js.** 029's PG file declared all ids/FKs as `UUID`, but
-   `ledgers.id` / `accounts.id` / `transactions.id` are `TEXT` schema-wide (UUID v7 stored as
-   text). Postgres rejected the FKs (`foreign key constraint … cannot be implemented` —
-   incompatible types uuid/text) and the runner (which swallows per-file errors and continues)
-   **silently dropped all four AP tables** — exactly the "mounted-but-dead in prod" failure 029
-   was meant to close. Changed all 16 `UUID` → `TEXT`; now matches the SQLite dialect and every
-   sibling migration. SQLite's dynamic typing had masked this; only a real-PG apply surfaces it.
-4. **Engine** (`packages/core/src/engine/index.ts`) — `writeBankTxnAudit` **left as-is**
-   (`archived`/`updated`); only its now-stale doc-comment was rewritten. See decision below.
-5. **Tests** — both revoke tests un-skipped and **strengthened**: each now reads the audit log
-   back (api via `GET /v1/ledgers/:id/audit` with a second active key; sdk via
-   `client.audit.list`) and asserts an `api_key` entry with `action='revoked'` — so they pass
-   because the audit row is genuinely written, not merely because the call returned 200.
-   `migration-parity.test.ts` flipped its three 028/029/030 assertions from **absence to
-   presence** (AP tables exist; `usage_tracking` has `bills_count`/`vendors_count`; audit CHECK
-   accepts `revoked`/`deleted`). `migration-drift.test.ts` now asserts `PENDING` is empty; its
-   synthetic + real-dropped-file tests still prove the guard catches a new unregistered
-   migration, so an empty PENDING does **not** blind it.
+## Baseline at session start
+`pnpm test --force --concurrency=1` → **663 pass / 6 skip / 0 fail** (core 474 · api 110/6-skip ·
+mcp 44 · sdk 35), 12/12 tasks, 0 fail-open warnings. (Fresh worktree needed `pnpm install`.)
 
-## writeBankTxnAudit decision — KEEP archived/updated (do NOT widen to revoked/deleted)
-The genuine 030 prod bug was `revokeApiKey` (`action='revoked'`,
-[engine/index.ts:1699](packages/core/src/engine/index.ts:1699)) and `softDeleteLedger`
-(`action='deleted'`, [engine/index.ts:1738](packages/core/src/engine/index.ts:1738)) throwing
-against the unmigrated enum — those write their actions **directly** and are fixed by 030 itself,
-no engine change. `writeBankTxnAudit` is independent and not a bug: its callers write `archived`
-(a provider-reported-removed *pending* mirror row is deleted — a `bank_transaction` is an
-external-feed staging mirror, not a posted domain entity) and `updated` (a reconciled row is
-guarded/flagged). No bank-txn path needs `revoked` (API-key-specific); `deleted` would be only a
-cosmetic relabel of a correct, audited, working path, and editing it edges into the
-bank-feed/Basiq removal area that is Session C. So the behaviour stays; the comment that
-justified it as a "030 isn't applied" workaround was rewritten to state the real, post-030
-rationale.
+## The four fixes (each: current fail-open → fix → injected-failure proof)
 
-## FRESH-PG PROOF (the real DoD) — DONE, on a throwaway local Postgres
-No Railway/prod touched. Stood up a throwaway **PostgreSQL 18.3** cluster locally
-(`initdb` → `pg_ctl` on port 55432, DB `kounta_proof`), pointed the **real** production
-entrypoint at it (`node packages/api/dist/index.js` with `DATABASE_URL`), applied the full
-manifest from empty **twice**, then verified the schema and tore the cluster down.
-- **Run #1 (empty):** `Migrations: 32 applied, 0 skipped, 0 failed`.
-- **Run #2 (same DB):** `Migrations: 0 applied, 32 skipped, 0 failed` — re-runnable via the
-  `_migrations` tracking table.
-- **030 on real PG:** `audit_action` enum = `{created,reversed,archived,updated,revoked,deleted}`;
-  `'revoked'`/`'deleted'` cast successfully **and** an actual
-  `INSERT INTO audit_entries (… action='revoked')` succeeds (the exact prod bug, now fixed).
-- **029 on real PG:** all four AP tables exist; `vendors.ledger_id` is `text` and the FK
-  `vendors_ledger_id_fkey` is actually built; `usage_tracking` has `bills_count`/`vendors_count`.
-- **028 on real PG:** both immutability triggers exist and a `UPDATE audit_entries` is rejected
-  (`audit_entries is append-only: UPDATE operations are forbidden`).
-- **Fresh-DB back-fill:** confirmed the `schemaExists` probe (no `ledgers` table) skips the entire
-  001–027 anchor-probe back-fill block, so nothing is back-filled — the runner just applies
-  001–032 in order. (EVALUATION-4 Obs.3 about the non-manifest probe list is moot on a fresh DB.)
+### 1. Migration runner — `fix(api)` `2d47eda`
+- **Was:** the enum special-case branches (002/017/020/022/030) `catch { /* already exists */ }`
+  swallowed EVERY exception then unconditionally marked the migration applied; the generic
+  per-migration catch logged "(continuing)" + `failed++` but boot proceeded against a half-migrated
+  DB. A broken `ALTER TYPE` read as "applied / 0 failed".
+- **Fix** ([packages/api/src/index.ts](packages/api/src/index.ts)): `isDuplicateValueError()` narrows
+  the enum catches to swallow ONLY SQLSTATE `42710` / "already exists" (rethrow else); after the
+  apply loop, `failed > 0` throws; `main().catch` now `process.exit(1)`.
+- **Deploy-behaviour change (conscious):** a bad migration now ABORTS boot (non-zero exit → Railway
+  healthcheck fails) instead of silently degrading. A half-migrated DB never serves.
+- **Proof — real Postgres 18.3** (`scripts/runner-failclosed-proof.sh`; sql.js can't exercise the
+  PG error path):
+  - **A** fresh empty DB → `32 applied, 0 skipped, 0 failed`, server starts.
+  - **B** re-run same DB → `0 applied, 32 skipped, 0 failed`, server starts (idempotent; genuine
+    "already applied" still skipped).
+  - **C** a deliberately-broken migration → `31 applied, 1 failed`, **exit 1**, logs "refusing to
+    start" + "Fatal: server startup failed", server does NOT listen.
+  - Cluster is created with `-E UTF8` to match prod — see "Encoding finding" below.
 
-### Exact command to reproduce the fresh-PG apply (for re-verification)
-```sh
-# any empty Postgres; here a local throwaway on :55432, DB kounta_proof
-pnpm --filter @kounta/api build
-DATABASE_URL="postgres://postgres@localhost:55432/kounta_proof" PORT=3999 \
-  node packages/api/dist/index.js   # watch for "Migrations: 32 applied, 0 skipped, 0 failed", then Ctrl-C
-# re-run the same command against the same DB → "0 applied, 32 skipped, 0 failed"
-```
+### 2. Token encryption — `fix(core)` `8aa4fdc`
+- **Was:** `encryptToken` returned the plaintext UNCHANGED when `KOUNTA_TOKEN_ENCRYPTION_KEY` was
+  missing/malformed (stored Stripe tokens in cleartext — forbidden by CLAUDE.md); `decryptToken`
+  returned any non-`enc:` value verbatim.
+- **Fix** ([packages/core/src/crypto/tokens.ts](packages/core/src/crypto/tokens.ts)):
+  `getEncryptionKey()` throws (`TokenEncryptionError`) on a missing/non-64-hex key; `encryptToken`
+  never returns plaintext; `decryptToken` requires a valid key AND an `enc:` envelope — missing key,
+  non-encrypted value, malformed envelope, wrong key, or tampered ciphertext (GCM auth-tag) all
+  throw. No data migration (disposable prod, no real tokens).
+- **Proof** (`packages/core/tests/token-crypto.test.ts`, 10 tests): no key → encrypt/decrypt throw
+  (not plaintext); malformed key → throw; corrupt ciphertext → throw; wrong key → throw;
+  non-encrypted value → throw; round-trip works with a valid key.
+- **Blast radius:** smaller than estimated at the gate — **no existing test broke**. The two Stripe
+  tests build `StripeConnection` objects directly and never call `decryptToken`; the oauth tests use
+  a different (OAuth) token system.
+
+### 3. Basiq webhook signature — `fix(core)` `22cae13`
+- **Was:** `BasiqProvider.handleWebhook(payload, _signature)` ignored the signature entirely and
+  processed every event. (Latent — no route invokes `handleWebhook` yet — but unsafe by
+  construction.)
+- **Fix** ([packages/core/src/bank-feeds/basiq.ts](packages/core/src/bank-feeds/basiq.ts)):
+  implements Basiq's real scheme (Svix): signed content `${webhook-id}.${webhook-timestamp}.${rawBody}`,
+  HMAC-SHA256 with the base64-decoded `whsec_` secret body, base64 output, matched timing-safe against
+  any space-delimited `v1,<sig>` entry, 5-minute replay window. New exported
+  `verifyBasiqWebhookSignature`. `handleWebhook` reads `BASIQ_WEBHOOK_SECRET` and verifies BEFORE
+  interpreting the body; missing secret / invalid signature / stale timestamp / bad body all return
+  `shouldSync:false` + `connectionId:null` (zero side effects). The shared `BankFeedProvider.handleWebhook`
+  was widened to a `WebhookVerificationInput` (rawBody + headers); mock/plaid updated (no call sites).
+- **Proof** (`packages/core/tests/basiq-webhook.test.ts`, 12 tests): valid signed event → processed
+  (correct `shouldSync`/`connectionId`); tampered body, wrong secret, stale timestamp, missing headers,
+  missing secret → all rejected with zero side effects.
+
+### 4. Audit writes — `fix(core)` `76bb519`
+- **Was:** no swallowed audit writes exist (verified every catch near an audit insert). The fail-open
+  was **atomicity**: several audited mutations wrote their `audit_entries` row OUTSIDE a DB
+  transaction, so a failed audit write left the mutation committed with no audit row.
+- **Fix** ([packages/core/src/engine/index.ts](packages/core/src/engine/index.ts)): wrapped
+  `createAccount`, `revokeApiKey`, `softDeleteLedger`, `closePeriod`, `reopenPeriod`,
+  `removeBankTransactions` in `this.db.transaction()` (nests via SAVEPOINT, so
+  `softDeleteLedger → revokeApiKey` is safe). `postTransaction` now snapshots the COMPLETE posted
+  entity (txn + lines) instead of the bare request input; the previously-skipped "includes snapshots
+  in audit entries" test is un-skipped (its TODO was stale — it matched the first `created` entry, an
+  account; now filtered by `entityType`).
+- **Proof** (`packages/core/tests/audit-fail-closed.test.ts`, 4 tests): a `Database` wrapper that
+  throws on every `INSERT INTO audit_entries` proves `createAccount` / `revokeApiKey` /
+  `postTransaction` / `softDeleteLedger` all roll back (mutation NOT persisted) when the audit write
+  fails.
+
+## ⚠ Env vars Tim must set in Railway
+1. **`BASIQ_WEBHOOK_SECRET`** — the `whsec_…` value from the Basiq dashboard. Absent → all Basiq
+   webhooks fail closed (rejected). NEW.
+2. **`KOUNTA_TOKEN_ENCRYPTION_KEY`** — 64 hex chars (32 bytes). Was optional; now REQUIRED wherever
+   Stripe Connect is used (create/read a connection). Absent → those ops fail closed.
+
+## ⚠ Flags / things the evaluator must know
+- **Deploy behaviour changed** (runner): boot now aborts non-zero on any migration failure. This is
+  the intended fail-closed posture but means a malformed migration = hard deploy failure.
+- **Encoding finding (real-PG):** the runner proof first ran on a Windows-default **WIN1252** cluster
+  and the fail-closed runner correctly ABORTED — 006/014 contain UTF-8 chars (currency symbols
+  `€`/`£` in seed data, box-drawing/em-dashes in comments) that WIN1252 can't store, and 028 then
+  cascaded. This is NOT a code or migration bug: prod (Railway/Linux) is UTF-8, where all 32 apply
+  (proven). Implication worth noting: the OLD swallow-and-continue runner, on a non-UTF-8 DB, would
+  have SILENTLY dropped `global_classifications`/multi-currency tables; the new runner turns that into
+  a loud boot failure. **Provision a UTF-8 Postgres** (default — just don't override).
+- **OUT-OF-SCOPE bug surfaced by fix #2 — Stripe-Connect webhook secret (recommend follow-up):**
+  `getStripeConnectionByAccountId` ([engine/index.ts:2088](packages/core/src/engine/index.ts:2088))
+  returns `webhook_secret` UNDECRYPTED, and the Stripe-Connect webhook route
+  ([stripe-connect.ts:62-63](packages/api/src/routes/stripe-connect.ts:62)) uses it as the HMAC key.
+  With encryption now mandatory the stored secret is `enc:…`, so legitimate Stripe-Connect webhooks
+  will be REJECTED (fail-closed, safe, but broken). One-line fix when in scope:
+  `webhookSecret: row.webhook_secret ? decryptToken(row.webhook_secret) : null`. Left untouched
+  (it's a fail-CLOSED correctness bug, not one of the four fail-open paths, and Stripe-Connect webhook
+  correctness needs its own test).
+- **`commitCsvImport` NOT wrapped** ([engine/index.ts](packages/core/src/engine/index.ts), CSV audit
+  at the end of the method): its audit is still non-transactional. Wrapping its heavy
+  upsert→classify→match pipeline in one transaction is a materially larger atomicity change; bounded
+  out per the gate. Candidate follow-up.
+- **`usage.ts` PG swallow regex** (SPRINT optional item) — not touched; SQLite-only `"no such
+  table|column"` regex, latent on a full schema. Not gated.
 
 ## Test status
-Full suite **green**, serial (`pnpm test --concurrency=1`): **663 passing, 6 skipped**
-(core 474 · mcp 44 · api 110/6-skip · sdk 35). `Tasks: 12 successful, 12 total`.
-Typecheck **9/9 clean**. **0** fail-open warnings. Delta vs session start (661/8): **+2 passing,
--2 skipped** — the two revoke tests now run and pass for the right reason.
+Full suite green serial (`pnpm test --force --concurrency=1`): **690 pass / 5 skip / 0 fail**
+(core 500 · mcp 44 · api 111/5-skip · sdk 35), 12/12 tasks. Typecheck **9/9 clean**. **0** fail-open
+warnings. Delta vs start (663/6): **+27 pass** (+26 new core tests: token 10, basiq 12, audit 4; +1
+un-skipped snapshot), **−1 skip**. Remaining 5 skips are pre-existing and unrelated (benchmark ×4,
+oauth "lists active connections" ×1).
 
-## LAUNCH PRECONDITION (record this)
-**Provision a FRESH empty Postgres volume at launch. Do NOT reattach the dormant prod volume.**
-The whole sprint rests on 001–032 applying to an empty DB on first boot. Reattaching the old
-volume reintroduces the live-data reconciliation problem the Session A gate existed for (e.g.
-028's non-idempotent `CREATE TRIGGER` assumes the triggers are absent), and the back-fill probe
-would run against legacy schema. Empty volume only.
+## Reproduce the runner PG proof
+```sh
+bash scripts/runner-failclosed-proof.sh
+# Expect: ALL PROOFS PASSED (A 32/0/0 serves · B 0/32/0 serves · C aborted non-zero 31/0/1)
+# Needs scoop Postgres (initdb/pg_ctl/psql on PATH). Stands up a throwaway UTF-8 cluster on :55450,
+# applies the real prod entrypoint, tears the cluster down. No prod/Railway is touched.
+```
+
+## Files changed (vs `1f32509`)
+**core:** `src/crypto/tokens.ts` (fail-closed), `src/index.ts` (export `TokenEncryptionError`),
+`src/bank-feeds/{basiq,mock,plaid,types,index}.ts` (webhook verify + interface),
+`src/engine/index.ts` (audit atomicity + full snapshot).
+**api:** `src/index.ts` (runner), `src/migrations.ts` (stale comment), `tests/api.test.ts`
+(un-skip snapshot test).
+**core tests (new):** `token-crypto.test.ts`, `basiq-webhook.test.ts`, `audit-fail-closed.test.ts`;
+**modified:** `tests/migration-drift.test.ts` (stale comment).
+**scripts (new):** `runner-failclosed-proof.sh`. **docs:** `SPRINT.md`, `HANDOFF.md`.
+Commits: `64bf3fc` SPRINT · `2d47eda` runner · `8aa4fdc` token · `22cae13` webhook · `76bb519`
+audit · `b0933c8` comment sweep + proof script.
+
+## Definition of Done — fresh evaluator owes (do NOT trust this self-assessment)
+- **runner:** re-run `scripts/runner-failclosed-proof.sh` on a throwaway PG → A 32/0/0 + serves,
+  B 0/32/0 + serves, C broken-migration aborts non-zero and does NOT serve. Confirm a non-UTF-8
+  cluster aborts (the WIN1252 case) rather than silently dropping tables.
+- **token:** `vitest run tests/token-crypto.test.ts` — no key → throws (not plaintext); corrupt
+  ciphertext → throws.
+- **webhook:** `vitest run tests/basiq-webhook.test.ts` — valid → processed; missing/invalid/stale →
+  rejected, zero side effects.
+- **audit:** `vitest run tests/audit-fail-closed.test.ts` — audited op whose audit write fails →
+  mutation rolled back, not persisted.
+- Full suite green serially, typecheck clean, 0 fail-open warnings.
 
 ## Exact next step
-1. **Fresh evaluator (do NOT trust this self-assessment):** re-run the fresh-PG apply above on a
-   throwaway PG and confirm `32 applied / 0 failed` then `0 applied / 32 skipped`, the enum has
-   `revoked`/`deleted`, and the four AP tables + FKs exist. Confirm the two un-skips pass because
-   the **audit row** is written (not a weakened 200), and that `PENDING=[]` has not blinded the
-   drift guard (drop a `033_x.sqlite.sql` → `pnpm --filter @kounta/core test` must go red).
-2. **Then Session C: fail-closed hardening** — token encryption, the Basiq webhook signature,
-   and the transaction audit-snapshot completeness (all explicitly out of scope here).
-
-## Files changed
-**core:** `src/db/migration-manifest.ts` (register 028/029/030, PENDING empty),
-`src/db/migrations/029_bills.sql` (UUID→TEXT), `src/engine/index.ts` (writeBankTxnAudit comment),
-`tests/migration-drift.test.ts` (PENDING empty assertion).
-**api:** `src/index.ts` (030 special-case), `tests/api.test.ts` (un-skip+strengthen revoke),
-`tests/migration-parity.test.ts` (flip to presence).
-**sdk:** `tests/sdk.test.ts` (un-skip+strengthen revoke).
-**docs:** `SPRINT.md` (this sprint's scope).
-Commits on `feat/launch-migrations`: `a9a712b` SPRINT · `55f8eda` manifest register ·
-`091b5a0` 029 PG TEXT fix · `9971b0f` 030 runner special-case · `4950086` engine comment ·
-`071c9b2` tests · this HANDOFF.
-
-## Definition of Done (met)
-028/029/030 registered · 030 applies on real PG (proven) · 029 applies on real PG (bug fixed) ·
-both revoke tests un-skipped and genuinely passing (audit row asserted) · PENDING empty · drift
-guard still catches drift · parity flipped to presence · full suite green serially. **Do not
-self-certify mergeable** — fresh evaluator owes the re-verification above.
-
-## Out of scope (untouched, per SPRINT)
-Token encryption; the Basiq webhook signature; the transaction audit-snapshot (Session C). No
-feature work; no migration squashing; the only runner change is the 030 special-case.
+1. Fresh evaluator injects each failure mode above (esp. the runner on real PG) and confirms
+   fail-CLOSED, not open.
+2. Decide on the two flagged follow-ups: the Stripe-Connect webhook-secret decrypt (one-liner) and
+   `commitCsvImport` atomicity.
+3. Set `BASIQ_WEBHOOK_SECRET` and `KOUNTA_TOKEN_ENCRYPTION_KEY` in Railway before launch.
