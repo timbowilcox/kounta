@@ -760,17 +760,12 @@ describe("Kounta API", () => {
       }
     });
 
-    // TODO(prod-bug, gated on migration 030): re-enable once 030 is registered.
-    // The fixture now matches the PRODUCTION schema exactly, where audit_action
-    // is ('created','reversed','archived','updated') — 'revoked'/'deleted' come
-    // from migration 030, which is PENDING (not applied in prod; see
-    // src/db/migration-manifest.ts + HANDOFF.md live-DB checks). engine.revokeApiKey
-    // writes action='revoked', so it throws against the real schema (CHECK
-    // constraint / enum) — i.e. API-key revocation currently fails to audit in
-    // production. This test passed before ONLY because the old fixture hand-picked
-    // 030, masking the prod bug. Skipping keeps the suite honest (no fixture
-    // divergence) until 030 is verified + registered and the engine path is fixed.
-    it.skip("revokes an API key", async () => {
+    // Migration 030 is now REGISTERED, so audit_action accepts 'revoked' and the
+    // engine's revokeApiKey INSERT no longer throws. On the OLD schema this 500'd
+    // (audit_action was created/reversed/archived/updated only). The assertion on
+    // the audit row below proves it passes for the RIGHT reason: a 'revoked' audit
+    // entry is actually written, not just a 200 returned.
+    it("revokes an API key", async () => {
       const createRes = await jsonRequest(app, "POST", "/v1/ledgers", {
         name: "Revoke Test", ownerId: userId,
       }, { Authorization: `Bearer ${ADMIN_SECRET}` });
@@ -781,6 +776,12 @@ describe("Kounta API", () => {
       }, { Authorization: `Bearer ${ADMIN_SECRET}` });
       const apiKeyData = (await keyRes.json()).data;
 
+      // A second, still-active key to read the audit log after revocation.
+      const readerRes = await jsonRequest(app, "POST", "/v1/api-keys", {
+        userId, ledgerId: ledger.id, name: "reader",
+      }, { Authorization: `Bearer ${ADMIN_SECRET}` });
+      const reader = (await readerRes.json()).data;
+
       // Revoke
       const revokeRes = await app.request(`/v1/api-keys/${apiKeyData.id}`, {
         method: "DELETE",
@@ -789,6 +790,19 @@ describe("Kounta API", () => {
       expect(revokeRes.status).toBe(200);
       const body = await revokeRes.json();
       expect(body.data.status).toBe("revoked");
+
+      // The audit entry was written with action='revoked' (needs migration 030).
+      const auditRes = await app.request(`/v1/ledgers/${ledger.id}/audit`, {
+        headers: { Authorization: `Bearer ${reader.rawKey}` },
+      });
+      expect(auditRes.status).toBe(200);
+      const audit = (await auditRes.json()).data as Array<{
+        entityType: string; entityId: string; action: string;
+      }>;
+      const revokedEntry = audit.find(
+        (e) => e.entityType === "api_key" && e.entityId === apiKeyData.id,
+      );
+      expect(revokedEntry?.action).toBe("revoked");
 
       // Verify revoked key no longer works
       const res = await app.request(`/v1/ledgers/${ledger.id}/accounts`, {

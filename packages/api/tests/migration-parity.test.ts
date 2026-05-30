@@ -60,38 +60,41 @@ describe("B1: production migration runner applies the bank-ingestion schema", ()
 });
 
 // ---------------------------------------------------------------------------
-// The PENDING migrations (028/029/030) are NOT applied by the production
-// runner, so their schema effects must be ABSENT from the production schema.
-// This proves the fixtures match prod EXACTLY (not a superset) — the divergence
-// that previously let api/sdk tests pass against schema prod doesn't have.
-// When 028–030 are verified + registered (after the live-DB checks), these
-// expectations flip — update them then.
+// 028/029/030 are now REGISTERED (they apply to the fresh launch DB), so their
+// schema effects MUST be PRESENT in the production schema. These assertions used
+// to prove ABSENCE (when 028–030 were PENDING); they are flipped to prove
+// PRESENCE, confirming the fixtures still match prod EXACTLY — now the full set.
 // ---------------------------------------------------------------------------
 
-describe("PENDING migrations (028/029/030) are absent from the production schema", () => {
-  it("029: bills/vendors tables do NOT exist (feature is mounted in prod but unmigrated)", async () => {
+describe("REGISTERED migrations (028/029/030) are present in the production schema", () => {
+  it("029: bills/vendors tables exist (feature is mounted and now migrated)", async () => {
     const db = await buildFromProductionList();
     const t = await db.all<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('bills','vendors','bill_line_items','bill_payments')",
     );
-    expect(t.map((r) => r.name).sort()).toEqual([]);
+    expect(t.map((r) => r.name).sort()).toEqual([
+      "bill_line_items",
+      "bill_payments",
+      "bills",
+      "vendors",
+    ]);
   });
 
-  it("029: usage_tracking has no bills_count/vendors_count columns", async () => {
+  it("029: usage_tracking has bills_count/vendors_count columns", async () => {
     const db = await buildFromProductionList();
     const cols = await db.all<{ name: string }>("PRAGMA table_info(usage_tracking)");
     const names = cols.map((c) => c.name);
-    expect(names).not.toContain("bills_count");
-    expect(names).not.toContain("vendors_count");
+    expect(names).toContain("bills_count");
+    expect(names).toContain("vendors_count");
   });
 
-  it("030: audit_entries action CHECK rejects 'revoked'/'deleted' (engine writes these — prod bug)", async () => {
+  it("030: audit_entries action CHECK accepts 'revoked'/'deleted' (engine writes these)", async () => {
     const db = await buildFromProductionList();
     const row = await db.get<{ sql: string }>(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_entries'",
     );
-    expect(row?.sql).toContain("'updated'"); // 002 IS applied
-    expect(row?.sql).not.toContain("'revoked'"); // 030 is NOT applied
-    expect(row?.sql).not.toContain("'deleted'");
+    expect(row?.sql).toContain("'updated'"); // 002
+    expect(row?.sql).toContain("'revoked'"); // 030
+    expect(row?.sql).toContain("'deleted'"); // 030
   });
 });

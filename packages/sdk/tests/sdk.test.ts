@@ -501,15 +501,11 @@ describe("@kounta/sdk", () => {
       }
     });
 
-    // TODO(prod-bug, gated on migration 030): re-enable once 030 is registered.
-    // The fixture now matches the PRODUCTION schema, where audit_action is
-    // ('created','reversed','archived','updated') — 'revoked'/'deleted' come from
-    // migration 030, which is PENDING (not applied in prod; see
-    // @kounta/core src/db/migration-manifest.ts + HANDOFF.md). engine.revokeApiKey
-    // writes action='revoked', so it throws against the real schema — i.e. API-key
-    // revocation currently fails to audit in production. This passed before ONLY
-    // because the old fixture hand-picked 030, masking the prod bug.
-    it.skip("revokes an API key (admin)", async () => {
+    // Migration 030 is now REGISTERED, so audit_action accepts 'revoked' and
+    // engine.revokeApiKey's audit INSERT succeeds. On the OLD schema it threw and
+    // revoke() rejected with a 500. The audit-row assertion proves this passes for
+    // the RIGHT reason: a 'revoked' entry is actually written.
+    it("revokes an API key (admin)", async () => {
       const created = await client.apiKeys.create({
         userId,
         ledgerId,
@@ -519,6 +515,14 @@ describe("@kounta/sdk", () => {
       const revoked = await client.apiKeys.revoke(created.id);
       expect(revoked.status).toBe("revoked");
       expect(revoked).not.toHaveProperty("keyHash");
+
+      // The audit entry was written with action='revoked' (needs migration 030).
+      // The client's own key is separate and still active, so it can read audit.
+      const audit = await client.audit.list(ledgerId);
+      const entry = audit.data.find(
+        (e) => e.entityType === "api_key" && e.entityId === created.id,
+      );
+      expect(entry?.action).toBe("revoked");
     });
   });
 
