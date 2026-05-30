@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { SqliteDatabase } from "../db/sqlite.js";
 import type { Database } from "../db/database.js";
 import { generateId } from "../engine/id.js";
+import { registeredSqliteMigrationFiles } from "../db/migration-manifest.js";
 import {
   getTierConfig,
   hasFeature,
@@ -21,54 +22,21 @@ import {
 } from "./index.js";
 
 // ---------------------------------------------------------------------------
-// Test helpers
+// Test helpers — FULL registered schema from the single source of truth
+// (../db/migration-manifest.ts), not a hand-picked subset.
 // ---------------------------------------------------------------------------
 
-const migrationSql = readFileSync(
-  resolve(__dirname, "../db/migrations/001_initial_schema.sqlite.sql"),
-  "utf-8",
-);
-
-const billingSql = readFileSync(
-  resolve(__dirname, "../db/migrations/003_billing.sqlite.sql"),
-  "utf-8",
-);
-
-const customersSql = readFileSync(
-  resolve(__dirname, "../db/migrations/024_customers.sqlite.sql"),
-  "utf-8",
-);
-
-const fixedAssetsSql = readFileSync(
-  resolve(__dirname, "../db/migrations/019_fixed_assets.sqlite.sql"),
-  "utf-8",
-);
-
-const invoicingSql = readFileSync(
-  resolve(__dirname, "../db/migrations/021_invoicing.sqlite.sql"),
-  "utf-8",
-);
-
-const tierUsageSql = readFileSync(
-  resolve(__dirname, "../db/migrations/027_tier_usage_tracking.sqlite.sql"),
-  "utf-8",
-);
+const MIGRATIONS_DIR = resolve(__dirname, "../db/migrations");
 
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
-  const schemaWithoutPragmas = migrationSql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  db.exec(schemaWithoutPragmas);
-  db.exec(billingSql);
-
-  // Apply dependent migrations in order for limit checks
-  try { db.exec(fixedAssetsSql); } catch { /* may not exist */ }
-  try { db.exec(invoicingSql); } catch { /* may not exist */ }
-  try { db.exec(customersSql); } catch { /* may not exist */ }
-
-  db.exec(tierUsageSql);
+  for (const file of registeredSqliteMigrationFiles()) {
+    const sql = readFileSync(resolve(MIGRATIONS_DIR, file), "utf-8")
+      .split("\n")
+      .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+      .join("\n");
+    db.exec(sql);
+  }
   return db;
 };
 

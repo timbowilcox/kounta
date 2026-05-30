@@ -29,3 +29,14 @@ export type { Database, Row, RunResult } from "./db/database.js";
 export { SqliteDatabase } from "./db/sqlite.js";
 export { PostgresDatabase } from "./db/postgres.js";
 export { encryptToken, decryptToken, isEncrypted } from "./crypto/tokens.js";
+export {
+  REGISTERED_MIGRATIONS,
+  PENDING_MIGRATIONS,
+  KNOWN_MIGRATIONS,
+  PG_VIRTUAL_STEMS,
+  registeredPgMigrationFiles,
+  registeredSqliteMigrationFiles,
+  findMigrationDrift,
+  isClean,
+} from "./db/migration-manifest.js";
+export type { MigrationDrift } from "./db/migration-manifest.js";

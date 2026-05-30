@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { SqliteDatabase, LedgerEngine } from "@kounta/core";
+import { SqliteDatabase, LedgerEngine, registeredSqliteMigrationFiles } from "@kounta/core";
 import type { Database } from "@kounta/core";
 import { createApp } from "../src/app.js";
 import type { Hono } from "hono";
@@ -24,33 +24,18 @@ const loadMigration = (name: string): string => {
   return readFileSync(path, "utf-8");
 };
 
+// Apply the FULL registered migration set (the production schema), in order,
+// derived from the single source of truth in @kounta/core — not a hand-picked
+// subset.
 const createTestDb = async (): Promise<Database> => {
   const db = await SqliteDatabase.create();
-  const schema = loadMigration("001_initial_schema.sqlite.sql")
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  db.exec(schema);
-
-  // Apply needed migrations
-  const migrations = [
-    "003_billing.sqlite.sql",
-    "006_multi_currency.sqlite.sql",
-    "007_conversations.sqlite.sql",
-    "018_oauth.sqlite.sql",
-    "019_fixed_assets.sqlite.sql",
-    "021_invoicing.sqlite.sql",
-    "024_customers.sqlite.sql",
-    "027_tier_usage_tracking.sqlite.sql",
-  ];
-
-  for (const m of migrations) {
-    const sql = loadMigration(m);
-    if (sql) {
-      try { db.exec(sql); } catch { /* migration may partially fail in test env */ }
-    }
+  for (const file of registeredSqliteMigrationFiles()) {
+    const sql = loadMigration(file)
+      .split("\n")
+      .filter((line) => !line.trim().toUpperCase().startsWith("PRAGMA"))
+      .join("\n");
+    db.exec(sql);
   }
-
   return db;
 };
 

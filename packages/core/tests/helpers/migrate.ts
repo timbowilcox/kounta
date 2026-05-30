@@ -1,31 +1,33 @@
 // ---------------------------------------------------------------------------
-// Shared test fixture — loads the FULL SQLite migration set, in order.
+// Shared test fixture — loads the registered SQLite migration set, in order.
 //
 // Why this exists: each test file used to hand-pick a subset of migrations in
 // its own createTestDb(). That is exactly how `usage_tracking` (027) went
 // missing in the API tests and tier checks silently failed open ("no such
 // table: usage_tracking"). New tables become the next silent "no such table".
 //
-// Every new test should build its database from here so any future migration
-// is picked up automatically — there is no per-test migration list to forget
-// to update.
+// The migration list is now derived from the SINGLE source of truth —
+// REGISTERED_MIGRATIONS in src/db/migration-manifest.ts — so the fixture
+// applies EXACTLY what production applies (no `readdirSync` divergence). A new
+// migration is picked up automatically once it is registered; an unregistered
+// file (e.g. the PENDING 028/029/030) is deliberately NOT applied here, so a
+// green suite is real evidence of what prod runs.
 // ---------------------------------------------------------------------------
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { SqliteDatabase } from "../../src/db/sqlite.js";
 import type { Database } from "../../src/db/database.js";
+import { registeredSqliteMigrationFiles } from "../../src/db/migration-manifest.js";
 
 const MIGRATIONS_DIR = resolve(__dirname, "../../src/db/migrations");
 
 /**
- * All SQLite migration files in numeric order. We deliberately match only the
- * `*.sqlite.sql` variant — the bare `*.sql` files are the Postgres flavour.
+ * The registered SQLite migration files in apply order. Derived from the
+ * production manifest — NOT a directory scan.
  */
 function sqliteMigrationFiles(): string[] {
-  return readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sqlite.sql"))
-    .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  return registeredSqliteMigrationFiles();
 }
 
 /**
@@ -41,9 +43,9 @@ function readMigration(file: string): string {
 }
 
 /**
- * Create an in-memory SQLite database with every migration applied, in order.
- * This is the canonical test fixture — prefer it over hand-rolled migration
- * lists so a new table never becomes a silent "no such table".
+ * Create an in-memory SQLite database with every REGISTERED migration applied,
+ * in order. This is the canonical test fixture — it mirrors the production
+ * schema exactly, so prefer it over hand-rolled migration lists.
  */
 export async function createFullTestDb(): Promise<Database> {
   const db = await SqliteDatabase.create();

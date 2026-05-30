@@ -15,8 +15,6 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { SqliteDatabase, LedgerEngine, generateId } from "../src/index.js";
 import {
   handleChargeSucceeded,
@@ -37,25 +35,15 @@ import {
   processRevenueRecognition,
 } from "../src/revenue/index.js";
 import type { Database } from "../src/index.js";
+import { createFullTestDb } from "./helpers/migrate.js";
 
 // ---------------------------------------------------------------------------
-// Migration setup
+// Migration setup — FULL registered schema from the single source of truth
+// (src/db/migration-manifest.ts), not a hand-picked subset.
 // ---------------------------------------------------------------------------
-
-const loadMigration = (name: string): string =>
-  readFileSync(resolve(__dirname, `../src/db/migrations/${name}`), "utf-8");
 
 const createTestDb = async (): Promise<Database> => {
-  const db = await SqliteDatabase.create();
-  const schema = loadMigration("001_initial_schema.sqlite.sql");
-  const schemaWithoutPragmas = schema
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("PRAGMA"))
-    .join("\n");
-  await db.exec(schemaWithoutPragmas);
-  await db.exec(loadMigration("006_multi_currency.sqlite.sql"));
-  await db.exec(loadMigration("015_stripe_connect.sqlite.sql"));
-  await db.exec(loadMigration("016_revenue_recognition.sqlite.sql"));
+  const db = await createFullTestDb();
   return db;
 };
 
