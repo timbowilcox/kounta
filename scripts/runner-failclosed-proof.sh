@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Real-Postgres proof for the fail-closed migration runner (Session C).
 # Proves on a THROWAWAY Postgres 18.x (sql.js cannot exercise the PG error path):
-#   A. fresh empty DB -> full manifest applies (32 applied, 0 failed), exit 0
-#   B. same DB re-run -> 0 applied, 32 skipped, exit 0 (idempotent)
+#   A. fresh empty DB -> full manifest applies (33 applied, 0 failed), exit 0
+#   B. same DB re-run -> 0 applied, 33 skipped, exit 0 (idempotent)
 #   C. a deliberately-broken migration -> boot ABORTS non-zero, server never starts
 # No prod/Railway is touched. The cluster is torn down at the end.
 set -uo pipefail
@@ -71,7 +71,7 @@ grep -E "Migrations: [0-9]+ applied" "$LOG-A.log" || true
 SUM_A=$(grep -oE "Migrations: [0-9]+ applied, [0-9]+ skipped, [0-9]+ failed" "$LOG-A.log" | tail -1)
 echo "exit/state: $RA | summary: $SUM_A"
 [ "$RA" = "RUNNING" ] || fail "A: server did not start (state=$RA) — expected a clean boot to serve"
-echo "$SUM_A" | grep -qE "32 applied, 0 skipped, 0 failed" || fail "A: expected 32 applied/0 failed, got: $SUM_A"
+echo "$SUM_A" | grep -qE "33 applied, 0 skipped, 0 failed" || fail "A: expected 33 applied/0 failed, got: $SUM_A"
 
 echo ""
 echo "=== PROOF B: idempotent re-run (already-applied are skipped) ==="
@@ -79,7 +79,7 @@ RB=$(run_entry kounta_proof "$LOG-B.log")
 SUM_B=$(grep -oE "Migrations: [0-9]+ applied, [0-9]+ skipped, [0-9]+ failed" "$LOG-B.log" | tail -1)
 echo "exit/state: $RB | summary: $SUM_B"
 [ "$RB" = "RUNNING" ] || fail "B: server did not start (state=$RB)"
-echo "$SUM_B" | grep -qE "0 applied, 32 skipped, 0 failed" || fail "B: expected 0 applied/32 skipped, got: $SUM_B"
+echo "$SUM_B" | grep -qE "0 applied, 33 skipped, 0 failed" || fail "B: expected 0 applied/33 skipped, got: $SUM_B"
 
 echo ""
 echo "=== PROOF C: a deliberately-broken migration ABORTS boot non-zero ==="

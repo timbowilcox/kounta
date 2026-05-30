@@ -147,13 +147,68 @@ describe("audit writes fail closed (op rolls back if its audit entry can't be wr
     }
   });
 
-  it("softDeleteLedger: ledger stays ACTIVE when its audit write fails", async () => {
-    await expect(engine.softDeleteLedger(ledgerId, ownerId)).rejects.toThrow();
+  it("softDeleteLedger (nested): audit failure rolls back BOTH the ledger delete AND the key revocations", async () => {
+    // Seed two active keys via the real engine, so there is a nested revoke loop.
+    const k1 = await plainEngine.createApiKey({ ledgerId, userId: ownerId, name: "k1" });
+    const k2 = await plainEngine.createApiKey({ ledgerId, userId: ownerId, name: "k2" });
+    expect(k1.ok && k2.ok).toBe(true);
+    if (!k1.ok || !k2.ok) return;
 
-    const led = await plainEngine.getLedger(ledgerId);
-    expect(led.ok).toBe(true);
-    if (led.ok) {
-      expect(led.value.status).not.toBe("deleted");
+    await expect(engine.softDeleteLedger(ledgerId, ownerId)).rejects.toThrow(/audit write failed/);
+
+    // The audit write was actually REACHED — 033 added 'deleted' to ledger_status,
+    // so the UPDATE no longer throws on the constraint before the audit insert.
+    // (Before 033 this was 0: the op died on the CHECK and the test was vacuous.)
+    expect(failing.auditAttempts).toBeGreaterThan(0);
+
+    // Ledger NOT deleted — the outer transaction rolled back.
+    const ledRow = await real.get<{ status: string }>("SELECT status FROM ledgers WHERE id = ?", [ledgerId]);
+    expect(ledRow?.status).toBe("active");
+
+    // BOTH keys still active — the nested revokeApiKey savepoints rolled back too.
+    const keys = await plainEngine.listApiKeys(ledgerId);
+    expect(keys.ok).toBe(true);
+    if (keys.ok) {
+      const statuses = keys.value
+        .filter((k) => k.id === k1.value.apiKey.id || k.id === k2.value.apiKey.id)
+        .map((k) => k.status)
+        .sort();
+      expect(statuses).toEqual(["active", "active"]);
     }
+
+    // No 'deleted'/'revoked' audit rows were persisted.
+    const rows = await real.all<{ action: string }>(
+      "SELECT action FROM audit_entries WHERE ledger_id = ? AND action IN ('deleted', 'revoked')",
+      [ledgerId],
+    );
+    expect(rows.length).toBe(0);
+  });
+
+  it("softDeleteLedger (happy path): succeeds, hides the ledger, revokes its keys, writes the audit row", async () => {
+    const key = await plainEngine.createApiKey({ ledgerId, userId: ownerId, name: "k1" });
+    expect(key.ok).toBe(true);
+    if (!key.ok) return;
+
+    const res = await plainEngine.softDeleteLedger(ledgerId, ownerId);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value.status).toBe("deleted");
+
+    // Hidden from the by-id read and the owner's list.
+    const got = await plainEngine.getLedger(ledgerId);
+    expect(got.ok).toBe(false);
+    const list = await plainEngine.findLedgersByOwner(ownerId);
+    expect(list.ok).toBe(true);
+    if (list.ok) expect(list.value.find((l) => l.id === ledgerId)).toBeUndefined();
+
+    // Underlying row really is 'deleted', the key is revoked, the audit row exists.
+    const ledRow = await real.get<{ status: string }>("SELECT status FROM ledgers WHERE id = ?", [ledgerId]);
+    expect(ledRow?.status).toBe("deleted");
+    const keys = await plainEngine.listApiKeys(ledgerId);
+    if (keys.ok) expect(keys.value.find((k) => k.id === key.value.apiKey.id)?.status).toBe("revoked");
+    const audit = await real.all<{ action: string }>(
+      "SELECT action FROM audit_entries WHERE ledger_id = ? AND entity_type = 'ledger' AND action = 'deleted'",
+      [ledgerId],
+    );
+    expect(audit.length).toBe(1);
   });
 });
