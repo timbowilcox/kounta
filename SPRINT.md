@@ -1,77 +1,85 @@
-# SPRINT — Launch migration registration (028/029/030)
+# SPRINT — Fail-closed hardening (Session C)
 
 ## Context
-Production has been offline ~3 months; the postgres-volume holds only disposable
-pre-launch data and WILL be replaced with a fresh empty volume at launch. The Session A
-production-safety gate that blocked registering 028/029/030 (it protected a live prod with
-real data) is therefore VOID — there is no live data and no reconciliation. These migrations
-will apply, in order, to a fresh empty Postgres on first boot. Registering them is now safe.
+The original audit found a systemic FAIL-OPEN posture: on failure the system silently
+degrades or proceeds rather than refusing. For an accounting/audit product that's backwards —
+the correct default is fail CLOSED (refuse, error loudly), never silently proceed. This sprint
+converts the four remaining fail-open paths to fail-closed. Production is disposable/pre-launch
+(no real tokens, no webhook history, no users), so NONE of these fixes need a data migration or
+backfill — which simplifies the crypto and audit changes especially.
 
-## Scope
-Move 028/029/030 from PENDING to REGISTERED; make the runner apply 030 correctly; un-skip the
-two 030-gated tests; prove the full manifest 001–032 applies cleanly to a fresh empty Postgres.
+Touches security-sensitive code (auth tokens, webhook verification, audit writes, the migration
+runner) but NO production-DB action and NO new migrations.
+
+## Scope — four fail-closed fixes
+1. Migration-runner fail-closed (EVALUATION-5 §10).
+2. Token encryption fail-closed (remove the plaintext fallback).
+3. Basiq webhook signature verification (reject unverified).
+4. Audit-write/snapshot fail-closed (no swallowed audit failures; complete snapshots).
 
 ## Before any code
-1. Read SPRINT.md, CLAUDE.md, HANDOFF.md, EVALUATION-4.md.
-2. Orient:
-   - the migration manifest in @kounta/core (migration-manifest.ts): REGISTERED vs PENDING
-   - the API runner packages/api/src/index.ts — specifically the per-statement special-cases
-     for 017/020/022 (ALTER TYPE ... ADD VALUE can't run inside the implicit txn that
-     PostgresDatabase.exec wraps each file in). This is the pattern 030 needs.
-   - migration 030 (PG + SQLite) and the audit_action enum lineage: 001 CREATE TYPE,
-     002 inline 'updated', 030 'revoked'/'deleted'
-   - the engine's writeBankTxnAudit (engine index.ts): the workaround restricting bank-txn
-     audit actions to archived/updated BECAUSE 030 wasn't applied
-   - the two it.skip'd revoke tests (api.test.ts, sdk.test.ts) and their 030 TODOs
-   - the anti-drift guard's PENDING exceptions
-3. Baseline: pnpm test --concurrency=1 → confirm 661 / 8-skipped / 0 fail-open warnings.
+1. Read SPRINT.md, CLAUDE.md, HANDOFF.md, EVALUATION-5.md.
+2. Locate each fail-open path precisely (file:line):
+   - Runner (packages/api/src/index.ts): the special-case catch { /* already exists */ } on the
+     017/020/022/030 branches (swallows ALL exceptions silently and still marks applied), AND the
+     generic per-migration catch that logs "continuing" + failed++ without aborting boot.
+   - Token encryption: the path that stores/reads a token as plaintext when the key is missing or
+     decryption fails.
+   - Basiq webhook: the handler that accepts events without verifying authenticity; determine
+     Basiq's actual signature scheme (signing secret / HMAC header).
+   - Audit: any audit write whose failure is swallowed (op proceeds without an audit entry) and
+     any snapshot missing full before/after state. NB: 030 fixed the enum-rejection that made
+     revoke/delete audit writes throw — confirm what swallow paths remain post-030.
+3. Baseline: pnpm test --concurrency=1 → confirm green, record the count.
 
-## GATE — report, then proceed (no human go required; prod is disposable/offline)
-Before writing the runner change, report:
-   - exactly how 017/020/022 are special-cased, confirming 030 needs identical treatment
-   - your recommendation on whether to LIFT the writeBankTxnAudit workaround now that 030 lands
-     (does any bank-txn path legitimately need revoked/deleted, or is archived/updated correct
-     there regardless?) — recommend, don't assume
-   - confirmation that on a FRESH empty DB the back-fill probe (001–027 anchors in index.ts)
-     back-fills nothing, then the runner applies 001–032 in order
-There is no irreversible prod action in this sprint, so proceed after reporting — but STOP and
-flag anything surprising.
+## GATE — report current behaviour + fix plan + dependencies (STOP, report, then proceed)
+For each of the four: the exact current fail-open behaviour (file:line), the fail-closed fix, and
+its blast radius. Proceed after reporting — but STOP and flag if any fix:
+   - needs a data migration/backfill (shouldn't, given disposable prod — confirm),
+   - materially changes deploy/boot behaviour (the runner abort-on-failure DOES: a bad migration
+     now takes the service down instead of degrading silently — flag it as a conscious choice),
+   - needs a secret Tim must set in Railway (the Basiq signing secret — name the env var; code
+     reads it and fails closed if absent),
+   - is materially larger than a contained fix (flag for a possible split).
+No human go strictly required, but flag surprises before charging ahead on crypto/webhook.
 
-## The work
-- Manifest: move 028, 029, 030 from PENDING to REGISTERED in correct order
-  (…027, 028, 029, 030, 031, 032). PENDING becomes empty. Re-derive PG + SQLite lists; verify
-  they extend the old lists by exactly {028,029,030} in the right positions.
-- Runner (packages/api/src/index.ts): add the per-statement special-case for 030's ALTER TYPE,
-  mirroring 017/020/022. This is the ONLY runner change.
-- Engine: lift the writeBankTxnAudit workaround IF the gate concluded it should be — else leave
-  it and document why.
-- Un-skip both revoke tests (api + sdk). They must now PASS because the schema accepts
-  'revoked'/'deleted'. Confirm they pass for the RIGHT reason (audit row written with the
-  correct action), not via a weakened assertion.
-- Anti-drift guard: PENDING list now empty; guard must still pass AND still catch a deliberate
-  drift.
-- Parity assertions: flip the ones that proved ABSENCE of bills/vendors / 030-actions to prove
-  PRESENCE — the test schema now matches the full manifest.
-- FRESH-PG PROOF (the real DoD): stand up a throwaway Postgres (local docker or a Railway
-  branch — NOT the dormant prod volume) and apply the full manifest 001–032 from empty, TWICE,
-  proving clean apply + 030's ALTER TYPE succeeds on real PG + re-runnability. sql.js does NOT
-  exercise the PG ALTER TYPE path, so this is mandatory. If no PG is reachable in-session,
-  statically verify the 030 special-case byte-matches the 017/020/022 pattern AND document the
-  exact fresh-PG apply command for the human to run once before launch.
+## The work (fail closed everywhere; an injected-failure test for each)
+1. Runner: narrow the special-case catch to swallow ONLY duplicate/"already exists" (match the
+   specific PG error code/message; rethrow everything else). Make boot ABORT (non-zero / throw) if
+   any migration failed — a half-migrated DB must not serve.
+2. Token encryption: remove the plaintext fallback. Missing/invalid key → fail (startup or op).
+   Decryption failure → error, never return plaintext. No data migration (disposable prod).
+3. Basiq webhook: verify the signature on every inbound event; reject (401/403) with ZERO side
+   effects on missing/invalid signature. Read the signing secret from env; absent → fail closed.
+4. Audit: audit writes fail closed — if the audit entry can't be written, the op fails/rolls back
+   (or is loudly surfaced), never silently committed without audit. Snapshots capture complete
+   before/after state.
+
+(Optional, only if you're already in usage.ts: the tier-check swallow regex is SQLite-only
+("no such table|column"), so on PG a missing table 500s instead of failing closed cleanly. Latent
+on a full schema — don't gate the sprint on it.)
+
+## Definition of done (proof, not assertion)
+Each fix has a test that INJECTS its failure and proves fail-CLOSED:
+   - runner: a deliberately-broken migration on a throwaway REAL Postgres aborts boot (non-zero),
+     DB not left serving; a genuine "already exists" on re-run is still swallowed (idempotent
+     re-run still works). sql.js won't exercise the PG error path — real-PG proof required, as in
+     Session B.
+   - token: no key → fails closed (not plaintext); corrupt ciphertext → read fails closed.
+   - webhook: valid signature → processed; missing/invalid → rejected, zero side effects.
+   - audit: audited op whose audit write fails → op fails/rolls back, not silently committed.
+Full suite green serially, no fail-open warnings, typecheck clean.
 
 ## Scope guardrails
-DO NOT touch token encryption, the Basiq webhook, or the audit-snapshot — those are Session C.
-No feature work. Do NOT squash migrations. The only runner change permitted is the 030
-special-case.
+No new migrations, no prod-DB action, no feature work. Do NOT touch the manifest or the 028/029/030
+registration (done). Fix ONLY the four fail-open paths; the runner change is limited to
+catch-narrowing + abort-on-failure — no other runner refactor.
 
-## End
-- HANDOFF.md: what's done, the fresh-PG apply result (or the documented manual command), the
-  writeBankTxnAudit decision, test status, the launch precondition below, exact next step
-  (Session C: fail-closed hardening), files changed.
-- LAUNCH PRECONDITION to record: provision a FRESH empty Postgres volume at launch; do NOT
-  reattach the dormant volume.
-- Commit per logical chunk. "Done" = 028/029/030 registered, 030 applies on real PG (or
-  documented), both tests un-skipped and genuinely passing, PENDING empty, guard still catches
-  drift, parity flipped to presence, full suite green serially.
-- Do NOT self-certify mergeable. A fresh evaluator verifies the real-PG 030 apply, that the
-  un-skips pass for the right reason, and that PENDING-empty hasn't blinded the guard.
+## At the end
+- HANDOFF.md: each fix + its injected-failure proof, the env var Tim must set in Railway (Basiq
+  secret), the deploy-behaviour change (boot now aborts on migration failure), test status, files
+  changed, exact next step.
+- Sweep the two stale "028/029/030 are PENDING" comments now on main
+  (packages/api/src/migrations.ts header + migration-drift.test.ts) — trivial, fix while here.
+- Commit per fix. Do NOT self-certify mergeable. A fresh evaluator injects each failure mode and
+  confirms fail-CLOSED (not open), with the runner proof on real PG.
