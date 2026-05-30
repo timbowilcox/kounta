@@ -944,7 +944,10 @@ export class LedgerEngine {
 
   async getLedger(id: string): Promise<Result<Ledger>> {
     const row = await this.db.get<LedgerRow>("SELECT * FROM ledgers WHERE id = ?", [id]);
-    if (!row) {
+    // A soft-deleted ledger must not be returned to normal reads — treat it as
+    // not-found (the owner list already filters status='active', and a delete
+    // revokes the ledger's API keys so API access is blocked at auth).
+    if (!row || row.status === "deleted") {
       return err(ledgerNotFoundError(id));
     }
     return ok(toLedger(row));
@@ -1030,23 +1033,36 @@ export class LedgerEngine {
     const now = nowUtc();
     const metadata = params.metadata ? JSON.stringify(params.metadata) : null;
 
-    await this.db.run(
-      `INSERT INTO accounts (id, ledger_id, parent_id, code, name, type, normal_balance, is_system, currency, metadata, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-      [id, params.ledgerId, parentId, params.code, params.name, params.type, normalBalance, false, params.currency ?? null, metadata, now, now]
-    );
+    // Insert the account and its audit entry atomically: if the audit write
+    // fails the account creation rolls back, so an account never exists without
+    // its 'created' audit row.
+    let row: AccountRow;
+    try {
+      row = await this.db.transaction(async () => {
+        await this.db.run(
+          `INSERT INTO accounts (id, ledger_id, parent_id, code, name, type, normal_balance, is_system, currency, metadata, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+          [id, params.ledgerId, parentId, params.code, params.name, params.type, normalBalance, false, params.currency ?? null, metadata, now, now]
+        );
 
-    const row = await this.db.get<AccountRow>("SELECT * FROM accounts WHERE id = ?", [id]);
-    if (!row) {
-      return err(createError(ErrorCode.INTERNAL_ERROR, "Failed to create account"));
+        const inserted = await this.db.get<AccountRow>("SELECT * FROM accounts WHERE id = ?", [id]);
+        if (!inserted) throw new Error("CREATE_ACCOUNT_NO_ROW");
+
+        const auditId = generateId();
+        await this.db.run(
+          `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+           VALUES (?, ?, 'account', ?, 'created', 'system', 'engine', ?, ?)`,
+          [auditId, params.ledgerId, id, JSON.stringify(toAccount(inserted)), now]
+        );
+
+        return inserted;
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === "CREATE_ACCOUNT_NO_ROW") {
+        return err(createError(ErrorCode.INTERNAL_ERROR, "Failed to create account"));
+      }
+      throw e; // genuine DB/audit failure — fail closed (propagate, nothing committed)
     }
-
-    const auditId = generateId();
-    await this.db.run(
-      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-       VALUES (?, ?, 'account', ?, 'created', 'system', 'engine', ?, ?)`,
-      [auditId, params.ledgerId, id, JSON.stringify(toAccount(row)), now]
-    );
 
     return ok(toAccount(row));
   }
@@ -1259,25 +1275,29 @@ export class LedgerEngine {
         );
       }
 
-      // Write audit entry
-      const auditId = generateId();
-      await this.db.run(
-        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-         VALUES (?, ?, 'transaction', ?, 'created', 'system', 'engine', ?, ?)`,
-        [auditId, input.ledgerId, txnId, JSON.stringify({ memo: input.memo, lines: input.lines }), now]
-      );
-
-      // Read back the complete transaction with lines
+      // Read back the complete posted transaction with lines.
       const txnRow = (await this.db.get<TransactionRow>("SELECT * FROM transactions WHERE id = ?", [txnId]))!;
       const lineRows = await this.db.all<LineItemRow>(
         "SELECT * FROM line_items WHERE transaction_id = ? ORDER BY created_at",
         [txnId]
       );
-
-      return {
+      const fullTransaction = {
         ...toTransaction(txnRow),
         lines: lineRows.map(toLineItem),
       } as TransactionWithLines;
+
+      // Write the audit entry with the COMPLETE posted entity as the snapshot
+      // (not just the request input). This runs inside the same transaction as
+      // the posting, so a failed audit write rolls the whole transaction back —
+      // a posted entry can never exist without its audit row.
+      const auditId = generateId();
+      await this.db.run(
+        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+         VALUES (?, ?, 'transaction', ?, 'created', 'system', 'engine', ?, ?)`,
+        [auditId, input.ledgerId, txnId, JSON.stringify(fullTransaction), now]
+      );
+
+      return fullTransaction;
     });
 
     return ok(result);
@@ -1689,18 +1709,21 @@ export class LedgerEngine {
       return err(apiKeyNotFoundError(keyId));
     }
 
-    await this.db.run("UPDATE api_keys SET status = 'revoked' WHERE id = ?", [keyId]);
+    // Revoke and audit atomically: if the audit write fails the revocation
+    // rolls back, so a key is never revoked without a 'revoked' audit row.
+    const updated = await this.db.transaction(async () => {
+      await this.db.run("UPDATE api_keys SET status = 'revoked' WHERE id = ?", [keyId]);
+      const u = (await this.db.get<ApiKeyRow>("SELECT * FROM api_keys WHERE id = ?", [keyId]))!;
+      const auditId = generateId();
+      await this.db.run(
+        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+         VALUES (?, ?, 'api_key', ?, 'revoked', 'system', 'engine', ?, ?)`,
+        [auditId, row.ledger_id, keyId, JSON.stringify(toApiKey(u)), new Date().toISOString()]
+      );
+      return u;
+    });
 
-    const updated = await this.db.get<ApiKeyRow>("SELECT * FROM api_keys WHERE id = ?", [keyId]);
-
-    const auditId = generateId();
-    await this.db.run(
-      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-       VALUES (?, ?, 'api_key', ?, 'revoked', 'system', 'engine', ?, ?)`,
-      [auditId, row.ledger_id, keyId, JSON.stringify(toApiKey(updated!)), new Date().toISOString()]
-    );
-
-    return ok(toApiKey(updated!));
+    return ok(toApiKey(updated));
   }
 
   // -------------------------------------------------------------------------
@@ -1721,23 +1744,31 @@ export class LedgerEngine {
     }
 
     const now = new Date().toISOString();
-    await this.db.run("UPDATE ledgers SET status = 'deleted', updated_at = ? WHERE id = ?", [now, ledgerId]);
 
-    const keysResult = await this.listApiKeys(ledgerId);
-    if (keysResult.ok) {
-      for (const key of keysResult.value) {
-        if (key.status === "active") {
-          await this.revokeApiKey(key.id);
+    // Soft-delete, key revocations, and the audit entry are one atomic unit: if
+    // the audit write (or any revocation) fails, the whole deletion rolls back —
+    // a ledger is never marked deleted without its 'deleted' audit row. (The
+    // nested revokeApiKey transactions run as savepoints.)
+    await this.db.transaction(async () => {
+      await this.db.run("UPDATE ledgers SET status = 'deleted', updated_at = ? WHERE id = ?", [now, ledgerId]);
+
+      const keysResult = await this.listApiKeys(ledgerId);
+      if (keysResult.ok) {
+        for (const key of keysResult.value) {
+          if (key.status === "active") {
+            const revoked = await this.revokeApiKey(key.id);
+            if (!revoked.ok) throw new Error(`Failed to revoke key ${key.id} during ledger deletion`);
+          }
         }
       }
-    }
 
-    const auditId = generateId();
-    await this.db.run(
-      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-       VALUES (?, ?, 'ledger', ?, 'deleted', 'user', ?, ?, ?)`,
-      [auditId, ledgerId, ledgerId, userId, JSON.stringify({ id: ledgerId, status: "deleted" }), now]
-    );
+      const auditId = generateId();
+      await this.db.run(
+        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+         VALUES (?, ?, 'ledger', ?, 'deleted', 'user', ?, ?, ?)`,
+        [auditId, ledgerId, ledgerId, userId, JSON.stringify({ id: ledgerId, status: "deleted" }), now]
+      );
+    });
 
     return ok({ id: ledgerId, status: "deleted" });
   }
@@ -3159,6 +3190,12 @@ export class LedgerEngine {
     let removed = 0;
     let flaggedForReview = 0;
 
+    // Atomic with the audit log: a pending mirror row is never deleted without
+    // its 'archived' audit entry, and a reconciled row is never flagged without
+    // both its 'updated' audit entry and its review item. If any audit/review
+    // write fails the whole batch rolls back rather than dropping a row
+    // untraceably.
+    await this.db.transaction(async () => {
     for (const row of rows) {
       if (row.status === "pending") {
         await this.db.run("DELETE FROM bank_transactions WHERE id = ?", [row.id]);
@@ -3194,6 +3231,7 @@ export class LedgerEngine {
         flaggedForReview++;
       }
     }
+    });
 
     return ok({ removed, flaggedForReview });
   }
@@ -5046,27 +5084,31 @@ export class LedgerEngine {
     const now = nowUtc();
     const id = generateId();
 
-    // Insert closed_periods record
-    await this.db.run(
-      `INSERT INTO closed_periods (id, ledger_id, period_end, closed_at, closed_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (ledger_id, period_end) DO UPDATE SET closed_at = ?, closed_by = ?, reopened_at = NULL, reopened_by = NULL`,
-      [id, ledgerId, periodEnd, now, closedBy, now, now, closedBy],
-    );
+    // Close + audit atomically: a period is never recorded closed without its
+    // audit row.
+    await this.db.transaction(async () => {
+      // Insert closed_periods record
+      await this.db.run(
+        `INSERT INTO closed_periods (id, ledger_id, period_end, closed_at, closed_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (ledger_id, period_end) DO UPDATE SET closed_at = ?, closed_by = ?, reopened_at = NULL, reopened_by = NULL`,
+        [id, ledgerId, periodEnd, now, closedBy, now, now, closedBy],
+      );
 
-    // Update the ledger's closed_through to the max of current and new
-    await this.db.run(
-      "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
-      [periodEnd, now, ledgerId],
-    );
+      // Update the ledger's closed_through to the max of current and new
+      await this.db.run(
+        "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
+        [periodEnd, now, ledgerId],
+      );
 
-    // Audit
-    const auditId = generateId();
-    await this.db.run(
-      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-       VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
-      [auditId, ledgerId, ledgerId, closedBy, JSON.stringify({ action: "close_period", periodEnd }), now],
-    );
+      // Audit
+      const auditId = generateId();
+      await this.db.run(
+        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+         VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
+        [auditId, ledgerId, ledgerId, closedBy, JSON.stringify({ action: "close_period", periodEnd }), now],
+      );
+    });
 
     return ok({ periodEnd, closedAt: now });
   }
@@ -5085,33 +5127,37 @@ export class LedgerEngine {
 
     const now = nowUtc();
 
-    // Mark the closed_periods record as reopened
-    await this.db.run(
-      `UPDATE closed_periods SET reopened_at = ?, reopened_by = ?
-       WHERE ledger_id = ? AND period_end = ? AND reopened_at IS NULL`,
-      [now, reopenedBy, ledgerId, periodEnd],
-    );
+    // Reopen + recompute + audit atomically: closed_through and the audit row
+    // are never out of step.
+    await this.db.transaction(async () => {
+      // Mark the closed_periods record as reopened
+      await this.db.run(
+        `UPDATE closed_periods SET reopened_at = ?, reopened_by = ?
+         WHERE ledger_id = ? AND period_end = ? AND reopened_at IS NULL`,
+        [now, reopenedBy, ledgerId, periodEnd],
+      );
 
-    // Recalculate closed_through: max period_end that is still closed (not reopened)
-    const maxClosed = await this.db.get<{ max_period: string | null }>(
-      `SELECT MAX(period_end) as max_period FROM closed_periods
-       WHERE ledger_id = ? AND reopened_at IS NULL`,
-      [ledgerId],
-    );
+      // Recalculate closed_through: max period_end that is still closed (not reopened)
+      const maxClosed = await this.db.get<{ max_period: string | null }>(
+        `SELECT MAX(period_end) as max_period FROM closed_periods
+         WHERE ledger_id = ? AND reopened_at IS NULL`,
+        [ledgerId],
+      );
 
-    const newClosedThrough = maxClosed?.max_period ?? null;
-    await this.db.run(
-      "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
-      [newClosedThrough, now, ledgerId],
-    );
+      const newClosedThrough = maxClosed?.max_period ?? null;
+      await this.db.run(
+        "UPDATE ledgers SET closed_through = ?, updated_at = ? WHERE id = ?",
+        [newClosedThrough, now, ledgerId],
+      );
 
-    // Audit
-    const auditId2 = generateId();
-    await this.db.run(
-      `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
-       VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
-      [auditId2, ledgerId, ledgerId, reopenedBy, JSON.stringify({ action: "reopen_period", periodEnd }), now],
-    );
+      // Audit
+      const auditId2 = generateId();
+      await this.db.run(
+        `INSERT INTO audit_entries (id, ledger_id, entity_type, entity_id, action, actor_type, actor_id, snapshot, created_at)
+         VALUES (?, ?, 'ledger', ?, 'updated', 'user', ?, ?, ?)`,
+        [auditId2, ledgerId, ledgerId, reopenedBy, JSON.stringify({ action: "reopen_period", periodEnd }), now],
+      );
+    });
 
     return ok({ periodEnd, reopenedAt: now });
   }

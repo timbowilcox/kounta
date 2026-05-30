@@ -242,11 +242,29 @@ const ensureSystemUser = async (db: Database) => {
 };
 
 /**
+ * True ONLY for the benign "value already exists" condition raised by an
+ * `ALTER TYPE … ADD VALUE` whose label is already present. PostgreSQL reports
+ * this as SQLSTATE 42710 (duplicate_object). Used to narrow the enum
+ * special-case catches so they swallow this and NOTHING else — any other error
+ * (missing type, syntax, permissions) must propagate and fail the boot closed.
+ */
+const isDuplicateValueError = (err: unknown): boolean => {
+  const code = (err as { code?: unknown })?.code;
+  const message = err instanceof Error ? err.message : String(err);
+  return code === "42710" || /already exists/i.test(message);
+};
+
+/**
  * Apply PostgreSQL migrations using a tracking table.
  *
  * Each migration is recorded in `_migrations` after it runs.
  * On subsequent boots the runner skips already-applied migrations,
  * so no SQL file needs to be idempotent on its own.
+ *
+ * FAIL-CLOSED: if ANY migration fails, the runner throws so boot aborts — a
+ * half-migrated database must never serve traffic. The enum special-cases
+ * swallow only the benign duplicate-value condition (see isDuplicateValueError);
+ * every other error rethrows and is counted as a failure.
  */
 const applyPostgresMigrations = async (db: PostgresDatabase) => {
   const migrationsDir = findMigrationsDir();
@@ -342,7 +360,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       if (migName === "002_audit_action_updated.sql") {
         try {
           await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
-        } catch { /* already exists */ }
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
         await db.run(
           "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
           [migName],
@@ -359,7 +377,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
           await db.exec("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'schedule_completion'");
           await db.exec("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'large_deferred_balance'");
           await db.exec("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'receipt_prompt'");
-        } catch { /* already exists */ }
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
         await db.run(
           "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
           [migName],
@@ -373,7 +391,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       if (migName === "020_capitalisation_notification.sql") {
         try {
           await db.exec("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'capitalisation_check'");
-        } catch { /* already exists */ }
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
         await db.run(
           "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
           [migName],
@@ -387,7 +405,7 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       if (migName === "022_invoice_payment_match_notification.sql") {
         try {
           await db.exec("ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'invoice_payment_match'");
-        } catch { /* already exists */ }
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
         await db.run(
           "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
           [migName],
@@ -407,7 +425,24 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
           await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
           await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'revoked'");
           await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'deleted'");
-        } catch { /* already exists */ }
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
+        await db.run(
+          "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+          [migName],
+        );
+        console.log(`Applied PostgreSQL migration: ${migName}`);
+        applied++;
+        continue;
+      }
+
+      // Special case: 033 uses ALTER TYPE ADD VALUE (can't run in transaction),
+      // mirroring 030 — a separate exec() in autocommit, IF NOT EXISTS for
+      // re-runnability. Adds 'deleted' to ledger_status so softDeleteLedger's
+      // UPDATE (and DELETE /v1/ledgers/:ledgerId) no longer throws on the enum.
+      if (migName === "033_ledger_status_deleted.sql") {
+        try {
+          await db.exec("ALTER TYPE ledger_status ADD VALUE IF NOT EXISTS 'deleted'");
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
         await db.run(
           "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
           [migName],
@@ -434,12 +469,21 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
       console.log(`Applied PostgreSQL migration: ${migName}`);
       applied++;
     } catch (err) {
-      console.error(`Migration ${migName} failed (continuing):`, err);
+      console.error(`Migration ${migName} failed:`, err);
       failed++;
     }
   }
 
   console.log(`Migrations: ${applied} applied, ${skipped} skipped, ${failed} failed`);
+
+  // FAIL-CLOSED: refuse to boot against a half-migrated schema. A migration
+  // failure used to be logged and swallowed ("continuing"), leaving the server
+  // serving an incomplete/inconsistent DB. Now any failure aborts startup.
+  if (failed > 0) {
+    throw new Error(
+      `Migration runner: ${failed} migration(s) failed — refusing to start with a half-migrated database. See errors above.`,
+    );
+  }
 
   // ── 5. Ensure system user exists ──
   try {
@@ -475,7 +519,13 @@ const persistDatabase = (db: SqliteDatabase, path: string) => {
   writeFileSync(path, Buffer.from(data));
 };
 
-main().catch(console.error);
+main().catch((err) => {
+  // FAIL-CLOSED: a startup failure (including any migration failure) must take
+  // the process down with a non-zero exit so the platform healthcheck fails and
+  // a half-migrated/unconfigured instance never serves traffic.
+  console.error("Fatal: server startup failed:", err);
+  process.exit(1);
+});
 
 // Re-export the app factory for testing
 export { createApp } from "./app.js";

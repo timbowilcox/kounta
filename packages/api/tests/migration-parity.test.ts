@@ -97,4 +97,23 @@ describe("REGISTERED migrations (028/029/030) are present in the production sche
     expect(row?.sql).toContain("'revoked'"); // 030
     expect(row?.sql).toContain("'deleted'"); // 030
   });
+
+  it("033: ledgers status CHECK accepts 'deleted' (softDeleteLedger writes this)", async () => {
+    const db = await buildFromProductionList();
+    const row = await db.get<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='ledgers'",
+    );
+    // The recreate widened the CHECK without dropping 019's columns or the
+    // 028 (owner_id,status) index / 001 updated_at trigger.
+    expect(row?.sql).toContain("'deleted'");
+    expect(row?.sql).toContain("tax_id"); // 019 columns survived the recreate
+    const idx = await db.all<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='ledgers' AND name LIKE 'idx_%'",
+    );
+    expect(idx.map((r) => r.name).sort()).toEqual(["idx_ledgers_owner", "idx_ledgers_owner_status"]);
+    const trg = await db.all<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='ledgers'",
+    );
+    expect(trg.map((r) => r.name)).toContain("trg_ledgers_updated_at");
+  });
 });

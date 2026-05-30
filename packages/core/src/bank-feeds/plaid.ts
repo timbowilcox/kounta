@@ -13,6 +13,7 @@ import type {
   ProviderBankTransaction,
   ProviderConnection,
   WebhookResult,
+  WebhookVerificationInput,
 } from "./types.js";
 
 const NOT_IMPLEMENTED = "Plaid provider is not yet implemented. Use Basiq for AU/NZ bank feeds.";
@@ -44,10 +45,7 @@ export class PlaidProvider implements BankFeedProvider {
     throw new Error(NOT_IMPLEMENTED);
   }
 
-  async handleWebhook(
-    _payload: unknown,
-    _signature: string,
-  ): Promise<WebhookResult> {
+  async handleWebhook(_input: WebhookVerificationInput): Promise<WebhookResult> {
     throw new Error(NOT_IMPLEMENTED);
   }
 }

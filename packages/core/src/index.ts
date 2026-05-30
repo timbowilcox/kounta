@@ -28,7 +28,7 @@ export * from "./tiers/index.js";
 export type { Database, Row, RunResult } from "./db/database.js";
 export { SqliteDatabase } from "./db/sqlite.js";
 export { PostgresDatabase } from "./db/postgres.js";
-export { encryptToken, decryptToken, isEncrypted } from "./crypto/tokens.js";
+export { encryptToken, decryptToken, isEncrypted, TokenEncryptionError } from "./crypto/tokens.js";
 export {
   REGISTERED_MIGRATIONS,
   PENDING_MIGRATIONS,

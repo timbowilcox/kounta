@@ -2,8 +2,14 @@
 // Token encryption — AES-256-GCM encryption for sensitive tokens at rest.
 //
 // Used to encrypt Stripe OAuth tokens before storing in the database.
-// Requires KOUNTA_TOKEN_ENCRYPTION_KEY environment variable (64 hex chars = 32 bytes).
-// If the key is not set, falls back to plaintext (with a warning).
+// Requires the KOUNTA_TOKEN_ENCRYPTION_KEY environment variable (64 hex chars
+// = 32 bytes).
+//
+// FAIL-CLOSED: there is NO plaintext fallback. If the key is missing or
+// invalid, encrypt/decrypt THROW rather than silently storing or returning a
+// secret in cleartext (storing API keys/tokens in cleartext is forbidden — see
+// CLAUDE.md). Decryption of a tampered/corrupt or non-encrypted value also
+// throws; a token is never returned in plaintext.
 // ---------------------------------------------------------------------------
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
@@ -13,19 +19,32 @@ const IV_LENGTH = 12; // 96-bit IV for GCM
 const AUTH_TAG_LENGTH = 16; // 128-bit auth tag
 const ENCRYPTED_PREFIX = "enc:";
 
-/**
- * Get the encryption key from environment.
- * Returns null if not configured (plaintext fallback).
- */
-const getEncryptionKey = (): Buffer | null => {
-  const keyHex = process.env.KOUNTA_TOKEN_ENCRYPTION_KEY;
-  if (!keyHex) return null;
+/** Thrown when token encryption/decryption cannot be performed safely. */
+export class TokenEncryptionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TokenEncryptionError";
+  }
+}
 
-  if (keyHex.length !== 64) {
-    console.warn(
-      "[kounta/crypto] KOUNTA_TOKEN_ENCRYPTION_KEY must be 64 hex characters (32 bytes). Token encryption disabled.",
+/**
+ * Get the encryption key from the environment, or THROW.
+ *
+ * Fail-closed: a missing or malformed key is a configuration error, not a
+ * reason to fall back to plaintext.
+ */
+const getEncryptionKey = (): Buffer => {
+  const keyHex = process.env.KOUNTA_TOKEN_ENCRYPTION_KEY;
+  if (!keyHex) {
+    throw new TokenEncryptionError(
+      "KOUNTA_TOKEN_ENCRYPTION_KEY is not set. Set it to 64 hex characters (32 bytes) to enable token encryption.",
     );
-    return null;
+  }
+
+  if (keyHex.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(keyHex)) {
+    throw new TokenEncryptionError(
+      "KOUNTA_TOKEN_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).",
+    );
   }
 
   return Buffer.from(keyHex, "hex");
@@ -34,12 +53,12 @@ const getEncryptionKey = (): Buffer | null => {
 /**
  * Encrypt a plaintext token for storage.
  *
- * Output format: "enc:<iv_hex>:<authTag_hex>:<ciphertext_hex>"
- * If no encryption key is configured, returns the plaintext unchanged.
+ * Output format: "enc:<iv_hex>:<authTag_hex>:<ciphertext_hex>".
+ * Throws (TokenEncryptionError) if no valid encryption key is configured —
+ * never returns the plaintext.
  */
 export const encryptToken = (plaintext: string): string => {
   const key = getEncryptionKey();
-  if (!key) return plaintext;
 
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
@@ -52,26 +71,23 @@ export const encryptToken = (plaintext: string): string => {
 /**
  * Decrypt a stored token.
  *
- * If the value doesn't have the "enc:" prefix, it's treated as plaintext
- * (backward compatibility with pre-encryption data).
+ * Fail-closed: the value MUST be an "enc:"-prefixed ciphertext produced by
+ * encryptToken, and the key must be configured. A missing key, a non-encrypted
+ * value, a malformed envelope, or a failed GCM auth-tag check all THROW — a
+ * token is never returned in plaintext.
  */
 export const decryptToken = (stored: string): string => {
-  if (!stored.startsWith(ENCRYPTED_PREFIX)) {
-    // Plaintext value (legacy or encryption not enabled)
-    return stored;
-  }
-
   const key = getEncryptionKey();
-  if (!key) {
-    console.warn(
-      "[kounta/crypto] Found encrypted token but KOUNTA_TOKEN_ENCRYPTION_KEY is not set. Cannot decrypt.",
+
+  if (!stored.startsWith(ENCRYPTED_PREFIX)) {
+    throw new TokenEncryptionError(
+      "Stored token is not encrypted (missing 'enc:' prefix). Refusing to return it as plaintext.",
     );
-    throw new Error("Encrypted token found but no encryption key configured");
   }
 
   const parts = stored.slice(ENCRYPTED_PREFIX.length).split(":");
   if (parts.length !== 3) {
-    throw new Error("Malformed encrypted token");
+    throw new TokenEncryptionError("Malformed encrypted token");
   }
 
   const [ivHex, authTagHex, ciphertextHex] = parts as [string, string, string];
@@ -81,6 +97,7 @@ export const decryptToken = (stored: string): string => {
 
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAuthTag(authTag);
+  // .final() throws if the auth tag does not match (tampered/corrupt ciphertext).
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
   return decrypted.toString("utf8");

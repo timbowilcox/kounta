@@ -23,6 +23,7 @@ import type {
   ProviderSyncResult,
   SyncTransactionsParams,
   WebhookResult,
+  WebhookVerificationInput,
 } from "./types.js";
 import { normalizePlaidTransaction } from "./normalize.js";
 import { getSyncPage, labeledFixtures, MOCK_ACCOUNT_ID } from "./fixtures.js";
@@ -125,26 +126,29 @@ export class MockPlaidProvider implements BankFeedProvider {
 
   /**
    * Plaid-style webhook. Emulates the production signature-verification pattern
-   * (HMAC-SHA256 + timing-safe compare) when a secret is configured; otherwise
-   * accepts the payload. Signals a sync for transaction update events.
+   * (HMAC-SHA256 over the raw body + timing-safe compare) when a secret is
+   * configured; otherwise accepts the payload (dev only — the constructor
+   * already refuses production). Signals a sync for transaction update events.
    */
-  async handleWebhook(payload: unknown, signature: string): Promise<WebhookResult> {
-    const body = (payload ?? {}) as {
-      webhook_type?: string;
-      webhook_code?: string;
-      item_id?: string;
-    };
-
+  async handleWebhook(input: WebhookVerificationInput): Promise<WebhookResult> {
     if (this.webhookSecret) {
+      const signature = input.headers["x-webhook-signature"] ?? "";
       const expected = createHmac("sha256", this.webhookSecret)
-        .update(JSON.stringify(payload), "utf8")
+        .update(input.rawBody, "utf8")
         .digest("hex");
-      const ok =
-        signature.length === expected.length &&
-        timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+      const sigBuf = Buffer.from(signature, "utf8");
+      const expBuf = Buffer.from(expected, "utf8");
+      const ok = sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf);
       if (!ok) {
         return { event: "invalid_signature", connectionId: null, shouldSync: false };
       }
+    }
+
+    let body: { webhook_type?: string; webhook_code?: string; item_id?: string };
+    try {
+      body = JSON.parse(input.rawBody) as typeof body;
+    } catch {
+      return { event: "invalid_payload", connectionId: null, shouldSync: false };
     }
 
     const code = body.webhook_code ?? "";

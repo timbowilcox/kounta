@@ -680,10 +680,7 @@ describe("Kounta API", () => {
       expect(actions).toContain("reversed");
     });
 
-    // TODO: pre-existing failure. The audit snapshot for a transaction create
-    // doesn't include the `memo` field (only the bare transaction row,
-    // not the joined lines). Fix in engine postTransaction audit write.
-    it.skip("includes snapshots in audit entries", async () => {
+    it("includes snapshots in audit entries", async () => {
       const { auth, base } = await setupLedgerWithKey();
 
       await jsonRequest(app, "POST", `${base}/accounts`, {
@@ -704,7 +701,13 @@ describe("Kounta API", () => {
 
       const res = await app.request(`${base}/audit`, { headers: auth });
       const body = await res.json();
-      const entry = body.data.find((e: { action: string }) => e.action === "created");
+      // Filter to the TRANSACTION 'created' entry — account creations also emit
+      // 'created' entries (whose snapshots have no memo).
+      const entry = body.data.find(
+        (e: { action: string; entityType: string }) =>
+          e.action === "created" && e.entityType === "transaction",
+      );
+      expect(entry).toBeDefined();
       expect(entry.snapshot).toBeDefined();
       expect(entry.snapshot.memo).toBe("Snapshot test");
     });

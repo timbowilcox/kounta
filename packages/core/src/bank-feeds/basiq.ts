@@ -5,6 +5,7 @@
 // Basiq API docs: https://api.basiq.io/reference
 // ---------------------------------------------------------------------------
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   BankFeedProvider,
   CreateConnectionSessionParams,
@@ -14,10 +15,61 @@ import type {
   ProviderBankTransaction,
   ProviderConnection,
   WebhookResult,
+  WebhookVerificationInput,
   BankConnectionStatus,
   BankTransactionType,
 } from "./types.js";
 import { toSmallestUnit } from "../currency-utils.js";
+
+/**
+ * Verify a Basiq webhook signature (Svix scheme — Basiq's webhook provider).
+ *
+ * Signed content is `${webhook-id}.${webhook-timestamp}.${rawBody}`. The secret
+ * is `whsec_<base64>`; the part after the prefix is base64-decoded to the HMAC
+ * key. The signature is HMAC-SHA256 of the signed content, base64-encoded. The
+ * `webhook-signature` header is a space-delimited list of `v1,<sig>` entries;
+ * the computed signature must match ONE of them (timing-safe). Webhooks more
+ * than `toleranceSeconds` (default 5 min) from now are rejected (replay guard).
+ *
+ * Returns true only when the signature is present, fresh, and valid. Any missing
+ * header, malformed secret, stale timestamp, or mismatch returns false — never
+ * throws, so the caller fails closed by treating false as "reject".
+ */
+export const verifyBasiqWebhookSignature = (
+  rawBody: string,
+  headers: Record<string, string | undefined>,
+  secret: string,
+  toleranceSeconds = 300,
+): boolean => {
+  const id = headers["webhook-id"];
+  const timestamp = headers["webhook-timestamp"];
+  const signatureHeader = headers["webhook-signature"];
+  if (!id || !timestamp || !signatureHeader || !secret) return false;
+
+  // Replay guard: reject timestamps too far from now (past or future).
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > toleranceSeconds) return false;
+
+  // Secret: "whsec_<base64>" — base64-decode the part after the prefix.
+  const secretBody = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
+  const keyBytes = Buffer.from(secretBody, "base64");
+  if (keyBytes.length === 0) return false;
+
+  const signedContent = `${id}.${timestamp}.${rawBody}`;
+  const expected = createHmac("sha256", keyBytes).update(signedContent, "utf8").digest("base64");
+  const expectedBuf = Buffer.from(expected, "utf8");
+
+  // webhook-signature is space-delimited "v1,<base64sig>" entries — match any.
+  return signatureHeader.split(" ").some((entry) => {
+    const comma = entry.indexOf(",");
+    const sig = comma === -1 ? entry : entry.slice(comma + 1);
+    const sigBuf = Buffer.from(sig, "utf8");
+    if (sigBuf.length !== expectedBuf.length) return false;
+    return timingSafeEqual(sigBuf, expectedBuf);
+  });
+};
 
 interface BasiqConfig {
   readonly apiKey: string;
@@ -230,11 +282,31 @@ export class BasiqProvider implements BankFeedProvider {
     await this.request("DELETE", `/users/${connectionId}/connections/${connectionId}`);
   }
 
-  async handleWebhook(
-    payload: unknown,
-    _signature: string,
-  ): Promise<WebhookResult> {
-    const data = payload as { type?: string; links?: { user?: string } };
+  /**
+   * Authenticate and interpret an inbound Basiq webhook. FAIL-CLOSED: the
+   * signature is verified against BASIQ_WEBHOOK_SECRET BEFORE the payload is
+   * interpreted. A missing secret, a missing/invalid signature, or an
+   * unparseable body all return shouldSync:false + connectionId:null (zero side
+   * effects) so the caller rejects the request with 401/403.
+   */
+  async handleWebhook(input: WebhookVerificationInput): Promise<WebhookResult> {
+    const secret = process.env["BASIQ_WEBHOOK_SECRET"];
+    if (!secret) {
+      // No signing secret configured — cannot authenticate, so refuse.
+      return { event: "webhook_secret_not_configured", connectionId: null, shouldSync: false };
+    }
+
+    if (!verifyBasiqWebhookSignature(input.rawBody, input.headers, secret)) {
+      return { event: "invalid_signature", connectionId: null, shouldSync: false };
+    }
+
+    let data: { type?: string; links?: { user?: string } };
+    try {
+      data = JSON.parse(input.rawBody) as typeof data;
+    } catch {
+      return { event: "invalid_payload", connectionId: null, shouldSync: false };
+    }
+
     const event = data.type ?? "unknown";
 
     // Extract connection ID from user link if available
