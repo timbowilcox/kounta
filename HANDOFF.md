@@ -8,6 +8,58 @@ Postgres. Full suite green serially (**690 pass / 5 skip / 0 fail**), typecheck 
 fail-open warnings. **NOT self-certifying mergeable** — a fresh evaluator should inject each
 failure mode (see Definition of Done).
 
+## UPDATE — ledger soft-delete migration (033) — unblocks EVALUATION-6
+
+EVALUATION-6 blocked the merge: `softDeleteLedger` writes `status='deleted'`, but `ledger_status`
+permitted only `('active','archived')` on BOTH backends, so the `UPDATE` threw on the constraint
+before any audit write — the atomicity proof was vacuous and `DELETE /v1/ledgers/:ledgerId` 500'd in
+prod. SAME class as 030 (the engine intent was correct; the schema value was never added). Fixed the
+schema, not the op.
+
+- **Migration 033 (`033_ledger_status_deleted`)** — PG: `ALTER TYPE ledger_status ADD VALUE IF NOT
+  EXISTS 'deleted'`. SQLite: table-recreate widening the `ledgers.status` CHECK to include `'deleted'`
+  (SQLite cannot ALTER a CHECK). Unlike 030's `audit_entries`, `ledgers` is referenced by many tables,
+  so the recreate runs under `PRAGMA foreign_keys=OFF` and **rebuilds every attached object**: all 16
+  columns (001's 12 + 019's 4), `idx_ledgers_owner` (001), `idx_ledgers_owner_status` (028), and the
+  `trg_ledgers_updated_at` trigger (001). Registered in the manifest after 032; PENDING stays empty;
+  anti-drift guard green.
+- **Runner special-case** ([packages/api/src/index.ts](packages/api/src/index.ts)): a 033 branch
+  mirroring 030 — `ALTER TYPE … ADD VALUE` via its own `db.exec()` (autocommit; can't run in a txn),
+  with the now-narrowed `isDuplicateValueError` (42710-only) catch. 033 is the only runner addition.
+- **Read-path decision (SPRINT step 4):** the owner list (`findLedgersByOwner`) already filtered
+  `status='active'` (hides deleted), and `validateApiKey` requires `status='active'` so the
+  delete-time key revocation already blocks API access. The gap was the by-id read — `getLedger` now
+  treats `status='deleted'` as not-found. (OAuth tokens are not revoked on delete — noted as a
+  separate follow-up, out of this fix's scope.)
+- **TS:** `LedgerStatus` union and the `ledgerStatus` zod enum extended with `'deleted'` (the zod enum
+  is defined-only, not wired into any input parse, so this opens no write path).
+- **Proof is now REAL** (was vacuous):
+  - `packages/core/tests/audit-fail-closed.test.ts` — the softDeleteLedger test now REACHES the audit
+    write (`auditAttempts > 0`) and proves the nested rollback: an audit failure rolls back BOTH the
+    ledger delete AND the key revocations. A new happy-path test proves the delete succeeds, hides the
+    ledger (`getLedger` err + absent from the owner list), revokes the key, and writes the `'deleted'`
+    audit row. Non-vacuity confirmed by unwrapping the transaction → nested test RED
+    (`expected 'deleted' to be 'active'`) → reverted.
+  - `packages/api/tests/migration-parity.test.ts` — added a 033 assertion: the production SQLite
+    schema's `ledgers` CHECK contains `'deleted'`, 019's columns survived, and both indexes + the
+    trigger are present.
+  - **Real PG** (`scripts/eval-033-pg-proof.sh` + `eval-033-softdelete-pg.mjs`; UTF-8 throwaway):
+    A fresh DB → `33 applied / 0 / 0` + serves; B re-run → `0 applied / 33 skipped / 0` + serves
+    (033 ALTER TYPE idempotent); C `ledger_status = active,archived,deleted`; D softDeleteLedger
+    happy-path on real PG passes every assertion. `scripts/runner-failclosed-proof.sh` updated 32→33
+    and re-run green (A 33/0/0, B 0/33/0, C broken-migration aborts non-zero).
+- **Test status:** full suite `pnpm test --force --concurrency=1` → **692 pass / 5 skip / 0 fail**
+  (core 501 · mcp 44 · api 112/5-skip · sdk 35), 0 cached, 0 fail-open warnings; `pnpm typecheck
+  --force` 9/9.
+- **Files changed:** `migration-manifest.ts`, `033_ledger_status_deleted.sql` +
+  `.sqlite.sql` (new), `api/src/index.ts` (runner), `engine/index.ts` (getLedger),
+  `schemas/index.ts`, `types/index.ts`, `audit-fail-closed.test.ts`, `migration-parity.test.ts`,
+  `scripts/eval-033-pg-proof.sh` + `eval-033-softdelete-pg.mjs` (new), `runner-failclosed-proof.sh`
+  (count bump), `SPRINT.md`. **Not self-certifying mergeable** — the evaluator re-checks the
+  softDeleteLedger path (happy + nested rollback) and the real-PG 001–033 apply.
+
+---
+
 ## Baseline at session start
 `pnpm test --force --concurrency=1` → **663 pass / 6 skip / 0 fail** (core 474 · api 110/6-skip ·
 mcp 44 · sdk 35), 12/12 tasks, 0 fail-open warnings. (Fresh worktree needed `pnpm install`.)
