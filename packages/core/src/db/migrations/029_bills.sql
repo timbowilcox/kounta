@@ -1,17 +1,23 @@
 -- ---------------------------------------------------------------------------
 -- 029: Bills — Accounts Payable (PostgreSQL)
+--
+-- IDs/FKs are TEXT, not UUID: ledgers.id / accounts.id / transactions.id are
+-- TEXT across the whole schema (UUID v7 stored as text). A UUID FK column to a
+-- TEXT PK is rejected by Postgres ("foreign key constraint cannot be
+-- implemented" — incompatible types uuid/text), which silently dropped these
+-- tables on the prod runner. Matches the SQLite dialect and every other table.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS vendors (
-  id                          UUID PRIMARY KEY,
-  ledger_id                   UUID NOT NULL REFERENCES ledgers(id),
+  id                          TEXT PRIMARY KEY,
+  ledger_id                   TEXT NOT NULL REFERENCES ledgers(id),
   name                        TEXT NOT NULL,
   email                       TEXT,
   phone                       TEXT,
   address                     TEXT,
   tax_id                      TEXT,
   payment_terms               TEXT NOT NULL DEFAULT 'net_30',
-  default_expense_account_id  UUID REFERENCES accounts(id),
+  default_expense_account_id  TEXT REFERENCES accounts(id),
   notes                       TEXT,
   is_active                   BOOLEAN NOT NULL DEFAULT TRUE,
   created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -19,10 +25,10 @@ CREATE TABLE IF NOT EXISTS vendors (
 );
 
 CREATE TABLE IF NOT EXISTS bills (
-  id                      UUID PRIMARY KEY,
-  ledger_id               UUID NOT NULL REFERENCES ledgers(id),
+  id                      TEXT PRIMARY KEY,
+  ledger_id               TEXT NOT NULL REFERENCES ledgers(id),
   bill_number             TEXT NOT NULL,
-  vendor_id               UUID REFERENCES vendors(id),
+  vendor_id               TEXT REFERENCES vendors(id),
   vendor_name             TEXT NOT NULL,
   vendor_email            TEXT,
   bill_date               TEXT NOT NULL,
@@ -38,12 +44,12 @@ CREATE TABLE IF NOT EXISTS bills (
   tax_inclusive            BOOLEAN NOT NULL DEFAULT FALSE,
   status                  TEXT NOT NULL DEFAULT 'draft',
   paid_date               TEXT,
-  ap_transaction_id       UUID REFERENCES transactions(id),
+  ap_transaction_id       TEXT REFERENCES transactions(id),
   notes                   TEXT,
   reference               TEXT,
-  expense_account_id      UUID REFERENCES accounts(id),
-  ap_account_id           UUID REFERENCES accounts(id),
-  tax_account_id          UUID REFERENCES accounts(id),
+  expense_account_id      TEXT REFERENCES accounts(id),
+  ap_account_id           TEXT REFERENCES accounts(id),
+  tax_account_id          TEXT REFERENCES accounts(id),
   payment_terms           TEXT,
   created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -51,27 +57,27 @@ CREATE TABLE IF NOT EXISTS bills (
 );
 
 CREATE TABLE IF NOT EXISTS bill_line_items (
-  id                UUID PRIMARY KEY,
-  bill_id           UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  id                TEXT PRIMARY KEY,
+  bill_id           TEXT NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
   description       TEXT NOT NULL,
   quantity          DOUBLE PRECISION NOT NULL DEFAULT 1,
   unit_price        INTEGER NOT NULL,
   amount            INTEGER NOT NULL,
   tax_rate          DOUBLE PRECISION,
   tax_amount        INTEGER NOT NULL DEFAULT 0,
-  account_id        UUID REFERENCES accounts(id),
+  account_id        TEXT REFERENCES accounts(id),
   sort_order        INTEGER NOT NULL DEFAULT 0,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS bill_payments (
-  id                    UUID PRIMARY KEY,
-  bill_id               UUID NOT NULL REFERENCES bills(id),
+  id                    TEXT PRIMARY KEY,
+  bill_id               TEXT NOT NULL REFERENCES bills(id),
   amount                INTEGER NOT NULL,
   payment_date          TEXT NOT NULL,
   payment_method        TEXT,
   reference             TEXT,
-  transaction_id        UUID REFERENCES transactions(id),
+  transaction_id        TEXT REFERENCES transactions(id),
   bank_transaction_id   TEXT,
   notes                 TEXT,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
