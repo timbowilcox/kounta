@@ -1,85 +1,77 @@
-# Sprint: Bank Ingestion — Fix Pass (Items 4/5/6 from EVALUATION-2)
-Date: 2026-05-29
-Repo: kounta
-Branch: feat/bank-ingestion-mock-plaid-csv (fixes land on PR #1)
+# SPRINT — Launch migration registration (028/029/030)
+
+## Context
+Production has been offline ~3 months; the postgres-volume holds only disposable
+pre-launch data and WILL be replaced with a fresh empty volume at launch. The Session A
+production-safety gate that blocked registering 028/029/030 (it protected a live prod with
+real data) is therefore VOID — there is no live data and no reconciliation. These migrations
+will apply, in order, to a fresh empty Postgres on first boot. Registering them is now safe.
 
 ## Scope
-Close the three escalation-edge gaps the re-evaluation found (see EVALUATION-2.md), built
-around one durable review/exception surface: item 4 (cross-source dedup has no date tolerance
-→ a pending→posted day shift double-counts), item 5 (held possible_duplicate rows aren't
-persisted → silent omission after commit), item 6 (guarded removals surface only in the audit
-log → invisible escalation). Items 5 and 6 feed a single ledger-scoped review queue — the
-first instance of the escalation-as-first-class primitive the product needs anyway. Read
-EVALUATION-2.md first; each fix must make its specific reproduction pass.
+Move 028/029/030 from PENDING to REGISTERED; make the runner apply 030 correctly; un-skip the
+two 030-gated tests; prove the full manifest 001–032 applies cleanly to a fresh empty Postgres.
 
-Explicitly NOT in scope (→ blocker sprint): migrations 028/029/030 reconciliation; the
-systemic single-source migration mechanism / anti-drift guard; re-pointing api/mcp/sdk
-fixtures; token encryption; Basiq webhook signature; audit-snapshot completeness. Also out of
-scope: a general exception-queue beyond the two escalation types needed now.
+## Before any code
+1. Read SPRINT.md, CLAUDE.md, HANDOFF.md, EVALUATION-4.md.
+2. Orient:
+   - the migration manifest in @kounta/core (migration-manifest.ts): REGISTERED vs PENDING
+   - the API runner packages/api/src/index.ts — specifically the per-statement special-cases
+     for 017/020/022 (ALTER TYPE ... ADD VALUE can't run inside the implicit txn that
+     PostgresDatabase.exec wraps each file in). This is the pattern 030 needs.
+   - migration 030 (PG + SQLite) and the audit_action enum lineage: 001 CREATE TYPE,
+     002 inline 'updated', 030 'revoked'/'deleted'
+   - the engine's writeBankTxnAudit (engine index.ts): the workaround restricting bank-txn
+     audit actions to archived/updated BECAUSE 030 wasn't applied
+   - the two it.skip'd revoke tests (api.test.ts, sdk.test.ts) and their 030 TODOs
+   - the anti-drift guard's PENDING exceptions
+3. Baseline: pnpm test --concurrency=1 → confirm 661 / 8-skipped / 0 fail-open warnings.
 
-## Acceptance Criteria
+## GATE — report, then proceed (no human go required; prod is disposable/offline)
+Before writing the runner change, report:
+   - exactly how 017/020/022 are special-cased, confirming 030 needs identical treatment
+   - your recommendation on whether to LIFT the writeBankTxnAudit workaround now that 030 lands
+     (does any bank-txn path legitimately need revoked/deleted, or is archived/updated correct
+     there regardless?) — recommend, don't assume
+   - confirmation that on a FRESH empty DB the back-fill probe (001–027 anchors in index.ts)
+     back-fills nothing, then the runner applies 001–032 in order
+There is no irreversible prod action in this sprint, so proceed after reporting — but STOP and
+flag anything surprising.
 
-### Item 4 — cross-source date tolerance
-- [ ] Cross-source loose matcher flags possible_duplicate on same amount + date within ±N days
-      (N documented with rationale, ~3 to cover Plaid pending→posted), regardless of
-      description — not exact-date-only.
-- [ ] Regression: the EVALUATION-2 off-by-one case (89.95 debit, 1-day shift across channels)
-      now flags as a candidate; stored count stays 1, no double-count. Add an off-by-3 case.
-- [ ] Exact cross-source duplicates still auto-skip; same-source recurring (e.g. a weekly
-      subscription via one feed) is unaffected — it stays in the occurrence-aware path, not
-      loose-flagged.
+## The work
+- Manifest: move 028, 029, 030 from PENDING to REGISTERED in correct order
+  (…027, 028, 029, 030, 031, 032). PENDING becomes empty. Re-derive PG + SQLite lists; verify
+  they extend the old lists by exactly {028,029,030} in the right positions.
+- Runner (packages/api/src/index.ts): add the per-statement special-case for 030's ALTER TYPE,
+  mirroring 017/020/022. This is the ONLY runner change.
+- Engine: lift the writeBankTxnAudit workaround IF the gate concluded it should be — else leave
+  it and document why.
+- Un-skip both revoke tests (api + sdk). They must now PASS because the schema accepts
+  'revoked'/'deleted'. Confirm they pass for the RIGHT reason (audit row written with the
+  correct action), not via a weakened assertion.
+- Anti-drift guard: PENDING list now empty; guard must still pass AND still catch a deliberate
+  drift.
+- Parity assertions: flip the ones that proved ABSENCE of bills/vendors / 030-actions to prove
+  PRESENCE — the test schema now matches the full manifest.
+- FRESH-PG PROOF (the real DoD): stand up a throwaway Postgres (local docker or a Railway
+  branch — NOT the dormant prod volume) and apply the full manifest 001–032 from empty, TWICE,
+  proving clean apply + 030's ALTER TYPE succeeds on real PG + re-runnability. sql.js does NOT
+  exercise the PG ALTER TYPE path, so this is mandatory. If no PG is reachable in-session,
+  statically verify the 030 special-case byte-matches the 017/020/022 pattern AND document the
+  exact fresh-PG apply command for the human to run once before launch.
 
-### Item 5 — held candidates persist and are resolvable
-- [ ] possible_duplicate candidates held at import are persisted durably and resolvable AFTER
-      commit, not ephemeral preview counts.
-- [ ] Held items are excluded from balances/reports until resolved (no overstatement) and
-      cannot silently vanish (no understatement).
-- [ ] A post-commit resolve path exists — confirm-import or discard — each writing an audit entry.
-- [ ] Regression: the EVALUATION-2 Bunnings case (genuine distinct expense, same date+amount)
-      is now persisted and resolvable (persisted count > 0), not dropped.
+## Scope guardrails
+DO NOT touch token encryption, the Basiq webhook, or the audit-snapshot — those are Session C.
+No feature work. Do NOT squash migrations. The only runner change permitted is the 030
+special-case.
 
-### Item 6 — guarded removals surface for review
-- [ ] syncBankAccount no longer discards flaggedForReview (the line ~3753 drop); guarded
-      removed-but-reconciled rows surface in the SAME review queue as item 5.
-- [ ] Each guarded removal carries its reason (upstream-removed-but-reconciled) and a resolve
-      path (keep / remove-with-audit); each resolution is audited.
-- [ ] Regression: a removed event on a matched/posted row produces a visible, resolvable
-      review item — not audit-log-only.
-
-### Review queue (the unifying surface)
-- [ ] Items 5 and 6 feed ONE ledger-scoped review surface with a shape general enough that new
-      escalation types are additive later. Do not build types beyond the two needed now.
-- [ ] Minimal dashboard surfacing: a review list + resolve actions, driven END-TO-END through
-      the real stack (seed DB → mock provider → create a held candidate → resolve via the
-      actual API path). Not a stub-only screenshot.
-
-### If a schema change is needed (recurrence discipline — do not re-break B1)
-- [ ] Any new migration is registered in BOTH production runner lists in
-      packages/api/src/index.ts, in order.
-- [ ] A test verifies the new schema against the PRODUCTION migration list (the exported
-      SQLite list), NOT readdirSync — per the CLAUDE.md note.
-- [ ] Any new table is ledger-scoped.
-
-## Definition of Done
-- [ ] All acceptance criteria checked with executable evidence (red→green per item)
-- [ ] Full suite passing; total ≥ 645 or justified delta; no regressions
-- [ ] No new TypeScript errors; no new `any` without comment
-- [ ] HANDOFF.md updated
-- [ ] Committed to the branch
-- [ ] A FRESH evaluator pass re-verifies items 4/5/6 before merge (B1/B2/B3 already confirmed
-      twice — only a full-suite regression check needed for them)
-
-## Quality Rubric (Kounta)
-- Test coverage (hard) · Auth/ledger-scope (hard) · Bank-feeds-idempotent (hard — item 4
-  reopened it, must pass) · Fail-closed (hard — items 5/6, must pass) · Package boundaries ·
-  Env/secrets · Stripe · MCP unchanged · TypeScript · Test/prod migration parity (if a
-  migration is added). Pass 9/10; the four hard blockers are non-negotiable.
-
-## Out of Scope (→ blocker sprint)
-- 028/029/030 reconciliation (now the TOP blocker-sprint item — B3 already had to contort
-  around 030 being absent in prod)
-- Single-source migration mechanism + anti-drift guard
-- Re-pointing api/mcp/sdk fixtures; tier fail-open in those suites
-- Token encryption; Basiq webhook signature; audit-snapshot completeness
-- Live Plaid client; classification/reconciliation algorithm changes; OFX/QIF/MT940
-- A general exception-queue beyond the two types needed now
+## End
+- HANDOFF.md: what's done, the fresh-PG apply result (or the documented manual command), the
+  writeBankTxnAudit decision, test status, the launch precondition below, exact next step
+  (Session C: fail-closed hardening), files changed.
+- LAUNCH PRECONDITION to record: provision a FRESH empty Postgres volume at launch; do NOT
+  reattach the dormant volume.
+- Commit per logical chunk. "Done" = 028/029/030 registered, 030 applies on real PG (or
+  documented), both tests un-skipped and genuinely passing, PENDING empty, guard still catches
+  drift, parity flipped to presence, full suite green serially.
+- Do NOT self-certify mergeable. A fresh evaluator verifies the real-PG 030 apply, that the
+  un-skips pass for the right reason, and that PENDING-empty hasn't blinded the guard.
