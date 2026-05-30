@@ -7,11 +7,11 @@
 // the SINGLE source of truth — REGISTERED ∪ PENDING in
 // src/db/migration-manifest.ts — and FAILS on any drift.
 //
-// 028/029/030 are EXPLICIT, documented PENDING exceptions: files that exist but
-// are deliberately not applied in production yet (gated on live-DB
-// verification). They are allowed on disk but NOT in the prod runner. Any OTHER
-// unregistered file — e.g. a freshly-added 033 someone forgot to register — is
-// drift and fails this test.
+// PENDING_MIGRATIONS is currently EMPTY (028/029/030 graduated to REGISTERED at
+// launch). The guard still permits any file listed in PENDING (none today) but
+// FAILS on any OTHER unregistered file — e.g. a freshly-added 033 someone forgot
+// to register — so drift can never slip through, and an empty PENDING does not
+// blind it.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, afterEach } from "vitest";

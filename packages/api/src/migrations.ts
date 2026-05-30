@@ -14,9 +14,11 @@
 // fails if a migration file exists that is neither REGISTERED nor an explicit
 // PENDING exception (028/029/030).
 //
-// 028/029/030 are intentionally NOT registered yet — they are PENDING in the
-// core manifest, gated on live-DB verification (see HANDOFF.md). 031/032 depend
-// only on 001/004, so they apply after 027.
+// 028/029/030 are REGISTERED (they graduated from PENDING at launch); the
+// manifest's PENDING set is now empty. The anti-drift guard
+// (packages/core/tests/migration-drift.test.ts) still fails on any *.sql file
+// that is neither REGISTERED nor PENDING, so a new unregistered migration can
+// never silently drift out of this list.
 // ---------------------------------------------------------------------------
 
 import { registeredPgMigrationFiles, registeredSqliteMigrationFiles } from "@kounta/core";
