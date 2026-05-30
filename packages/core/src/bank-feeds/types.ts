@@ -107,6 +107,18 @@ export interface WebhookResult {
   readonly shouldSync: boolean;
 }
 
+/**
+ * Everything a provider needs to authenticate an inbound webhook. The signature
+ * is computed over the RAW request body bytes, so the raw body (not a re-encoded
+ * parse) must be passed verbatim, alongside the inbound HTTP headers.
+ */
+export interface WebhookVerificationInput {
+  /** The exact raw request body as received, as a UTF-8 string. */
+  readonly rawBody: string;
+  /** Inbound HTTP headers. Keys should be lower-cased by the caller. */
+  readonly headers: Record<string, string | undefined>;
+}
+
 // Cursor-based sync (Plaid /transactions/sync model). Optional on the provider
 // interface — providers that only support a date-range pull (e.g. Basiq) omit it.
 export interface SyncTransactionsParams {
@@ -174,10 +186,13 @@ export interface BankFeedProvider {
 
   disconnect(connectionId: string): Promise<void>;
 
-  handleWebhook(
-    payload: unknown,
-    signature: string,
-  ): Promise<WebhookResult>;
+  /**
+   * Authenticate and interpret an inbound webhook. Implementations MUST verify
+   * authenticity (signature) before reporting any actionable result. On a
+   * missing/invalid signature the result MUST have shouldSync:false and a null
+   * connectionId (zero side effects) so the caller can reject it (401/403).
+   */
+  handleWebhook(input: WebhookVerificationInput): Promise<WebhookResult>;
 
   /**
    * Cursor-based incremental sync (Plaid /transactions/sync model). Optional:

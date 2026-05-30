@@ -4,7 +4,7 @@
 
 export * from "./types.js";
 export * from "./plaid-types.js";
-export { BasiqProvider } from "./basiq.js";
+export { BasiqProvider, verifyBasiqWebhookSignature } from "./basiq.js";
 export { PlaidProvider } from "./plaid.js";
 export { MockPlaidProvider } from "./mock.js";
 export type { MockProviderConfig } from "./mock.js";
