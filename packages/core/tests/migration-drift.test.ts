@@ -49,15 +49,13 @@ describe("migration anti-drift guard", () => {
     ).toBe(true);
   });
 
-  it("PENDING is exactly the documented 028/029/030 exceptions", () => {
-    // If this fails, a migration was added to / removed from PENDING. That is a
-    // deliberate, human-reviewed action (e.g. moving 028–030 into REGISTERED
-    // after the live-DB checks pass) — update this expectation when you do.
-    expect([...PENDING_MIGRATIONS].sort()).toEqual([
-      "028_sql_review_fixes",
-      "029_bills",
-      "030_audit_action_revoked_deleted",
-    ]);
+  it("PENDING is empty — every migration on disk is REGISTERED for launch", () => {
+    // 028/029/030 graduated into REGISTERED for the launch fresh-DB provision, so
+    // PENDING is now empty. This does NOT blind the guard: the synthetic + real
+    // file tests below prove a freshly-added unregistered migration is still
+    // caught even with PENDING empty. If you intentionally add a not-yet-shipped
+    // migration, add its stem to PENDING and update this expectation.
+    expect([...PENDING_MIGRATIONS].sort()).toEqual([]);
   });
 
   it("catches a (synthetic) unregistered migration file", () => {

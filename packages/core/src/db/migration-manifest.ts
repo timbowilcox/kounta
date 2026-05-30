@@ -10,19 +10,20 @@
 // of the production runner unnoticed (B1).
 //
 // Two sets:
-//   REGISTERED — what PRODUCTION actually applies, in order. Reflects current
-//                prod reality: 001–027 + 031 + 032.
+//   REGISTERED — what PRODUCTION applies, in order. The full set 001–032.
 //   PENDING    — files that exist on disk but are NOT applied in production yet.
-//                Currently 028/029/030. They are gated on live-DB verification
-//                (idempotency + safety against the real Railway schema) and must
-//                NOT be added to REGISTERED until that verification is done.
-//                Registering them = prod runs them on the next deploy.
+//                Currently EMPTY. 028/029/030 were the last holdouts (gated on a
+//                live-DB safety check that protected the old prod volume); that
+//                gate is VOID for launch — prod has been offline ~3 months with
+//                only disposable pre-launch data and a FRESH empty Postgres volume
+//                is provisioned at launch, so 028/029/030 now apply cleanly, in
+//                order, to an empty DB on first boot. They are REGISTERED.
 //
 // The anti-drift guard (packages/core/tests/migration-drift.test.ts) asserts
 // that the files on disk are exactly REGISTERED ∪ PENDING — so a new migration
 // file can never silently drift out of the production runner again. PENDING is
-// the explicit, documented exception list; shrink it (move entries into
-// REGISTERED) only once the live-DB checks pass.
+// the explicit, documented exception list; add to it only for files deliberately
+// not yet shipped, and shrink it as they are registered.
 // ---------------------------------------------------------------------------
 
 /**
@@ -59,35 +60,30 @@ export const REGISTERED_MIGRATIONS: readonly string[] = [
   "025_invoice_approved_status",
   "026_fix_invoice_approved_constraint",
   "027_tier_usage_tracking",
-  // 028/029/030 are PENDING (see below). 031/032 depend only on 001/004, so
-  // they apply cleanly after 027 even with 028–030 absent.
+  "028_sql_review_fixes",
+  "029_bills",
+  "030_audit_action_revoked_deleted", // PG: ALTER TYPE ADD VALUE — runner special-cases this (cf. 017/020/022)
   "031_csv_import",
   "032_review_items",
 ];
 
 /**
  * Migration files that exist on disk but are NOT yet applied in production.
- * Each must stay here (NOT in REGISTERED) until verified safe + idempotent
- * against the live Railway schema. See migrations.ts / HANDOFF.md for the
- * exact live-DB checks owed before any of these can move to REGISTERED.
+ * Each must stay here (NOT in REGISTERED) until it is safe to ship. The anti-drift
+ * guard still enforces that any *new* file on disk is in REGISTERED or PENDING, so
+ * an empty PENDING does not blind the guard — a freshly-added unregistered file is
+ * still caught (see migration-drift.test.ts).
  *
- *   028_sql_review_fixes               — perf indexes + audit-immutability
- *                                        triggers (CREATE TRIGGER is NOT
- *                                        idempotent; verify triggers absent).
- *   029_bills                          — bills/vendors AP tables + usage_tracking
- *                                        columns; feature is mounted in prod but
- *                                        the tables do not exist there.
- *   030_audit_action_revoked_deleted   — adds 'revoked'/'deleted' to audit_action;
- *                                        engine writes these today and prod
- *                                        rejects them. ALTER TYPE ADD VALUE needs
- *                                        runner special-casing (cf. 017/020/022)
- *                                        before registration.
+ * Currently EMPTY: 028/029/030 graduated to REGISTERED for launch. The live-DB
+ * safety gate that held them back protected the old prod volume; it is void now
+ * that launch provisions a FRESH empty Postgres (no live data to reconcile).
+ *   - 028 perf indexes + audit-immutability trigger (its CREATE TRIGGER is not
+ *     idempotent, which is fine on a fresh DB applied once via the tracked runner).
+ *   - 029 bills/vendors AP tables + usage_tracking columns (feature already mounted).
+ *   - 030 adds 'updated'/'revoked'/'deleted' to audit_action; the PG ALTER TYPE
+ *     ADD VALUE is runner-special-cased like 017/020/022.
  */
-export const PENDING_MIGRATIONS: readonly string[] = [
-  "028_sql_review_fixes",
-  "029_bills",
-  "030_audit_action_revoked_deleted",
-];
+export const PENDING_MIGRATIONS: readonly string[] = [];
 
 /**
  * Stems with NO Postgres `.sql` file on disk — applied inline by the runner

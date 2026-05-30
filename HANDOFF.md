@@ -1,121 +1,128 @@
-# HANDOFF — Migration & Test-Integrity (Blocker Sprint, Session A)
+# HANDOFF — Launch migration registration (028/029/030)
 
-**Branch:** `feat/migration-integrity` (cut from `main` after PR #1)
-**Scope:** `SPRINT.md` — close the migration drift + test/prod divergence: one source of
-truth for the migration set, an anti-drift guard, re-point all fixtures, fix the suites that
-passed only via tier fail-open. **Test-only; no production-DB-affecting change was made.**
-**Status:** test-only criteria met, full suite green, guard proven to catch drift. **NOT
-self-certifying mergeable** — a fresh evaluator should re-verify (see Definition of Done).
+**Branch:** `feat/launch-migrations` (cut from `main` after PR #1 + PR #2).
+**Scope:** `SPRINT.md` — graduate 028/029/030 from PENDING to REGISTERED, make the runner
+apply 030 correctly, un-skip the two 030-gated revoke tests, and PROVE the full manifest
+001–032 applies cleanly to a fresh empty Postgres. The Session A live-DB safety gate is VOID:
+prod has been offline ~3 months with only disposable pre-launch data and a FRESH empty Postgres
+volume is provisioned at launch — so the three migrations apply, in order, to an empty DB on
+first boot.
+**Status:** all SPRINT criteria met; full suite green serially; **fresh-PG apply proven on real
+Postgres 18.3, twice, from empty.** **NOT self-certifying mergeable** — a fresh evaluator should
+re-verify (see Definition of Done / next step).
 
-## Production-safety: 028/029/030 are still NOT registered (by design)
-Registering them is the one live-DB-affecting action in this sprint and is **gated on the
-live Railway checks below**, which cannot be run from here. They remain in
-`PENDING_MIGRATIONS` (documented, not applied). **Do not register them until the checks pass.**
+## What's done
+1. **Manifest** (`packages/core/src/db/migration-manifest.ts`) — 028/029/030 moved into
+   `REGISTERED_MIGRATIONS` in order (`…027, 028, 029, 030, 031, 032`). `PENDING_MIGRATIONS` is
+   now `[]`. The derived PG + SQLite lists extend the old lists by **exactly** {028,029,030} in
+   the right positions (29 → 32 entries; all other entries unchanged in membership and order).
+2. **Runner** (`packages/api/src/index.ts`) — added the per-statement special-case for 030's
+   `ALTER TYPE audit_action ADD VALUE`, mirroring 017/020/022: three separate `db.exec()` calls
+   (`'updated'`/`'revoked'`/`'deleted'`, each `IF NOT EXISTS`) so each runs in autocommit. A
+   multi-statement file sent as one query is an implicit transaction, and Postgres rejects
+   `ALTER TYPE … ADD VALUE` inside a txn block. **This is the only runner change.**
+3. **029 Postgres bug fix** (`packages/core/src/db/migrations/029_bills.sql`) — **caught by the
+   fresh-PG apply, not by sql.js.** 029's PG file declared all ids/FKs as `UUID`, but
+   `ledgers.id` / `accounts.id` / `transactions.id` are `TEXT` schema-wide (UUID v7 stored as
+   text). Postgres rejected the FKs (`foreign key constraint … cannot be implemented` —
+   incompatible types uuid/text) and the runner (which swallows per-file errors and continues)
+   **silently dropped all four AP tables** — exactly the "mounted-but-dead in prod" failure 029
+   was meant to close. Changed all 16 `UUID` → `TEXT`; now matches the SQLite dialect and every
+   sibling migration. SQLite's dynamic typing had masked this; only a real-PG apply surfaces it.
+4. **Engine** (`packages/core/src/engine/index.ts`) — `writeBankTxnAudit` **left as-is**
+   (`archived`/`updated`); only its now-stale doc-comment was rewritten. See decision below.
+5. **Tests** — both revoke tests un-skipped and **strengthened**: each now reads the audit log
+   back (api via `GET /v1/ledgers/:id/audit` with a second active key; sdk via
+   `client.audit.list`) and asserts an `api_key` entry with `action='revoked'` — so they pass
+   because the audit row is genuinely written, not merely because the call returned 200.
+   `migration-parity.test.ts` flipped its three 028/029/030 assertions from **absence to
+   presence** (AP tables exist; `usage_tracking` has `bills_count`/`vendors_count`; audit CHECK
+   accepts `revoked`/`deleted`). `migration-drift.test.ts` now asserts `PENDING` is empty; its
+   synthetic + real-dropped-file tests still prove the guard catches a new unregistered
+   migration, so an empty PENDING does **not** blind it.
 
-### Findings (why this matters — flagged for the 028–030 reconciliation)
-- **030 — HIGH, audit-integrity (core invariant "Audit everything").** `engine.revokeApiKey`
-  writes audit `action='revoked'` ([engine/index.ts:1699](packages/core/src/engine/index.ts:1699))
-  and `softDeleteLedger` writes `action='deleted'`
-  ([engine/index.ts:1738](packages/core/src/engine/index.ts:1738)). Prod's `audit_action` is
-  `{created,reversed,archived}` (001) + `updated` (002 inline) — **not `revoked`/`deleted`**
-  (those come from 030, unapplied). So in prod those INSERTs throw: the key/ledger is mutated
-  but **no audit entry is written and the request 500s**. The engine already worked around
-  this in `writeBankTxnAudit` ([engine/index.ts:3106](packages/core/src/engine/index.ts:3106))
-  but the revoke/delete paths were missed. Two tests that only passed because the *old* fixture
-  hand-picked 030 are now `it.skip` with a TODO tying them to 030: api `revokes an API key`,
-  sdk `revokes an API key (admin)`.
-- **029 — HIGH, mounted-but-dead feature.** `/v1/bills` + `/v1/vendors` are mounted
-  ([app.ts:146](packages/api/src/app.ts:146)), plus MCP tools, core engine, and tier limits all
-  reference `bills`/`vendors`/`bill_line_items`/`bill_payments` and `usage_tracking.bills_count`/
-  `vendors_count`. None exist in prod (029 unapplied) → any bills/vendors call fails. The tier
-  fail-open does **not** save it on Postgres: the swallow regex is `/no such (table|column)/i`
-  ([usage.ts:397](packages/core/src/tiers/usage.ts:397)) — SQLite phrasing; PG says
-  `relation … does not exist`, so it propagates → 500.
-- **028 — LOW/MED, missing defence-in-depth.** Perf indexes + an audit-immutability trigger.
-  Nothing references it; its absence just means prod has no DB-level guard against UPDATE/DELETE
-  on `audit_entries` and lacks the indexes. Note 028's `CREATE TRIGGER` is **not** idempotent
-  (no `IF NOT EXISTS`).
+## writeBankTxnAudit decision — KEEP archived/updated (do NOT widen to revoked/deleted)
+The genuine 030 prod bug was `revokeApiKey` (`action='revoked'`,
+[engine/index.ts:1699](packages/core/src/engine/index.ts:1699)) and `softDeleteLedger`
+(`action='deleted'`, [engine/index.ts:1738](packages/core/src/engine/index.ts:1738)) throwing
+against the unmigrated enum — those write their actions **directly** and are fixed by 030 itself,
+no engine change. `writeBankTxnAudit` is independent and not a bug: its callers write `archived`
+(a provider-reported-removed *pending* mirror row is deleted — a `bank_transaction` is an
+external-feed staging mirror, not a posted domain entity) and `updated` (a reconciled row is
+guarded/flagged). No bank-txn path needs `revoked` (API-key-specific); `deleted` would be only a
+cosmetic relabel of a correct, audited, working path, and editing it edges into the
+bank-feed/Basiq removal area that is Session C. So the behaviour stays; the comment that
+justified it as a "030 isn't applied" workaround was rewritten to state the real, post-030
+rationale.
 
-### Live-DB checks I still owe before 028/029/030 can be registered
-Run read-only first; do any mutation only on a **clone/branch**, never live prod:
-1. **Applied state:** `SELECT name, applied_at FROM _migrations ORDER BY name;` — confirm it
-   ends at 027 (and whether 031/032 are already applied from PR #1's deploy); confirm
-   028/029/030 absent.
-2. **028:** `SELECT tgname FROM pg_trigger WHERE tgname IN ('trg_audit_no_update','trg_audit_no_delete');`
-   must be empty (else its non-`IF NOT EXISTS` `CREATE TRIGGER` fails). Verify every
-   column/table its indexes reference exists: `ledgers.owner_id`, `users.stripe_customer_id`,
-   `classification_rules.auto_generated`+`rule_type`, `global_classifications.canonical_merchant`,
-   `merchant_aliases.alias`, `recurring_entry_log`, `email_log`.
-3. **029:** `SELECT tablename FROM pg_tables WHERE tablename IN ('vendors','bills','bill_line_items','bill_payments');`
-   (expect empty; all `IF NOT EXISTS` so safe either way). Confirm `usage_tracking` exists (027).
-4. **030 + runner caveat:** `SELECT enumlabel FROM pg_enum WHERE enumtypid='audit_action'::regtype ORDER BY enumsortorder;`
-   → expect `{created,reversed,archived,updated}`. **030 must be runner-special-cased like
-   017/020/022 before registration** — `ALTER TYPE … ADD VALUE` is unsafe inside a transaction
-   block, and `PostgresDatabase.exec` sends the whole file as one `query()`. Add a per-statement
-   `ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'x'` branch in
-   [index.ts](packages/api/src/index.ts:251); do NOT just add the file to the list.
-5. **Quantify the gap:** `SELECT count(*) FROM api_keys WHERE status='revoked';` vs
-   `SELECT count(*) FROM audit_entries WHERE entity_type='api_key' AND action='revoked';`
-   (the latter is 0 in prod) — how many revocations already have no audit trail.
-6. **Dry-run on a clone:** apply 028→029→030 in order, twice, prove clean + re-runnable; take a
-   fresh backup before the deploy that registers them.
+## FRESH-PG PROOF (the real DoD) — DONE, on a throwaway local Postgres
+No Railway/prod touched. Stood up a throwaway **PostgreSQL 18.3** cluster locally
+(`initdb` → `pg_ctl` on port 55432, DB `kounta_proof`), pointed the **real** production
+entrypoint at it (`node packages/api/dist/index.js` with `DATABASE_URL`), applied the full
+manifest from empty **twice**, then verified the schema and tore the cluster down.
+- **Run #1 (empty):** `Migrations: 32 applied, 0 skipped, 0 failed`.
+- **Run #2 (same DB):** `Migrations: 0 applied, 32 skipped, 0 failed` — re-runnable via the
+  `_migrations` tracking table.
+- **030 on real PG:** `audit_action` enum = `{created,reversed,archived,updated,revoked,deleted}`;
+  `'revoked'`/`'deleted'` cast successfully **and** an actual
+  `INSERT INTO audit_entries (… action='revoked')` succeeds (the exact prod bug, now fixed).
+- **029 on real PG:** all four AP tables exist; `vendors.ledger_id` is `text` and the FK
+  `vendors_ledger_id_fkey` is actually built; `usage_tracking` has `bills_count`/`vendors_count`.
+- **028 on real PG:** both immutability triggers exist and a `UPDATE audit_entries` is rejected
+  (`audit_entries is append-only: UPDATE operations are forbidden`).
+- **Fresh-DB back-fill:** confirmed the `schemaExists` probe (no `ledgers` table) skips the entire
+  001–027 anchor-probe back-fill block, so nothing is back-filled — the runner just applies
+  001–032 in order. (EVALUATION-4 Obs.3 about the non-manifest probe list is moot on a fresh DB.)
 
-Once the checks pass: move the verified stems from `PENDING_MIGRATIONS` into
-`REGISTERED_MIGRATIONS` (manifest), special-case 030 in the runner, flip the parity assertions
-in `migration-parity.test.ts`, and re-enable the two skipped revoke tests.
-
-## What's done (test-only, no prod-DB impact)
-1. **Single source of truth** — `REGISTERED_MIGRATIONS` (001-027, 031, 032) + `PENDING_MIGRATIONS`
-   (028/029/030) in `packages/core/src/db/migration-manifest.ts` (side-effect-free). The prod
-   runner lists in `packages/api/src/migrations.ts` now **derive** from it (verified byte-for-byte
-   identical to the old hardcoded lists — prod apply behaviour unchanged). `index.ts` untouched.
-   CLAUDE.md note updated.
-2. **Anti-drift guard** — `packages/core/tests/migration-drift.test.ts` FAILS if any migration
-   file on disk is in neither REGISTERED nor PENDING (or a listed stem has no file). 028/029/030
-   are explicit documented PENDING exceptions. Proven to catch drift three ways incl. a **real
-   file dropped into the migrations dir** (cleaned up after).
-3. **All fixtures derive from the manifest** — core `createFullTestDb` (no more `readdirSync`),
-   every core unit-test fixture, api/sdk `createTestDb`, and mcp `initSqlite` (was only 001-016).
-   Fixtures now match the prod schema exactly. **All `usage_tracking` fail-open warnings are
-   gone.**
-4. **Tier fail-open suites fixed** — api `enforces ledger scoping` now puts the owner on a plan
-   that allows 2 ledgers and asserts the 2nd is created, so the 403 is real cross-ledger scoping
-   (not a free-`maxLedgers=1` block on an undefined id). sdk integration account is on an
-   unrestricted plan so tier checks RUN and return allowed (genuine, not fail-open). Limit-hit
-   behaviour stays covered by `tier-enforcement.test.ts`.
-5. **Parity assertions** — `migration-parity.test.ts` now also proves the prod schema lacks the
-   PENDING effects (no bills/vendors tables/columns; audit CHECK has no 'revoked'/'deleted'),
-   i.e. fixtures match prod exactly, not as a superset.
+### Exact command to reproduce the fresh-PG apply (for re-verification)
+```sh
+# any empty Postgres; here a local throwaway on :55432, DB kounta_proof
+pnpm --filter @kounta/api build
+DATABASE_URL="postgres://postgres@localhost:55432/kounta_proof" PORT=3999 \
+  node packages/api/dist/index.js   # watch for "Migrations: 32 applied, 0 skipped, 0 failed", then Ctrl-C
+# re-run the same command against the same DB → "0 applied, 32 skipped, 0 failed"
+```
 
 ## Test status
-Full suite **green**, run serially (`pnpm test --concurrency=1`): **661 passing, 8 skipped**
-(core 474 · mcp 44 · api 109/7-skip · sdk 34/1-skip). `Tasks: 12 successful, 12 total`.
-Typecheck **9/9 clean**. **0** `usage_tracking` fail-open warnings (was ~13 at baseline).
-Baseline before this work: 655 passing / 6 skipped. Delta: +5 anti-drift guard tests, +3 parity
-assertions, +2 skips (the two 030-gated revoke tests).
+Full suite **green**, serial (`pnpm test --concurrency=1`): **663 passing, 6 skipped**
+(core 474 · mcp 44 · api 110/6-skip · sdk 35). `Tasks: 12 successful, 12 total`.
+Typecheck **9/9 clean**. **0** fail-open warnings. Delta vs session start (661/8): **+2 passing,
+-2 skipped** — the two revoke tests now run and pass for the right reason.
+
+## LAUNCH PRECONDITION (record this)
+**Provision a FRESH empty Postgres volume at launch. Do NOT reattach the dormant prod volume.**
+The whole sprint rests on 001–032 applying to an empty DB on first boot. Reattaching the old
+volume reintroduces the live-data reconciliation problem the Session A gate existed for (e.g.
+028's non-idempotent `CREATE TRIGGER` assumes the triggers are absent), and the back-fill probe
+would run against legacy schema. Empty volume only.
 
 ## Exact next step
-Fresh evaluator (do NOT trust this handoff's self-assessment):
-1. Confirm the anti-drift guard catches a deliberately-added unregistered migration —
-   `migration-drift.test.ts` does this with a real temp file; optionally drop a `033_x.sqlite.sql`
-   in `packages/core/src/db/migrations/` and confirm `pnpm --filter @kounta/core test` goes red,
-   then remove it.
-2. Confirm no suite passes via fail-open: `pnpm test 2>&1 | grep -i "no such table: usage_tracking\|Tier schema not ready\|mcp/tier-check"` returns nothing.
-3. Confirm 028/029/030 are NOT registered and the prod lists are byte-for-byte unchanged.
-Then the human owes the live-DB checks above before 028/029/030 can ship.
+1. **Fresh evaluator (do NOT trust this self-assessment):** re-run the fresh-PG apply above on a
+   throwaway PG and confirm `32 applied / 0 failed` then `0 applied / 32 skipped`, the enum has
+   `revoked`/`deleted`, and the four AP tables + FKs exist. Confirm the two un-skips pass because
+   the **audit row** is written (not a weakened 200), and that `PENDING=[]` has not blinded the
+   drift guard (drop a `033_x.sqlite.sql` → `pnpm --filter @kounta/core test` must go red).
+2. **Then Session C: fail-closed hardening** — token encryption, the Basiq webhook signature,
+   and the transaction audit-snapshot completeness (all explicitly out of scope here).
 
 ## Files changed
-**new:** `packages/core/src/db/migration-manifest.ts`, `packages/core/tests/migration-drift.test.ts`.
-**core:** `src/index.ts` (export manifest), `tests/helpers/migrate.ts`, and fixtures
-`tests/{engine,classification,email,global-classification,import,recurring,revenue,stripe-revenue,stripe,templates}.test.ts`,
-`src/fixed-assets/engine.test.ts`, `src/invoicing/{customers,engine}.test.ts`, `src/tiers/tiers.test.ts`.
-**api:** `src/migrations.ts` (derive from manifest), `tests/{api,oauth,benchmark,fixed-assets,invoices,tier-enforcement,migration-parity}.test.ts`.
-**mcp:** `src/lib/db.ts` (initSqlite from manifest).
-**sdk:** `tests/sdk.test.ts`.
-**docs:** `CLAUDE.md`.
-Commits on `feat/migration-integrity`: `66c354b` manifest single source of truth ·
-`20ea930` anti-drift guard · `9da6a32` re-point fixtures + tier fail-open fixes + parity · this HANDOFF.
+**core:** `src/db/migration-manifest.ts` (register 028/029/030, PENDING empty),
+`src/db/migrations/029_bills.sql` (UUID→TEXT), `src/engine/index.ts` (writeBankTxnAudit comment),
+`tests/migration-drift.test.ts` (PENDING empty assertion).
+**api:** `src/index.ts` (030 special-case), `tests/api.test.ts` (un-skip+strengthen revoke),
+`tests/migration-parity.test.ts` (flip to presence).
+**sdk:** `tests/sdk.test.ts` (un-skip+strengthen revoke).
+**docs:** `SPRINT.md` (this sprint's scope).
+Commits on `feat/launch-migrations`: `a9a712b` SPRINT · `55f8eda` manifest register ·
+`091b5a0` 029 PG TEXT fix · `9971b0f` 030 runner special-case · `4950086` engine comment ·
+`071c9b2` tests · this HANDOFF.
+
+## Definition of Done (met)
+028/029/030 registered · 030 applies on real PG (proven) · 029 applies on real PG (bug fixed) ·
+both revoke tests un-skipped and genuinely passing (audit row asserted) · PENDING empty · drift
+guard still catches drift · parity flipped to presence · full suite green serially. **Do not
+self-certify mergeable** — fresh evaluator owes the re-verification above.
 
 ## Out of scope (untouched, per SPRINT)
-Registering 028/029/030; the engine revoke/delete audit-write fix; bills/vendors schema; token
-encryption; Basiq webhook signature; transaction audit-snapshot completeness (Session B).
+Token encryption; the Basiq webhook signature; the transaction audit-snapshot (Session C). No
+feature work; no migration squashing; the only runner change is the 030 special-case.

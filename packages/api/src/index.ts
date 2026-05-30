@@ -397,6 +397,26 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
         continue;
       }
 
+      // Special case: 030 uses ALTER TYPE ADD VALUE (can't run in transaction).
+      // Each value is a separate exec() so it runs in autocommit — the .sql file's
+      // three statements sent as one multi-statement query would be an implicit
+      // txn and Postgres rejects ALTER TYPE ADD VALUE inside a txn block. IF NOT
+      // EXISTS keeps it re-runnable; 'updated' is already present from 002.
+      if (migName === "030_audit_action_revoked_deleted.sql") {
+        try {
+          await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'updated'");
+          await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'revoked'");
+          await db.exec("ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'deleted'");
+        } catch { /* already exists */ }
+        await db.run(
+          "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+          [migName],
+        );
+        console.log(`Applied PostgreSQL migration: ${migName}`);
+        applied++;
+        continue;
+      }
+
       const migPath = join(migrationsDir, migName);
       if (!existsSync(migPath)) {
         console.warn(`Migration file not found, skipping: ${migName}`);
