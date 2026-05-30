@@ -435,6 +435,23 @@ const applyPostgresMigrations = async (db: PostgresDatabase) => {
         continue;
       }
 
+      // Special case: 033 uses ALTER TYPE ADD VALUE (can't run in transaction),
+      // mirroring 030 — a separate exec() in autocommit, IF NOT EXISTS for
+      // re-runnability. Adds 'deleted' to ledger_status so softDeleteLedger's
+      // UPDATE (and DELETE /v1/ledgers/:ledgerId) no longer throws on the enum.
+      if (migName === "033_ledger_status_deleted.sql") {
+        try {
+          await db.exec("ALTER TYPE ledger_status ADD VALUE IF NOT EXISTS 'deleted'");
+        } catch (e) { if (!isDuplicateValueError(e)) throw e; }
+        await db.run(
+          "INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+          [migName],
+        );
+        console.log(`Applied PostgreSQL migration: ${migName}`);
+        applied++;
+        continue;
+      }
+
       const migPath = join(migrationsDir, migName);
       if (!existsSync(migPath)) {
         console.warn(`Migration file not found, skipping: ${migName}`);
